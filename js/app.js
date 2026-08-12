@@ -300,8 +300,10 @@ function vHome() {
   } else if (day.kind === 'run' || day.kind === 'race') {
     const r = ST.runs[t];
     const logged = r
-      ? `<div class="run-logged">✓ ${r.km} km · ${r.min} min · felt ${r.feel}${r.note ? ` · 📝 ${esc(r.note)}` : ''}</div>
-         <button class="mini" onclick="openRunLog('${t}')">edit</button>`
+      ? (r.skipped
+        ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openRunLog('${t}')">log anyway</button>`
+        : `<div class="run-logged">✓ ${r.km} km · ${r.min} min · ${paceStr(r.km, r.min) || ''}${r.hr ? ` · ${r.hr} bpm` : ''} · felt ${r.feel}${r.splits && r.splits.length ? `<br>splits: ${r.splits.map(fmtSplit).join(' · ')}` : ''}${r.note ? ` · 📝 ${esc(r.note)}` : ''}</div>
+         <button class="mini" onclick="openRunLog('${t}')">edit</button>`)
       : `<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
     card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}</div>`;
   } else {
@@ -318,28 +320,54 @@ function vHome() {
 }
 
 /* ---------- run logging ---------- */
+function paceStr(km, min) {
+  if (!km || !min) return null;
+  const s = Math.round(min * 60 / km);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' /km';
+}
+function fmtSplit(sec) { return Math.floor(sec / 60) + ':' + String(Math.round(sec % 60)).padStart(2, '0'); }
+function parseSplit(str) {
+  str = str.trim(); if (!str) return null;
+  if (str.includes(':')) { const [m, s] = str.split(':').map(Number); return (isNaN(m) || isNaN(s)) ? null : m * 60 + s; }
+  const v = parseFloat(str); return isNaN(v) ? null : Math.round(v * 60); // bare number = minutes
+}
+function isHardRun(date) { const d = dayFor(date); return d && d.title === 'Hard Run'; }
+
 window.openRunLog = function (date) {
   const day = dayFor(date);
-  const r = ST.runs[date] || { km: day && day.title === 'Long Run' ? 20 : day && day.title === 'Hard Run' ? 10 : 8, min: 60, feel: null, note: '' };
+  const r = ST.runs[date] && !ST.runs[date].skipped ? ST.runs[date] : { km: day && day.title === 'Long Run' ? 20 : day && (day.kind === 'race') ? 21.1 : day && day.title === 'Hard Run' ? 10 : 8, min: 60, feel: null, note: '', hr: '', splits: [] };
+  const hard = isHardRun(date);
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h2>${esc(day ? day.title : 'Run')} — ${fmtDate(date)}</h2>
     <div class="stepper"><div class="stepper-lbl">Distance (km)</div><div class="stepper-row">
       <button class="stepbtn" onclick="runStep('km',-0.5)">−</button><div class="stepval" id="rv-km">${r.km}</div><button class="stepbtn" onclick="runStep('km',0.5)">+</button></div></div>
     <div class="stepper"><div class="stepper-lbl">Time (minutes)</div><div class="stepper-row">
       <button class="stepbtn" onclick="runStep('min',-5)">−</button><div class="stepval" id="rv-min">${r.min}</div><button class="stepbtn" onclick="runStep('min',5)">+</button></div></div>
+    <div class="pace-line">Average pace: <b id="rv-pace">${paceStr(r.km, r.min) || '—'}</b></div>
+    ${hard ? `<div class="stepper"><div class="stepper-lbl">Interval splits (one per rep, e.g. 4:32)</div>
+      <div id="splitlist">${(r.splits || []).map(s => `<input class="notefield splitfield" inputmode="numeric" placeholder="4:32" value="${fmtSplit(s)}">`).join('')}</div>
+      <button class="mini" onclick="addSplit()">+ add split</button></div>` : ''}
+    <div class="stepper"><div class="stepper-lbl">Average heart rate (bpm, optional)</div>
+      <input id="runhr" class="notefield" type="number" inputmode="numeric" placeholder="e.g. 152" value="${r.hr || ''}"></div>
     <div class="stepper"><div class="stepper-lbl">How did it feel?</div><div class="rpes">
       ${['good', 'ok', 'rough'].map(f => `<button class="rpe feel ${r.feel === f ? 'sel' : ''}" data-f="${f}" onclick="pickFeel('${f}')">${f === 'good' ? '😀 good' : f === 'ok' ? '😐 ok' : '😖 rough'}</button>`).join('')}</div></div>
     <input id="runnote" class="notefield" placeholder="Notes (optional)" value="${esc(r.note)}">
     <button class="btn primary big" onclick="saveRun('${date}')">Save run</button>
+    <button class="linkbtn" onclick="skipRun('${date}')">I didn't do this run</button>
     <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
   m.classList.add('open');
   m.dataset.km = r.km; m.dataset.min = r.min; m.dataset.feel = r.feel || '';
+};
+window.addSplit = function () {
+  $('#splitlist').insertAdjacentHTML('beforeend', `<input class="notefield splitfield" inputmode="numeric" placeholder="4:32">`);
+  const f = [...document.querySelectorAll('.splitfield')].pop(); f.focus();
 };
 window.runStep = function (id, d) {
   const m = $('#modal');
   const v = Math.max(0, Math.round((parseFloat(m.dataset[id]) + d) * 10) / 10);
   m.dataset[id] = v;
   $('#rv-' + id).textContent = v;
+  const p = $('#rv-pace'); if (p) p.textContent = paceStr(parseFloat(m.dataset.km), parseFloat(m.dataset.min)) || '—';
 };
 window.pickFeel = function (f) {
   $('#modal').dataset.feel = f;
@@ -348,9 +376,33 @@ window.pickFeel = function (f) {
 window.saveRun = function (date) {
   const m = $('#modal');
   if (!m.dataset.feel) { alert('Tap how it felt — it feeds the deload radar.'); return; }
-  ST.runs[date] = { km: parseFloat(m.dataset.km), min: parseFloat(m.dataset.min), feel: m.dataset.feel, note: $('#runnote').value.trim() };
+  const splits = [...document.querySelectorAll('.splitfield')].map(f => parseSplit(f.value)).filter(s => s != null);
+  const hr = parseInt($('#runhr').value, 10);
+  ST.runs[date] = { km: parseFloat(m.dataset.km), min: parseFloat(m.dataset.min), feel: m.dataset.feel, note: $('#runnote').value.trim(), hr: isNaN(hr) ? null : hr, splits };
   save(); closeModal(); render();
+  autoPromptRun(); // catch-up: chain to the next unlogged run day, if any
 };
+window.skipRun = function (date) {
+  ST.runs[date] = { skipped: true };
+  save(); closeModal(); render();
+  autoPromptRun();
+};
+
+/* auto-prompt: on app open, pop the log sheet for the oldest unlogged run day ≤ today.
+   Today's own run only prompts after 10:00 so a morning check-in doesn't nag pre-run. */
+function autoPromptRun() {
+  if (ST.activeSessionId) return;                      // never interrupt a workout
+  if ($('#modal').classList.contains('open')) return;
+  const t = today();
+  const candidates = [];
+  for (const wk of ST.program.weeks) for (const d of wk.days) {
+    if ((d.kind === 'run' || d.kind === 'race') && d.date <= t && !ST.runs[d.date]) candidates.push(d.date);
+  }
+  if (!candidates.length) return;
+  const oldest = candidates[0];
+  if (oldest === t && new Date().getHours() < 10) return;
+  openRunLog(oldest);
+}
 
 function upNext(t) {
   const items = [];
@@ -671,15 +723,17 @@ function vSchedule() {
         const s = ST.sessions[d.date];
         const done = s && s.status === 'done';
         const isRun = d.kind === 'run' || d.kind === 'race';
-        const runLogged = isRun && ST.runs[d.date];
+        const runRec = isRun && ST.runs[d.date];
+        const runLogged = runRec && !runRec.skipped;
+        const runSkipped = runRec && runRec.skipped;
         const icon = d.kind === 'run' ? '🏃' : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
         if (done) action = `<button class="mini" onclick="go('summary',{sid:'${d.date}'})">view</button>`;
-        else if (isRun && d.date <= t) action = `<button class="mini" onclick="openRunLog('${d.date}')">${runLogged ? 'edit' : 'log'}</button>`;
+        else if (isRun && d.date <= t) action = `<button class="mini" onclick="openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}">
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${icon}</span>
-          <span class="wk-title">${esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runLogged ? ` <span class="dim">${ST.runs[d.date].km}km</span>` : ''}</span>
+          <span class="wk-title">${esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${runLogged ? ` <span class="dim">${ST.runs[d.date].km}km · ${paceStr(ST.runs[d.date].km, ST.runs[d.date].min) || ''}</span>` : ''}</span>
           ${action}
         </div>`;
       }).join('')}
@@ -716,9 +770,31 @@ function vHistory() {
   const maxV = Math.max(1, ...weekVols.map(v => v.vol));
   // exercises with history
   const withHist = Object.keys(EXERCISES).filter(id => exHistory(id).length > 0);
+  // running progress
+  const runDates = Object.keys(ST.runs).sort().filter(d => !ST.runs[d].skipped);
+  const runPts = runDates.map(d => {
+    const r = ST.runs[d]; const day = dayFor(d);
+    const type = day ? (day.kind === 'race' ? 'race' : day.title) : 'Run';
+    return { date: d, km: r.km, min: r.min, hr: r.hr, feel: r.feel, splits: r.splits || [], type, pace: r.km && r.min ? r.min * 60 / r.km : null };
+  }).filter(p => p.pace);
+  const weekKms = ST.program.weeks.map(wk => {
+    let km = 0;
+    for (const d of wk.days) { const r = ST.runs[d.date]; if (r && !r.skipped) km += r.km || 0; }
+    return { wk: wk.num, km };
+  });
+  const maxKm = Math.max(1, ...weekKms.map(v => v.km));
+  const typeIcon = t => t === 'Hard Run' ? '⚡' : t === 'Long Run' ? '🛣️' : t === 'race' ? '🏁' : '🏃';
   return `<header class="top"><div class="phase">${esc(phaseLabel(today()))}</div></header>
   <main>
-    <div class="section-label">Weekly volume (tonnes)</div>
+    <div class="section-label">🏃 Running — weekly km</div>
+    <div class="volchart">${weekKms.map(v => `<div class="volcol"><div class="volbar runbar" style="height:${Math.max(2, 100 * v.km / maxKm)}%"></div><div class="voln">${v.km ? v.km.toFixed(0) : ''}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
+    <div class="section-label">Pace trend (min/km — up = faster)</div>
+    ${runPaceChart(runPts)}
+    ${runPts.length ? `<div class="section-label">Run log</div>` + runPts.slice().reverse().map(p =>
+      `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}</b>
+       <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''} · felt ${p.feel}</span>
+       ${p.splits.length ? `<div class="notesum">splits: ${p.splits.map(fmtSplit).join(' · ')}</div>` : ''}</div>`).join('') : ''}
+    <div class="section-label">🏋️ Lifting — weekly volume (tonnes)</div>
     <div class="volchart">${weekVols.map(v => `<div class="volcol"><div class="volbar" style="height:${Math.max(2, 100 * v.vol / maxV)}%"></div><div class="voln">${(v.vol / 1000).toFixed(1)}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
     <div class="section-label">Exercise trends</div>
     ${withHist.length ? withHist.map(id => {
@@ -744,6 +820,25 @@ function vExDetail() {
     ${h.slice().reverse().map(s => `<div class="sumrow"><b>${fmtDate(s.date)}</b><span>${s.sets.map(t => setStr(ex, t)).join(' · ')}</span>
       ${s.sets.filter(t => t.note).map(t => `<div class="notesum">📝 ${esc(t.note)}</div>`).join('')}</div>`).join('')}
   </main>${navBar()}`;
+}
+
+/* pace trend: inverted y so faster (lower pace) plots higher. Dots coloured by run type. */
+function runPaceChart(pts) {
+  if (pts.length < 2) return `<div class="card"><div class="card-sub">Log ${2 - pts.length} more run${pts.length === 1 ? '' : 's'} to see your pace trend.</div></div>`;
+  const W = 340, H = 170, P = 30;
+  const paces = pts.map(p => p.pace);
+  const min = Math.min(...paces) * 0.97, max = Math.max(...paces) * 1.03;
+  const x = i => P + (W - 2 * P) * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
+  const y = v => P + (H - 2 * P) * (v - min) / (max - min || 1); // inverted: fast (small) at top
+  const color = t => t === 'Hard Run' ? 'var(--gold)' : t === 'Long Run' ? 'var(--acc)' : t === 'race' ? 'var(--red)' : 'var(--run)';
+  const lbl = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+  return `<div class="chartwrap"><svg viewBox="0 0 ${W} ${H}">
+    <text x="${P}" y="13" class="ch-lbl">⚡ hard&#160;&#160;🏃 easy&#160;&#160;🛣️ long&#160;&#160;🏁 race</text>
+    <text x="${W - P + 2}" y="${y(min) + 4}" class="ch-ax">${lbl(min)}</text>
+    <text x="${W - P + 2}" y="${y(max) + 4}" class="ch-ax">${lbl(max)}</text>
+    <polyline class="ln-pace" points="${pts.map((p, i) => `${x(i).toFixed(1)},${y(p.pace).toFixed(1)}`).join(' ')}"/>
+    ${pts.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.pace).toFixed(1)}" r="4" fill="${color(p.type)}"/>`).join('')}
+  </svg></div>`;
 }
 
 function svgChart(pts) {
@@ -800,10 +895,14 @@ window.exportCSV = function () {
       if (t.done) rows.push([s.date, s.title, EXERCISES[e.exId].name, i + 1, t.weight ?? '', t.reps ?? '', t.rpe ?? '', t.failed ? 1 : '', (t.note || '').replace(/"/g, '""')]);
     });
   }
-  // runs: exercise="Run", reps column = km, rpe column blank, note = feel + note
+  // runs: exercise carries time/pace/HR, reps column = km, note = feel + splits + note
   for (const d of Object.keys(ST.runs).sort()) {
     const r = ST.runs[d];
-    rows.push([d, 'Run', `Run (${r.min} min)`, 1, '', r.km, '', '', (`felt ${r.feel}` + (r.note ? ' — ' + r.note : '')).replace(/"/g, '""')]);
+    if (r.skipped) { rows.push([d, 'Run', 'Run (skipped)', 1, '', '', '', '', '']); continue; }
+    const bits = [`felt ${r.feel}`];
+    if (r.splits && r.splits.length) bits.push('splits ' + r.splits.map(fmtSplit).join(' '));
+    if (r.note) bits.push(r.note);
+    rows.push([d, 'Run', `Run (${r.min} min, ${paceStr(r.km, r.min) || '?'}${r.hr ? ', ' + r.hr + ' bpm' : ''})`, 1, '', r.km, '', '', bits.join(' — ').replace(/"/g, '""')]);
   }
   download(`runstrong-log-${today()}.csv`, rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n'), 'text/csv');
 };
@@ -885,3 +984,4 @@ if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.acti
 }
 render();
 if (ST.timer) runTimerLoop();
+autoPromptRun();
