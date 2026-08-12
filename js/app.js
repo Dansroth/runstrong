@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 function defaultState() {
   return {
@@ -17,7 +17,9 @@ function defaultState() {
 }
 
 const MIGRATIONS = {
-  // 1 → 2 example: (s) => { ...; s.schemaVersion = 2; return s; }
+  // 1 → 2: program start moved to Thu 2026-08-13 (9-week plan with partial intro week).
+  // Rebuild the program; sessions are keyed by date and survive untouched.
+  1: (s) => { s.program = buildProgram(); s.schemaVersion = 2; return s; },
 };
 
 function migrate(s) {
@@ -46,13 +48,14 @@ function loadState() {
 
 let ST = loadState();
 function save() { localStorage.setItem(DB_KEY, JSON.stringify(ST)); }
+save(); // persist immediately so migrations and first-visit program generation stick
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function weekFor(date) {
-  return ST.program.weeks.find(w => date >= w.days[0].date && date <= w.days[6].date) || null;
+  return ST.program.weeks.find(w => date >= w.days[0].date && date <= w.days[w.days.length - 1].date) || null;
 }
 function dayFor(date) {
   const w = weekFor(date);

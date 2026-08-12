@@ -6,7 +6,8 @@ const RACES = [
   { key: 'melbourne', name: 'Melbourne Half', tag: 'A race', date: '2026-10-11' },
 ];
 
-const PROGRAM_START = '2026-08-17'; // Monday week 1
+const PROGRAM_START = '2026-08-13'; // Thursday — partial intro week 1
+const WEEK2_MONDAY = '2026-08-17';  // full Mon–Sun weeks from here, anchored to race Sundays
 
 /*
  mode: 'reps' (weight x reps), 'time' (seconds per side/set), 'carry' (weight x metres), 'bw' (bodyweight reps)
@@ -108,7 +109,7 @@ Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat
 
 • **Tue & Sat are upper days** — they sit directly before the Wed hard run and Sun long run, so no fresh leg fatigue is carried into either key run.
 
-Plyometrics (box jumps) run weeks 1–4 only, first in the session while fresh. Week 5 mini-tapers into Geelong (B race). Week 6 recovers, then one final lower session Thursday — the last real leg stimulus. Weeks 7–8 taper into Melbourne (A race): volume drops 40–50%, a touch of intensity stays so you don't feel flat.`;
+Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 mini-tapers into Geelong (B race). Week 7 recovers, then one final lower session Thursday — the last real leg stimulus. Weeks 8–9 taper into Melbourne (A race): volume drops 40–50%, a touch of intensity stays so you don't feel flat.`;
 
 /* ---- date helpers (local time) ---- */
 function dstr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -124,6 +125,16 @@ function buildProgram() {
     'Intro — conservative loads', 'Build', 'Build', 'Build — peak load',
     'Geelong mini-taper', 'Recover → rebuild', 'Taper', 'Melbourne race week',
   ];
+  // Week 1: partial intro week, Thu Aug 13 – Sun Aug 16 (two conservative sessions)
+  weeks.push({
+    num: 1, phase: 'Intro — conservative loads', monday: PROGRAM_START,
+    days: [
+      { date: '2026-08-13', kind: 'lift', tpl: 'lowerA', title: TEMPLATES.lowerA.title },
+      { date: '2026-08-14', kind: 'run', title: 'Easy Run', sub: 'Recovery pace' },
+      { date: '2026-08-15', kind: 'lift', tpl: 'upperA', title: TEMPLATES.upperA.title },
+      { date: '2026-08-16', kind: 'run', title: 'Long Run', sub: '~20 km' },
+    ],
+  });
   // day plan per week: map dayIndex(0=Mon..6=Sun) → {kind, tpl?, title?}
   const RUN = { 2: { kind: 'run', title: 'Hard Run', sub: 'Intervals / tempo — lifting stays out of the way' }, 4: { kind: 'run', title: 'Easy Run', sub: 'Recovery pace' }, 6: { kind: 'run', title: 'Long Run', sub: '~20 km' } };
   const layouts = [
@@ -134,7 +145,7 @@ function buildProgram() {
     /* wk8 */ { 0: { kind: 'lift', tpl: 'primer' }, 1: { kind: 'mobility', title: 'Mobility only', sub: 'Nothing within 3 days of the race' }, 3: { kind: 'mobility', title: 'Mobility only', sub: 'Stay loose, stay fresh' }, 5: { kind: 'rest', title: 'Rest', sub: 'Feet up. Carb up.' }, 6: { kind: 'race', race: 'melbourne' } },
   ];
   for (let w = 0; w < 8; w++) {
-    const monday = dadd(PROGRAM_START, w * 7);
+    const monday = dadd(WEEK2_MONDAY, w * 7);
     const days = [];
     for (let i = 0; i < 7; i++) {
       const date = dadd(monday, i);
@@ -161,7 +172,7 @@ function buildProgram() {
       }
       days.push(day);
     }
-    weeks.push({ num: w + 1, phase: phases[w], monday, days });
+    weeks.push({ num: w + 2, phase: phases[w], monday, days });
   }
   return { startDate: PROGRAM_START, weeks };
 }
