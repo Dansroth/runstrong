@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function defaultState() {
   return {
@@ -12,6 +12,7 @@ function defaultState() {
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
+    fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
@@ -24,6 +25,8 @@ const MIGRATIONS = {
   1: (s) => { s.program = buildProgram(); s.schemaVersion = 2; return s; },
   // 2 → 3: run logging + backup nudge fields.
   2: (s) => { s.runs = s.runs || {}; s.lastBackup = s.lastBackup || null; s.schemaVersion = 3; return s; },
+  // 3 → 4: HRV / RHR / VO2 max tracking (Garmin morning check-in).
+  3: (s) => { s.fitness = s.fitness || { daily: {}, vo2: {}, skipped: null }; s.schemaVersion = 4; return s; },
 };
 
 function migrate(s) {
@@ -234,6 +237,9 @@ function deloadRadar() {
   const runFeels = Object.keys(ST.runs).sort().filter(d => d >= cutoff).map(d => ST.runs[d].feel);
   if (runFeels.slice(-3).filter(f => f === 'rough').length >= 2)
     signals.push('recent runs have felt rough');
+  // 4. sustained HRV/RHR recovery dip (conservative: 3+ consecutive mornings, never single-day)
+  const dip = recoveryDip();
+  if (dip) signals.push(dip);
   if (!signals.length) return null;
   return 'Fatigue is stacking up: ' + signals.join(', ') + '. Consider the downgraded version of your next session — running comes first.';
 }
@@ -387,6 +393,148 @@ window.skipRun = function (date) {
   save(); closeModal(); render();
   autoPromptRun();
 };
+
+/* ================= fitness: HRV / RHR / VO2 (Garmin morning check-in) ================= */
+function fitnessEntries() {
+  return Object.keys(ST.fitness.daily).sort().map(d => ({ date: d, ...ST.fitness.daily[d] }));
+}
+/* rolling baseline: mean + SD of up to the last 14 HRV readings strictly before `date`.
+   Needs ≥5 readings to be meaningful — callers must respect .ready */
+function hrvBaseline(date) {
+  const prior = fitnessEntries().filter(e => e.date < date && e.hrv != null).slice(-14);
+  const vals = prior.map(e => e.hrv);
+  if (vals.length < 5) return { ready: false, n: vals.length };
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+  return { ready: true, n: vals.length, mean, sd };
+}
+function rhrBaseline(date) {
+  const vals = fitnessEntries().filter(e => e.date < date && e.rhr != null).slice(-14).map(e => e.rhr);
+  if (vals.length < 5) return { ready: false };
+  return { ready: true, mean: vals.reduce((a, b) => a + b, 0) / vals.length };
+}
+/* conservative recovery-dip detection: the 3 most recent readings ALL below their own
+   baselines (HRV low, or RHR elevated). Single-day dips never flag. */
+function recoveryDip() {
+  const es = fitnessEntries();
+  if (es.length < 8) return null;      // baseline (5) + streak (3)
+  const last3 = es.slice(-3);
+  const hrvLow = last3.every(e => {
+    const b = hrvBaseline(e.date);
+    return b.ready && e.hrv != null && e.hrv < b.mean - Math.max(0.75 * b.sd, 4);
+  });
+  const rhrHigh = last3.every(e => {
+    const b = rhrBaseline(e.date);
+    return b.ready && e.rhr != null && e.rhr > b.mean + 5;
+  });
+  if (!hrvLow && !rhrHigh) return null;
+  const bits = [];
+  if (hrvLow) bits.push('HRV has sat below your baseline 3 mornings running');
+  if (rhrHigh) bits.push('resting HR has been elevated 3 mornings running');
+  return bits.join(' and ');
+}
+function isTrainingDay(date) {
+  const d = dayFor(date);
+  return !!d && ['lift', 'run', 'race'].includes(d.kind);
+}
+function vo2Due() {
+  const dates = Object.keys(ST.fitness.vo2).sort();
+  if (!dates.length) return true;
+  const last = dates[dates.length - 1];
+  return Math.round((new Date(today() + 'T12:00') - new Date(last + 'T12:00')) / 86400000) >= 7;
+}
+function checkInDue() {
+  const t = today();
+  if (ST.activeSessionId) return false;
+  if (ST.fitness.daily[t]) return false;      // already logged
+  if (ST.fitness.skipped === t) return false; // skipped today — never ask twice
+  return isTrainingDay(t);
+}
+function openCheckIn() {
+  const t = today();
+  const es = fitnessEntries();
+  const last = es[es.length - 1] || {};
+  const b = hrvBaseline(t);
+  const m = $('#modal');
+  const seed = (v, dflt) => v != null ? v : dflt;
+  m.innerHTML = `<div class="sheet"><h2>Morning check-in</h2>
+    <div class="dim" style="margin-bottom:10px;font-size:.88rem">From your Garmin: last night's HRV and resting heart rate. ${b.ready ? `Baseline ${b.mean.toFixed(0)} ms.` : `Baseline building — ${b.n || es.length} of 5 mornings logged.`}</div>
+    ${stepperCI('hrv', 'Overnight HRV (ms)', seed(last.hrv, 55))}
+    ${stepperCI('rhr', 'Resting heart rate (bpm)', seed(last.rhr, 52))}
+    ${vo2Due() ? `<div class="stepper"><div class="stepper-lbl">VO₂ max (ml/kg/min) — if Garmin has updated it (optional)</div>
+      <input id="ci-vo2" class="notefield" type="number" inputmode="numeric" placeholder="e.g. 48" value="${Object.values(ST.fitness.vo2).slice(-1)[0] || ''}"></div>` : ''}
+    <button class="btn primary big" onclick="saveCheckIn()">✓ Save</button>
+    <button class="linkbtn" onclick="skipCheckIn()">Skip today</button></div>`;
+  m.classList.add('open');
+}
+function stepperCI(id, label, val) {
+  return `<div class="stepper"><div class="stepper-lbl">${label}</div>
+    <div class="stepper-row">
+      <button class="stepbtn" onclick="ciStep('${id}',-1)">−</button>
+      <div class="stepval" id="ci-${id}">${val}</div>
+      <button class="stepbtn" onclick="ciStep('${id}',1)">+</button>
+    </div></div>`;
+}
+window.ciStep = function (id, d) {
+  const el = $('#ci-' + id);
+  el.textContent = Math.max(0, parseInt(el.textContent, 10) + d);
+};
+window.saveCheckIn = function () {
+  const t = today();
+  ST.fitness.daily[t] = { hrv: parseInt($('#ci-hrv').textContent, 10), rhr: parseInt($('#ci-rhr').textContent, 10) };
+  const v = $('#ci-vo2') ? parseInt($('#ci-vo2').value, 10) : NaN;
+  if (!isNaN(v) && v > 20 && v < 90) ST.fitness.vo2[t] = v;
+  save(); closeModal(); render();
+  autoPromptRun();
+};
+window.skipCheckIn = function () {
+  ST.fitness.skipped = today();
+  save(); closeModal();
+  autoPromptRun();
+};
+window.updateVo2 = function () {
+  const v = prompt('VO₂ max from Garmin (ml/kg/min):', Object.values(ST.fitness.vo2).slice(-1)[0] || '48');
+  const n = parseInt(v, 10);
+  if (!isNaN(n) && n > 20 && n < 90) { ST.fitness.vo2[today()] = n; save(); render(); }
+};
+/* aerobic efficiency: EF = (m/min) / avg HR, easy + long runs only (like vs like) */
+function efSeries() {
+  const out = [];
+  for (const d of Object.keys(ST.runs).sort()) {
+    const r = ST.runs[d];
+    if (r.skipped || !r.km || !r.min || !r.hr) continue;
+    const day = dayFor(d);
+    const type = day ? day.title : 'Run';
+    if (type === 'Hard Run') continue;   // intervals lie in this trend
+    out.push({ date: d, ef: (r.km * 1000 / r.min) / r.hr, type });
+  }
+  return out;
+}
+/* honest half-marathon projection: range from actual long-run pace, VO2 as secondary adjuster */
+function raceProjection() {
+  const longs = Object.keys(ST.runs).sort().filter(d => {
+    const r = ST.runs[d]; const day = dayFor(d);
+    return r && !r.skipped && r.km >= 12 && r.min && day && (day.kind === 'run' || day.kind === 'race');
+  }).slice(-4);
+  if (!longs.length) return null;
+  const paces = longs.map(d => ST.runs[d].min * 60 / ST.runs[d].km); // sec/km
+  const longPace = paces.reduce((a, b) => a + b, 0) / paces.length;
+  let fast = longPace * 0.93 * 21.1, slow = longPace * 0.99 * 21.1;  // seconds
+  // VO2 adjuster (rough Daniels-style anchor points), only nudges the range
+  const vo2 = Object.values(ST.fitness.vo2).slice(-1)[0];
+  if (vo2) {
+    const table = [[35, 135], [40, 122], [45, 109], [50, 98], [55, 89], [60, 81]]; // vo2 → HM minutes
+    let est = null;
+    for (let i = 0; i < table.length - 1; i++) {
+      const [v1, t1] = table[i], [v2, t2] = table[i + 1];
+      if (vo2 >= v1 && vo2 <= v2) est = (t1 + (t2 - t1) * (vo2 - v1) / (v2 - v1)) * 60;
+    }
+    if (vo2 < 35) est = 135 * 60; if (vo2 > 60) est = 81 * 60;
+    if (est) { if (est < fast) fast = fast * 0.99; if (est > slow) slow = slow * 1.01; }
+  }
+  const fmtT = s => Math.floor(s / 3600) + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0');
+  return { range: fmtT(fast) + '–' + fmtT(slow), nLongs: longs.length };
+}
 
 /* auto-prompt: on app open, pop the log sheet for the oldest unlogged run day ≤ today.
    Today's own run only prompts after 10:00 so a morning check-in doesn't nag pre-run. */
@@ -786,6 +934,7 @@ function vHistory() {
   const typeIcon = t => t === 'Hard Run' ? '⚡' : t === 'Long Run' ? '🛣️' : t === 'race' ? '🏁' : '🏃';
   return `<header class="top"><div class="phase">${esc(phaseLabel(today()))}</div></header>
   <main>
+    ${vFitness()}
     <div class="section-label">🏃 Running — weekly km</div>
     <div class="volchart">${weekKms.map(v => `<div class="volcol"><div class="volbar runbar" style="height:${Math.max(2, 100 * v.km / maxKm)}%"></div><div class="voln">${v.km ? v.km.toFixed(0) : ''}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
     <div class="section-label">Pace trend (min/km — up = faster)</div>
@@ -820,6 +969,88 @@ function vExDetail() {
     ${h.slice().reverse().map(s => `<div class="sumrow"><b>${fmtDate(s.date)}</b><span>${s.sets.map(t => setStr(ex, t)).join(' · ')}</span>
       ${s.sets.filter(t => t.note).map(t => `<div class="notesum">📝 ${esc(t.note)}</div>`).join('')}</div>`).join('')}
   </main>${navBar()}`;
+}
+
+/* ---------- Fitness section (HRV / RHR / VO2 / efficiency / projection) ---------- */
+function vFitness() {
+  const es = fitnessEntries();
+  const t = today();
+  const b = hrvBaseline(dadd(t, 1));   // baseline including today's entry history
+  const latest = es[es.length - 1];
+  const vo2Dates = Object.keys(ST.fitness.vo2).sort();
+  const vo2 = vo2Dates.length ? ST.fitness.vo2[vo2Dates[vo2Dates.length - 1]] : null;
+  const efs = efSeries();
+  const proj = raceProjection();
+  // insights lines
+  const lines = [];
+  if (!b.ready) lines.push(`Baseline building — ${Math.min(b.n ?? es.length, 5)} of 5 mornings logged so far. Conclusions come after ~2 weeks of check-ins.`);
+  else if (latest) {
+    const dev = latest.hrv - b.mean;
+    lines.push(`Latest HRV ${latest.hrv} ms vs ${b.mean.toFixed(0)} ms baseline (${dev >= 0 ? '+' : ''}${dev.toFixed(0)}) — ${Math.abs(dev) <= Math.max(0.75 * b.sd, 4) ? 'in your normal range' : dev > 0 ? 'above baseline' : 'below baseline'}.`);
+  }
+  const dip = recoveryDip();
+  if (dip) lines.push(`⚠ ${dip} — worth an easier day; your call.`);
+  if (efs.length >= 6) {
+    const half = Math.floor(efs.length / 2);
+    const m1 = efs.slice(0, half).reduce((a, e) => a + e.ef, 0) / half;
+    const m2 = efs.slice(half).reduce((a, e) => a + e.ef, 0) / (efs.length - half);
+    const pct = 100 * (m2 - m1) / m1;
+    lines.push(`Aerobic efficiency ${pct >= 1 ? 'up ' + pct.toFixed(1) + '% across the block — faster at the same heart rate. The engine is growing.' : pct <= -1 ? 'down ' + Math.abs(pct).toFixed(1) + '% — watch fatigue, fuelling, sleep.' : 'holding steady across the block.'}`);
+  } else if (efs.length) lines.push(`Aerobic efficiency: ${efs.length} run${efs.length === 1 ? '' : 's'} with HR logged — trend appears after ~6.`);
+  if (proj) {
+    for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0) lines.push(`${r.name} (${d}d): projected <b>${proj.range}</b> from your last ${proj.nLongs} long run${proj.nLongs === 1 ? '' : 's'}${vo2 ? ' + VO₂ ' + vo2 : ''}. A range, honestly — race day picks the number.`); }
+  } else lines.push('Race projection unlocks after your first logged long run (12 km+ with time).');
+  return `<div class="section-label">💓 Fitness — HRV · VO₂ max <button class="mini" style="margin-left:8px" onclick="updateVo2()">VO₂: ${vo2 ?? '—'} ✎</button></div>
+    ${hrvChart(es, t)}
+    ${efs.length >= 2 ? efChart(efs) : ''}
+    ${lines.map(l => `<div class="sumrow"><span style="color:var(--fg)">${l}</span></div>`).join('')}`;
+}
+/* HRV chart: daily dots + rolling baseline band (mean ± max(0.75·SD, 4ms)) */
+function hrvChart(es, t) {
+  const pts = es.filter(e => e.hrv != null).slice(-42);
+  if (pts.length < 2) return `<div class="card"><div class="card-sub">Log ${Math.max(0, 2 - pts.length)} more morning check-in${pts.length === 1 ? '' : 's'} to see the HRV chart. Prompts appear on training days.</div></div>`;
+  const W = 340, H = 150, P = 26;
+  const all = pts.map(p => p.hrv);
+  const min = Math.min(...all) * 0.9, max = Math.max(...all) * 1.08;
+  const x = i => P + (W - 2 * P) * (pts.length === 1 ? .5 : i / (pts.length - 1));
+  const y = v => H - P - (H - 2 * P) * (v - min) / (max - min || 1);
+  const bandPts = pts.map((p, i) => ({ i, b: hrvBaseline(dadd(p.date, 1)) })).filter(z => z.b.ready);
+  let band = '', baseline = '';
+  if (bandPts.length >= 2) {
+    const up = bandPts.map(z => `${x(z.i).toFixed(1)},${y(z.b.mean + Math.max(.75 * z.b.sd, 4)).toFixed(1)}`);
+    const dn = bandPts.slice().reverse().map(z => `${x(z.i).toFixed(1)},${y(z.b.mean - Math.max(.75 * z.b.sd, 4)).toFixed(1)}`);
+    band = `<polygon points="${up.join(' ')} ${dn.join(' ')}" fill="rgba(74,222,128,.10)"/>`;
+    baseline = `<polyline class="ln2" points="${bandPts.map(z => `${x(z.i).toFixed(1)},${y(z.b.mean).toFixed(1)}`).join(' ')}"/>`;
+  }
+  const dots = pts.map((p, i) => {
+    const b = hrvBaseline(p.date);
+    const low = b.ready && p.hrv < b.mean - Math.max(.75 * b.sd, 4);
+    return `<circle cx="${x(i).toFixed(1)}" cy="${y(p.hrv).toFixed(1)}" r="3.2" fill="${low ? 'var(--red)' : 'var(--acc)'}"/>`;
+  }).join('');
+  return `<div class="chartwrap"><svg viewBox="0 0 ${W} ${H}">
+    <text x="${P}" y="13" class="ch-lbl">HRV ms — dots daily · band = your normal range</text>
+    <text x="${W - P + 2}" y="${y(max) + 4}" class="ch-ax">${max.toFixed(0)}</text>
+    <text x="${W - P + 2}" y="${y(min) + 4}" class="ch-ax">${min.toFixed(0)}</text>
+    ${band}${baseline}${dots}
+  </svg></div>`;
+}
+/* aerobic efficiency: EF dots (easy=blue, long=green) + linear trend */
+function efChart(pts) {
+  const W = 340, H = 140, P = 26;
+  const all = pts.map(p => p.ef);
+  const min = Math.min(...all) * .96, max = Math.max(...all) * 1.04;
+  const x = i => P + (W - 2 * P) * (pts.length === 1 ? .5 : i / (pts.length - 1));
+  const y = v => H - P - (H - 2 * P) * (v - min) / (max - min || 1);
+  // least-squares trend
+  const n = pts.length, xs = pts.map((_, i) => i);
+  const mx = xs.reduce((a, b) => a + b, 0) / n, my = all.reduce((a, b) => a + b, 0) / n;
+  const slope = xs.reduce((a, xi, i) => a + (xi - mx) * (all[i] - my), 0) / (xs.reduce((a, xi) => a + (xi - mx) ** 2, 0) || 1);
+  const trend = `<line class="ln2" x1="${x(0)}" y1="${y(my - mx * slope)}" x2="${x(n - 1)}" y2="${y(my + (n - 1 - mx) * slope)}"/>`;
+  const dots = pts.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.ef).toFixed(1)}" r="3.4" fill="${p.type === 'Long Run' ? 'var(--acc)' : 'var(--run)'}"/>`).join('');
+  return `<div class="chartwrap"><svg viewBox="0 0 ${W} ${H}">
+    <text x="${P}" y="13" class="ch-lbl">Aerobic efficiency (speed ÷ HR) — 🏃 easy · 🛣️ long — up = fitter</text>
+    ${trend}${dots}
+  </svg></div>`;
 }
 
 /* pace trend: inverted y so faster (lower pace) plots higher. Dots coloured by run type. */
@@ -984,4 +1215,5 @@ if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.acti
 }
 render();
 if (ST.timer) runTimerLoop();
-autoPromptRun();
+if (checkInDue()) openCheckIn();   // morning HRV first; run prompt chains after save/skip
+else autoPromptRun();
