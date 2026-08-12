@@ -22,18 +22,18 @@ const EXERCISES = {
   calfstand: { name: 'Standing Calf Raise', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['slcalf', 'lpcalf'], cue: 'Straight knee (gastroc). Full stretch at bottom, pause at top.' },
   copen:     { name: 'Copenhagen Plank', group: 'lower', mode: 'time', perSide: true, rest: 45, rpe: null, swaps: ['sideplank', 'adductor'], cue: 'Top leg on bench, body in one line. Seconds per side.' },
   // ---- Lower B ----
-  squat:     { name: 'Back Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], swaps: ['frontsquat', 'hacksquat', 'legpress'], cue: 'Heavy but crisp — no grinding reps.' },
-  rdl:       { name: 'Romanian Deadlift', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], swaps: ['trapbar', 'goodmorning'], cue: 'Hinge back, bar close, stretch the hamstrings.' },
-  hipthrust: { name: 'Hip Thrust', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['slhipthrust', 'glutebridge'], cue: 'Full lockout, ribs down, 1s squeeze.' },
+  squat:     { name: 'Back Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: ['frontsquat', 'hacksquat', 'legpress'], cue: 'Heavy but crisp — no grinding reps.' },
+  rdl:       { name: 'Romanian Deadlift', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['trapbar', 'goodmorning'], cue: 'Hinge back, bar close, stretch the hamstrings.' },
+  hipthrust: { name: 'Hip Thrust', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: ['slhipthrust', 'glutebridge'], cue: 'Full lockout, ribs down, 1s squeeze.' },
   calfseat:  { name: 'Seated Calf Raise', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: ['bkcalfpress'], cue: 'Bent knee (soleus) — the engine of running. Slow tempo.' },
   // ---- Upper A ----
-  bench:     { name: 'Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: ['dbbench', 'machpress'], cue: 'Feet planted, controlled descent.' },
-  pullup:    { name: 'Weighted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: ['latpull', 'assistpull'], cue: 'Full hang to chin over. Weight = added load (0 = bodyweight).' },
+  bench:     { name: 'Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['dbbench', 'machpress'], cue: 'Feet planted, controlled descent.' },
+  pullup:    { name: 'Weighted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bw', swaps: ['latpull', 'assistpull'], cue: 'Full hang to chin over. Weight = added load (0 = bodyweight).' },
   dbrow:     { name: 'DB Row', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 8], swaps: ['csrow', 'cablerow'], cue: 'Pull to hip, no torso twist.' },
   pallof:    { name: 'Pallof Press', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: ['cablechop', 'bandpallof'], cue: 'Anti-rotation: press out, resist the pull, slow.' },
   carry:     { name: 'Suitcase Carry', group: 'upper', mode: 'carry', perSide: true, rest: 60, rpe: null, swaps: ['safarmer', 'sideplank'], cue: 'Heavy DB one hand, walk tall, level hips. Metres per side.' },
   // ---- Upper B ----
-  ohp:       { name: 'Overhead Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: ['landmine', 'dbshoulder'], cue: 'Glutes tight, ribs down, full lockout.' },
+  ohp:       { name: 'Overhead Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['landmine', 'dbshoulder'], cue: 'Glutes tight, ribs down, full lockout.' },
   csrow:     { name: 'Chest-Supported Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['sealrow', 'cablerow'], cue: 'Chest glued to pad, squeeze shoulder blades.' },
   incline:   { name: 'Incline DB Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['incmach', 'pushup'], cue: '30–45° bench, elbows ~45°.' },
   facepull:  { name: 'Face Pull', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: ['revpec', 'bandpull'], cue: 'Rope to eyebrows, thumbs back, pause.' },
@@ -49,24 +49,24 @@ const EXERCISES = {
   lpcalf:     { name: 'Leg Press Calf Raise', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], cue: 'Straight knee, deep stretch.' },
   sideplank:  { name: 'Side Plank + Abduction', group: 'lower', mode: 'time', perSide: true, rest: 45, rpe: null, swaps: [], cue: 'Lift top leg, hold. Seconds per side.' },
   adductor:   { name: 'Adductor Machine', group: 'lower', mode: 'reps', rest: 45, rpe: [8, 8], swaps: [], cue: 'Slow negatives.' },
-  frontsquat: { name: 'Front Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], swaps: [], cue: 'Elbows high, upright torso.' },
-  hacksquat:  { name: 'Hack Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], swaps: [], cue: 'Full depth, controlled.' },
-  legpress:   { name: 'Leg Press', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], swaps: [], cue: 'Deep, knees track over toes.' },
-  trapbar:    { name: 'Trap-Bar RDL', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Hinge, neutral grip.' },
-  goodmorning:{ name: 'Good Morning', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Light bar, big hamstring stretch.' },
+  frontsquat: { name: 'Front Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: [], cue: 'Elbows high, upright torso.' },
+  hacksquat:  { name: 'Hack Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'machine', swaps: [], cue: 'Full depth, controlled.' },
+  legpress:   { name: 'Leg Press', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'machine', swaps: [], cue: 'Deep, knees track over toes.' },
+  trapbar:    { name: 'Trap-Bar RDL', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: [], cue: 'Hinge, neutral grip.' },
+  goodmorning:{ name: 'Good Morning', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: [], cue: 'Light bar, big hamstring stretch.' },
   slhipthrust:{ name: 'Single-Leg Hip Thrust', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [8, 8], swaps: [], cue: 'Hips level throughout.' },
-  glutebridge:{ name: 'Barbell Glute Bridge', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], swaps: [], cue: 'From floor, hard squeeze.' },
+  glutebridge:{ name: 'Barbell Glute Bridge', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: [], cue: 'From floor, hard squeeze.' },
   bkcalfpress:{ name: 'Bent-Knee Calf Press', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: [], cue: 'Leg press, knees bent ~30°.' },
-  dbbench:    { name: 'DB Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Weight = per dumbbell.' },
-  machpress:  { name: 'Machine Chest Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Full range, controlled.' },
-  latpull:    { name: 'Lat Pulldown', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'To upper chest, no lean-back heave.' },
+  dbbench:    { name: 'DB Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Weight = per dumbbell.' },
+  machpress:  { name: 'Machine Chest Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Full range, controlled.' },
+  latpull:    { name: 'Lat Pulldown', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'To upper chest, no lean-back heave.' },
   assistpull: { name: 'Assisted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Weight = assistance (less = harder).' },
   cablerow:   { name: 'Seated Cable Row', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], cue: 'Chest up, elbows to hips.' },
   cablechop:  { name: 'Cable Chop', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: [], cue: 'Rotate through hips, arms straight.' },
   bandpallof: { name: 'Band Pallof Press', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: [], cue: 'Weight = band tension guess.' },
   safarmer:   { name: 'Single-Arm Farmer Hold', group: 'upper', mode: 'time', perSide: true, rest: 60, rpe: null, swaps: [], cue: 'Stand tall, seconds per side.' },
-  landmine:   { name: 'Landmine Press', group: 'upper', mode: 'reps', perSide: true, rest: 120, rpe: [8, 8], swaps: [], cue: 'Slight lean-in, press up and away.' },
-  dbshoulder: { name: 'DB Shoulder Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Weight = per dumbbell.' },
+  landmine:   { name: 'Landmine Press', group: 'upper', mode: 'reps', perSide: true, rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Slight lean-in, press up and away.' },
+  dbshoulder: { name: 'DB Shoulder Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Weight = per dumbbell.' },
   sealrow:    { name: 'Seal Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: [], cue: 'Dead stop each rep.' },
   incmach:    { name: 'Incline Machine Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], cue: 'Controlled negatives.' },
   pushup:     { name: 'Deficit Push-Up', group: 'upper', mode: 'bw', rest: 75, rpe: [8, 8], swaps: [], cue: 'Hands on DBs, chest below hands.' },
@@ -214,6 +214,24 @@ function nextPrescription(exId, history, step) {
     reason = `RPE too high (${avg.toFixed(1)}) — reducing.`;
   }
   return { weight: roundToStep(w, step), reason };
+}
+
+/* warm-up ramp for heavy lifts. Returns display string or null. */
+function warmupPlan(exId, workWeight, step) {
+  const ex = EXERCISES[exId];
+  if (!ex.wu) return null;
+  if (ex.wu === 'bw') return 'BW × 5 · BW × 3 (slow, full range)';
+  if (workWeight == null || workWeight <= 0) return 'Do 2–3 easy ramp sets before your first working set.';
+  const r = w => Math.max(0, Math.round(w / step) * step);
+  if (workWeight <= 40) return ex.wu === 'bar' ? 'bar × 10' : 'one easy set at half weight';
+  const parts = [];
+  if (ex.wu === 'bar') parts.push('bar × 10');
+  for (const [pct, reps] of [[0.5, 5], [0.7, 3], [0.85, 1]]) {
+    const w = r(workWeight * pct);
+    if (w >= (ex.wu === 'bar' ? 25 : 10) && w < workWeight) parts.push(`${w} kg × ${reps}`);
+  }
+  if (!parts.length) return null;
+  return parts.join(' · ');
 }
 
 function e1rm(weight, reps, rpe) {

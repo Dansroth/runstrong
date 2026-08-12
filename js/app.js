@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function defaultState() {
   return {
@@ -11,6 +11,8 @@ function defaultState() {
     settings: { step: 2.5, sound: true, vibrate: true, seenInstall: false, seenWhy: false },
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
+    runs: {},              // date → {km, min, feel, note}
+    lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
   };
@@ -20,6 +22,8 @@ const MIGRATIONS = {
   // 1 → 2: program start moved to Thu 2026-08-13 (9-week plan with partial intro week).
   // Rebuild the program; sessions are keyed by date and survive untouched.
   1: (s) => { s.program = buildProgram(); s.schemaVersion = 2; return s; },
+  // 2 → 3: run logging + backup nudge fields.
+  2: (s) => { s.runs = s.runs || {}; s.lastBackup = s.lastBackup || null; s.schemaVersion = 3; return s; },
 };
 
 function migrate(s) {
@@ -115,10 +119,27 @@ document.addEventListener('visibilitychange', () => {
 
 /* ================= rest timer (timestamp-based) ================= */
 let timerInterval = null;
+let bgNotifyTimeout = null;
 function startRest(seconds, label) {
   ST.timer = { endTs: Date.now() + seconds * 1000, total: seconds, label };
   save();
   runTimerLoop();
+  scheduleBgNotify(seconds, label);
+}
+/* best-effort notification if the app is backgrounded when rest ends.
+   Reliable on Android/desktop; iOS suspends JS timers when locked, so there
+   the in-app alert fires on reopen instead (timer itself stays accurate). */
+function scheduleBgNotify(seconds, label) {
+  clearTimeout(bgNotifyTimeout);
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  bgNotifyTimeout = setTimeout(() => {
+    if (!document.hidden) return; // foreground alert handles it
+    navigator.serviceWorker.ready.then(r =>
+      r.showNotification('RunStrong — rest done', {
+        body: (label || 'Next set') + ' — go! 💪',
+        tag: 'rest-timer', vibrate: [300, 120, 300], icon: 'icons/icon-192.png',
+      })).catch(() => {});
+  }, seconds * 1000);
 }
 function runTimerLoop() {
   clearInterval(timerInterval);
@@ -152,7 +173,7 @@ function fireRestDone() {
   setTimeout(() => fl.classList.remove('on'), 1800);
 }
 function fmtSecs(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
-function skipRest() { ST.timer = null; save(); tickTimer(); }
+function skipRest() { ST.timer = null; save(); clearTimeout(bgNotifyTimeout); tickTimer(); }
 
 /* ================= sessions ================= */
 function buildSession(date, tplId, downgraded) {
@@ -181,6 +202,40 @@ function swapExercise(sess, idx, newExId) {
   // keep completed sets (they belong to the old variant via their exId snapshot… simplest: sets logged before swap stay attributed to new variant only if none done)
   if (!done.length) e.sets.forEach(s => { s.weight = null; s.reps = null; s.rpe = null; });
   save();
+}
+
+/* ================= deload radar =================
+   Looks across recent sessions (not just the last one) for accumulating fatigue:
+   RPE drifting above target 2+ sessions running, readiness scores slipping,
+   or the last few runs feeling rough. */
+function deloadRadar() {
+  const done = Object.keys(ST.sessions).sort().map(k => ST.sessions[k]).filter(s => s.status === 'done');
+  const cutoff = dadd(today(), -14);
+  const recent = done.filter(s => s.date >= cutoff);
+  const signals = [];
+  // 1. RPE drift: mean deviation from target, per session, for RPE-targeted exercises
+  const devs = recent.map(s => {
+    const ds = [];
+    for (const e of s.exercises) {
+      const ex = EXERCISES[e.exId];
+      if (!ex.rpe) continue;
+      const tgt = (ex.rpe[0] + ex.rpe[1]) / 2;
+      for (const t of e.sets.filter(x => x.done && x.rpe != null)) ds.push(t.rpe - tgt);
+    }
+    return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : null;
+  }).filter(d => d != null);
+  if (devs.length >= 2 && devs.slice(-2).every(d => d > 0.5))
+    signals.push('RPEs have run above target ' + devs.slice(-2).length + ' sessions straight');
+  // 2. readiness slipping: last two readiness checks both poor
+  const readies = recent.map(s => s.readiness ? s.readiness.sore + s.readiness.fat : null).filter(r => r != null);
+  if (readies.length >= 2 && readies.slice(-2).every(r => r >= 7))
+    signals.push('readiness scores are in the red');
+  // 3. runs feeling rough
+  const runFeels = Object.keys(ST.runs).sort().filter(d => d >= cutoff).map(d => ST.runs[d].feel);
+  if (runFeels.slice(-3).filter(f => f === 'rough').length >= 2)
+    signals.push('recent runs have felt rough');
+  if (!signals.length) return null;
+  return 'Fatigue is stacking up: ' + signals.join(', ') + '. Consider the downgraded version of your next session — running comes first.';
 }
 
 /* ================= rendering ================= */
@@ -243,14 +298,59 @@ function vHome() {
           <div class="card-sub">${TEMPLATES[day.tpl].items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')}</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button></div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
-    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div></div>`;
+    const r = ST.runs[t];
+    const logged = r
+      ? `<div class="run-logged">✓ ${r.km} km · ${r.min} min · felt ${r.feel}${r.note ? ` · 📝 ${esc(r.note)}` : ''}</div>
+         <button class="mini" onclick="openRunLog('${t}')">edit</button>`
+      : `<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
+    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}</div>`;
   } else {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
+  const radar = deloadRadar();
+  const radarCard = radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '';
+  const hasData = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0;
+  const backupDue = hasData && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
+  const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this schedule?</button>`;
   return `<header class="top"><div class="phase">${esc(phase)}</div>${raceCountdowns()}</header>
-    <main>${card}${upNext(t)}${whyBtn}</main>${navBar()}${installBanner()}`;
+    <main>${radarCard}${card}${upNext(t)}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
+
+/* ---------- run logging ---------- */
+window.openRunLog = function (date) {
+  const day = dayFor(date);
+  const r = ST.runs[date] || { km: day && day.title === 'Long Run' ? 20 : day && day.title === 'Hard Run' ? 10 : 8, min: 60, feel: null, note: '' };
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>${esc(day ? day.title : 'Run')} — ${fmtDate(date)}</h2>
+    <div class="stepper"><div class="stepper-lbl">Distance (km)</div><div class="stepper-row">
+      <button class="stepbtn" onclick="runStep('km',-0.5)">−</button><div class="stepval" id="rv-km">${r.km}</div><button class="stepbtn" onclick="runStep('km',0.5)">+</button></div></div>
+    <div class="stepper"><div class="stepper-lbl">Time (minutes)</div><div class="stepper-row">
+      <button class="stepbtn" onclick="runStep('min',-5)">−</button><div class="stepval" id="rv-min">${r.min}</div><button class="stepbtn" onclick="runStep('min',5)">+</button></div></div>
+    <div class="stepper"><div class="stepper-lbl">How did it feel?</div><div class="rpes">
+      ${['good', 'ok', 'rough'].map(f => `<button class="rpe feel ${r.feel === f ? 'sel' : ''}" data-f="${f}" onclick="pickFeel('${f}')">${f === 'good' ? '😀 good' : f === 'ok' ? '😐 ok' : '😖 rough'}</button>`).join('')}</div></div>
+    <input id="runnote" class="notefield" placeholder="Notes (optional)" value="${esc(r.note)}">
+    <button class="btn primary big" onclick="saveRun('${date}')">Save run</button>
+    <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  m.classList.add('open');
+  m.dataset.km = r.km; m.dataset.min = r.min; m.dataset.feel = r.feel || '';
+};
+window.runStep = function (id, d) {
+  const m = $('#modal');
+  const v = Math.max(0, Math.round((parseFloat(m.dataset[id]) + d) * 10) / 10);
+  m.dataset[id] = v;
+  $('#rv-' + id).textContent = v;
+};
+window.pickFeel = function (f) {
+  $('#modal').dataset.feel = f;
+  document.querySelectorAll('.rpe.feel').forEach(b => b.classList.toggle('sel', b.dataset.f === f));
+};
+window.saveRun = function (date) {
+  const m = $('#modal');
+  if (!m.dataset.feel) { alert('Tap how it felt — it feeds the deload radar.'); return; }
+  ST.runs[date] = { km: parseFloat(m.dataset.km), min: parseFloat(m.dataset.min), feel: m.dataset.feel, note: $('#runnote').value.trim() };
+  save(); closeModal(); render();
+};
 
 function upNext(t) {
   const items = [];
@@ -267,8 +367,10 @@ function upNext(t) {
 window.openReadiness = function (date, tpl) {
   ensureAudio();
   const m = $('#modal');
+  const radar = deloadRadar();
   m.innerHTML = `<div class="sheet">
     <h2>Quick readiness check</h2>
+    ${radar ? `<div class="notice">⚠️ ${esc(radar)}</div>` : ''}
     <div class="ready-q"><div>Muscle soreness</div><div class="scale" id="r-sore">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>fresh</span><span>wrecked</span></div></div>
     <div class="ready-q"><div>Overall fatigue</div><div class="scale" id="r-fat">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>energised</span><span>flat</span></div></div>
     <button class="btn primary big" id="r-go" disabled>Start</button>
@@ -295,6 +397,9 @@ window.closeModal = function () { $('#modal').classList.remove('open'); $('#moda
 
 function beginSession(date, tpl, readiness, downgraded) {
   closeModal();
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { Notification.requestPermission(); } catch (e) {}
+  }
   const s = buildSession(date, tpl, downgraded);
   s.readiness = readiness;
   ST.sessions[date] = s;
@@ -360,6 +465,7 @@ function vSession() {
         <div class="ex-rx">${e.tplSets} × ${e.tplReps}${unit} ${rpeStr} · rest ${fmtSecs(ex.rest)}</div>
         ${e.prescWeight != null && ex.mode !== 'bw' ? `<div class="ex-presc">Prescribed: <b>${e.prescWeight} kg</b></div>` : ''}
         <div class="ex-reason dim">${esc(e.prescReason || '')}</div>
+        ${(() => { const noneDone = !e.sets.some(x => x.done); const wp = noneDone ? warmupPlan(e.exId, e.prescWeight != null ? e.prescWeight : (e.sets[0] && e.sets[0].weight), ST.settings.step) : null; return wp ? `<div class="ex-warm">🔥 Warm-up: ${wp}</div>` : ''; })()}
         <div class="ex-last">Last: ${lastStr}</div>
         <div class="ex-cue">${esc(ex.cue || '')}</div>
         ${ex.swaps.length ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
@@ -467,6 +573,7 @@ function estRemaining(s) {
     const e = s.exercises[i]; const ex = EXERCISES[e.exId];
     const undone = e.sets.filter(t => !t.done).length;
     secs += undone * (40 + ex.rest);
+    if (ex.wu && !e.sets.some(t => t.done)) secs += 150; // warm-up ramp not started yet
   }
   return Math.max(1, Math.round(secs / 60));
 }
@@ -513,15 +620,43 @@ function vSummary() {
       <div class="stat"><div class="stat-v">${prs.length}</div><div class="stat-l">PRs</div></div>
     </div>
     ${prs.length ? `<div class="card gold"><div class="card-kicker">🏆 New e1RM PRs</div>${prs.map(p => `<div class="pr">${esc(p)}</div>`).join('')}</div>` : ''}
-    ${s.exercises.map(e => {
+    ${s.exercises.map((e, ei) => {
       const ex = EXERCISES[e.exId];
       const done = e.sets.filter(t => t.done);
-      return `<div class="sumrow"><b>${esc(ex.name)}</b><span>${done.map(t => setStr(ex, t)).join(' · ') || 'skipped'}</span>
+      return `<div class="sumrow"><b>${esc(ex.name)} <button class="mini editbtn" onclick="openEditSets('${s.id}',${ei})">✎ edit</button></b><span>${done.map(t => setStr(ex, t)).join(' · ') || 'skipped'}</span>
         ${done.filter(t => t.note).map(t => `<div class="notesum">📝 ${esc(t.note)}</div>`).join('')}</div>`;
     }).join('')}
     <button class="btn primary big" onclick="go('home')">Done</button>
   </main>${navBar()}`;
 }
+
+/* ---------- edit past sets ---------- */
+window.openEditSets = function (sid, ei) {
+  const s = ST.sessions[sid]; const e = s.exercises[ei]; const ex = EXERCISES[e.exId];
+  const unit = ex.mode === 'time' ? 'secs' : ex.mode === 'carry' ? 'metres' : 'reps';
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>Edit — ${esc(ex.name)}</h2>
+    <div class="editgrid-head"><span>#</span><span>kg</span><span>${unit}</span><span>RPE</span><span>done</span></div>
+    ${e.sets.map((t, i) => `<div class="editrow">
+      <span>${i + 1}</span>
+      <input type="number" step="0.5" inputmode="decimal" id="ew-${i}" value="${t.weight ?? ''}">
+      <input type="number" step="1" inputmode="numeric" id="er-${i}" value="${t.reps ?? ''}">
+      <input type="number" step="0.5" min="6" max="10" inputmode="decimal" id="ep-${i}" value="${t.rpe ?? ''}">
+      <input type="checkbox" id="ed-${i}" ${t.done ? 'checked' : ''}>
+    </div>`).join('')}
+    <button class="btn primary big" onclick="saveEditSets('${sid}',${ei})">Save changes</button>
+    <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  m.classList.add('open');
+};
+window.saveEditSets = function (sid, ei) {
+  const s = ST.sessions[sid]; const e = s.exercises[ei];
+  e.sets.forEach((t, i) => {
+    const num = id => { const v = $('#' + id + '-' + i).value; return v === '' ? null : parseFloat(v); };
+    t.weight = num('ew'); t.reps = num('er'); t.rpe = num('ep');
+    t.done = $('#ed-' + i).checked;
+  });
+  save(); closeModal(); render();
+};
 
 /* ---------- schedule ---------- */
 function vSchedule() {
@@ -535,12 +670,17 @@ function vSchedule() {
       ${wk.days.map(d => {
         const s = ST.sessions[d.date];
         const done = s && s.status === 'done';
+        const isRun = d.kind === 'run' || d.kind === 'race';
+        const runLogged = isRun && ST.runs[d.date];
         const icon = d.kind === 'run' ? '🏃' : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
+        let action = '';
+        if (done) action = `<button class="mini" onclick="go('summary',{sid:'${d.date}'})">view</button>`;
+        else if (isRun && d.date <= t) action = `<button class="mini" onclick="openRunLog('${d.date}')">${runLogged ? 'edit' : 'log'}</button>`;
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}">
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${icon}</span>
-          <span class="wk-title">${esc(d.title || 'Rest')}${done ? ' <b class="done-tick">✓</b>' : ''}</span>
-          ${done ? `<button class="mini" onclick="go('summary',{sid:'${d.date}'})">view</button>` : ''}
+          <span class="wk-title">${esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runLogged ? ` <span class="dim">${ST.runs[d.date].km}km</span>` : ''}</span>
+          ${action}
         </div>`;
       }).join('')}
     </div>`).join('')}
@@ -648,6 +788,7 @@ function vSettings() {
 }
 
 window.exportJSON = function () {
+  ST.lastBackup = Date.now(); save();
   download(`runstrong-backup-${today()}.json`, JSON.stringify(ST, null, 1), 'application/json');
 };
 window.exportCSV = function () {
@@ -658,6 +799,11 @@ window.exportCSV = function () {
     for (const e of s.exercises) e.sets.forEach((t, i) => {
       if (t.done) rows.push([s.date, s.title, EXERCISES[e.exId].name, i + 1, t.weight ?? '', t.reps ?? '', t.rpe ?? '', t.failed ? 1 : '', (t.note || '').replace(/"/g, '""')]);
     });
+  }
+  // runs: exercise="Run", reps column = km, rpe column blank, note = feel + note
+  for (const d of Object.keys(ST.runs).sort()) {
+    const r = ST.runs[d];
+    rows.push([d, 'Run', `Run (${r.min} min)`, 1, '', r.km, '', '', (`felt ${r.feel}` + (r.note ? ' — ' + r.note : '')).replace(/"/g, '""')]);
   }
   download(`runstrong-log-${today()}.csv`, rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n'), 'text/csv');
 };
@@ -722,7 +868,17 @@ window.showInstall = function (fromSettings) {
 window.go = go;
 window.skipRest = skipRest;
 document.addEventListener('click', ensureAudio, { once: true });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+/* update banner: new SW takes control (skipWaiting+claim) → offer one-tap reload */
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return; // first install, not an update
+    if (document.getElementById('updatebar')) return;
+    document.body.insertAdjacentHTML('beforeend',
+      `<div class="updatebar" id="updatebar" onclick="location.reload()">⬆ App updated — tap to load the new version</div>`);
+  });
+}
 if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.activeSessionId].status === 'active') {
   view = { name: 'session' };
   acquireWakeLock();
