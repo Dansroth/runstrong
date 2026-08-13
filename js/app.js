@@ -178,12 +178,40 @@ function fireRestDone() {
 function fmtSecs(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function skipRest() { ST.timer = null; save(); clearTimeout(bgNotifyTimeout); tickTimer(); }
 
+/* ---- hold timer for time-based exercises (planks, carries-by-time) ---- */
+let holdEnd = null, holdInterval = null;
+window.startHold = function () {
+  ensureAudio();
+  const s = ST.sessions[ST.activeSessionId]; if (!s) return;
+  const e = s.exercises[s.curIdx];
+  const cur = e.sets.findIndex(t => !t.done); if (cur === -1) return;
+  const secs = e.sets[cur].reps || e.tplReps;
+  holdEnd = Date.now() + secs * 1000;
+  clearInterval(holdInterval);
+  holdInterval = setInterval(tickHold, 200);
+  const b = document.getElementById('holdbtn'); if (b) b.style.display = 'none';
+  tickHold();
+};
+function tickHold() {
+  const el = document.getElementById('holdval');
+  if (!holdEnd) { if (el) el.textContent = ''; return; }
+  const remain = Math.ceil((holdEnd - Date.now()) / 1000);
+  if (remain <= 0) {
+    holdEnd = null; clearInterval(holdInterval);
+    if (el) el.textContent = '✓ Time!';
+    vibrate([300, 120, 300]); chime();
+    const b = document.getElementById('holdbtn'); if (b) { b.style.display = ''; b.textContent = '▶ Again (other side?)'; }
+    return;
+  }
+  if (el) el.textContent = remain + 's';
+}
+
 /* ================= sessions ================= */
 function buildSession(date, tplId, downgraded) {
   const tpl = TEMPLATES[tplId];
   const exercises = tpl.items.map(([exId, sets, reps]) => {
     const n = downgraded ? Math.max(1, sets - 1) : sets;
-    const presc = nextPrescription(exId, exHistory(exId, date), ST.settings.step);
+    const presc = nextPrescription(exId, exHistory(exId, date), ST.settings.step, reps);
     let w = presc.weight;
     if (downgraded && w) w = roundToStep(w * 0.9, ST.settings.step);
     return {
@@ -198,7 +226,7 @@ function buildSession(date, tplId, downgraded) {
 function swapExercise(sess, idx, newExId) {
   const e = sess.exercises[idx];
   const done = e.sets.filter(s => s.done);
-  const presc = nextPrescription(newExId, exHistory(newExId, sess.date), ST.settings.step);
+  const presc = nextPrescription(newExId, exHistory(newExId, sess.date), ST.settings.step, e.tplReps);
   e.exId = newExId;
   e.prescWeight = presc.weight;
   e.prescReason = presc.reason;
@@ -250,10 +278,27 @@ let view = { name: 'home' };
 
 function go(name, params) { view = Object.assign({ name }, params); render(); window.scrollTo(0, 0); }
 
+let elapsedInterval = null;
 function render() {
   const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, history: vHistory, exdetail: vExDetail, settings: vSettings };
+  const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   APP.innerHTML = (views[view.name] || vHome)();
   bindNav();
+  if (keepScroll !== null) window.scrollTo(0, keepScroll);
+  // live session clock (⏱ elapsed) — one lightweight interval while a workout is on screen
+  clearInterval(elapsedInterval);
+  if (view.name === 'session' && ST.activeSessionId) {
+    elapsedInterval = setInterval(() => {
+      const s = ST.sessions[ST.activeSessionId];
+      const el = document.getElementById('sess-elapsed');
+      if (!s || s.status !== 'active' || !el) { clearInterval(elapsedInterval); return; }
+      el.textContent = fmtElapsed(Date.now() - s.startedTs);
+    }, 1000);
+  }
+}
+function fmtElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
 function bindNav() {
@@ -647,6 +692,7 @@ function vSession() {
       <div class="curset-head">Set ${cur + 1} of ${e.sets.length}</div>
       ${ex.mode !== 'bw' ? stepper('weight', 'Weight (kg)', t.weight, ST.settings.step) : ''}
       ${stepper('reps', cap(repsLabel) + (ex.perSide ? ' / side' : ''), t.reps, 1)}
+      ${ex.mode === 'time' ? `<button class="btn big holdbtn" id="holdbtn" onclick="startHold()">▶ Start ${t.reps}s hold timer${ex.perSide ? ' (run it once per side)' : ''}</button><div class="holdval" id="holdval"></div>` : ''}
       ${ex.rpe !== null ? rpePicker(t.rpe) : ''}
       <input id="setnote" class="notefield" placeholder="Notes — niggles, form cues (optional)" value="${esc(t.note)}">
       <button class="btn primary big" onclick="logSet()">✓ Log set — rest ${fmtSecs(ex.rest)}</button>
@@ -656,14 +702,14 @@ function vSession() {
   return `<header class="top slim">
       <button class="backbtn" onclick="go('home')">‹</button>
       <div class="prog-wrap"><div class="prog"><div class="prog-fill" style="width:${(100 * doneSets / totalSets).toFixed(0)}%"></div></div>
-      <div class="prog-txt">${doneSets}/${totalSets} sets · ~${remainMin} min left</div></div>
+      <div class="prog-txt">${doneSets}/${totalSets} sets · ~${remainMin} min left · ⏱ <span id="sess-elapsed">${fmtElapsed(Date.now() - s.startedTs)}</span></div></div>
     </header>
     <main class="session">
       <div class="ex-head">
         <div class="ex-count">Exercise ${s.curIdx + 1} / ${s.exercises.length}</div>
         <h1>${esc(ex.name)}${ex.perSide ? ' <span class="perside">each side</span>' : ''}</h1>
         <div class="ex-rx">${e.tplSets} × ${e.tplReps}${unit} ${rpeStr} · rest ${fmtSecs(ex.rest)}</div>
-        ${e.prescWeight != null && ex.mode !== 'bw' ? `<div class="ex-presc">Prescribed: <b>${e.prescWeight} kg</b></div>` : ''}
+        ${e.prescWeight != null && ex.mode !== 'bw' ? `<div class="ex-presc">Recommended: <b>${e.prescWeight} kg × ${e.tplReps}${unit}${ex.perSide ? '/side' : ''}</b></div>` : ''}
         <div class="ex-reason dim">${esc(e.prescReason || '')}</div>
         ${(() => { const noneDone = !e.sets.some(x => x.done); const wp = noneDone ? warmupPlan(e.exId, e.prescWeight != null ? e.prescWeight : (e.sets[0] && e.sets[0].weight), ST.settings.step) : null; return wp ? `<div class="ex-warm">🔥 Warm-up: ${wp}</div>` : ''; })()}
         <div class="ex-last">Last: ${lastStr}</div>
@@ -736,10 +782,30 @@ window.logSet = function (failed) {
   const wasLast = !e.sets.some(x => !x.done);
   save();
   if (!(wasLast && s.curIdx === s.exercises.length - 1)) startRest(ex.rest, esc(ex.name));
-  if (wasLast && s.curIdx < s.exercises.length - 1) s.curIdx++;
+  if (wasLast && s.curIdx < s.exercises.length - 1) {
+    s.curIdx++;
+    save(); render();
+    showNextExercise(ex, s);          // unmissable hand-off between exercises
+    return;
+  }
   save();
   render();
 };
+function showNextExercise(doneEx, s) {
+  const e = s.exercises[s.curIdx];
+  const ex = EXERCISES[e.exId];
+  const unit = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet nextex">
+    <div class="nextex-done">✓ ${esc(doneEx.name)} — done</div>
+    <div class="nextex-kicker">NEXT · Exercise ${s.curIdx + 1} of ${s.exercises.length}</div>
+    <h2 class="nextex-name">${esc(ex.name)}</h2>
+    <div class="nextex-rx">${e.tplSets} × ${e.tplReps}${unit}${ex.perSide ? '/side' : ''}${e.prescWeight != null && ex.mode !== 'bw' ? ` @ <b>${e.prescWeight} kg</b>` : ''}${ex.rpe ? ` · RPE ${ex.rpe[0] === ex.rpe[1] ? ex.rpe[0] : ex.rpe.join('–')}` : ''}</div>
+    <div class="dim small" style="margin-top:6px">${esc(ex.cue || '')}</div>
+    <button class="btn primary big" onclick="closeModal()" style="margin-top:16px">Rest, then go →</button>
+  </div>`;
+  m.classList.add('open');
+}
 window.failSet = function () { logSet(true); };
 window.undoSet = function (i) {
   const s = ST.sessions[ST.activeSessionId]; const e = s.exercises[s.curIdx];

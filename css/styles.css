@@ -1,5 +1,6 @@
 /* RunStrong — dark, gym-friendly, thumb-first */
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+button, .slot, .setrow { touch-action: manipulation; }  /* stops double-tap zoom nudging the page mid-workout */
 :root {
   --bg: #0d1117; --bg2: #161c26; --bg3: #1f2733;
   --fg: #e8edf4; --dim: #8b96a5;
@@ -107,6 +108,17 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .notefield { width: 100%; background: var(--bg3); border: 1px solid #2b3648; border-radius: 10px; padding: 12px; color: var(--fg); font-size: .9rem; margin-bottom: 4px; }
 .ex-nav { display: flex; gap: 10px; }
 .ex-nav .btn { margin-top: 14px; }
+
+/* hold timer + next-exercise hand-off */
+.holdbtn { margin: 4px 0 10px; border-color: var(--acc); }
+.holdval { text-align: center; font-size: 3rem; font-weight: 900; color: var(--acc); font-variant-numeric: tabular-nums; min-height: 0; }
+.holdval:empty { display: none; }
+.nextex { text-align: center; }
+.nextex-done { color: var(--acc); font-weight: 700; margin-bottom: 14px; }
+.nextex-kicker { font-size: .72rem; letter-spacing: .14em; color: var(--dim); font-weight: 800; }
+.nextex-name { font-size: 1.8rem; margin: 6px 0; }
+.nextex-rx { font-size: 1.1rem; color: var(--acc); font-weight: 600; }
+.nextex-rx b { color: var(--gold); }
 
 /* rest bar */
 .restbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg3); border-top: 2px solid var(--acc); padding: 0 0 env(safe-area-inset-bottom); transform: translateY(110%); transition: transform .25s; z-index: 30; }

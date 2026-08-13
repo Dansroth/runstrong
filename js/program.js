@@ -78,11 +78,13 @@ const EXERCISES = {
 
 /* Session templates. items: [exId, sets, reps] — reps is per side for perSide, seconds for 'time', metres for 'carry'. */
 const TEMPLATES = {
-  lowerA:        { title: 'Lower A · Light', est: 37, items: [['boxjump', 3, 3], ['bss', 3, 8], ['slrdl', 3, 8], ['calfstand', 3, 10], ['copen', 3, 25]] },
-  lowerA_noplyo: { title: 'Lower A · Light', est: 33, items: [['bss', 3, 8], ['slrdl', 3, 8], ['calfstand', 3, 10], ['copen', 3, 25]] },
-  lowerB:        { title: 'Lower B · Heavy', est: 40, items: [['boxjump', 3, 3], ['squat', 4, 4], ['rdl', 3, 6], ['hipthrust', 3, 8], ['calfseat', 3, 12]] },
-  upperA:        { title: 'Upper A', est: 35, items: [['bench', 4, 5], ['pullup', 4, 6], ['dbrow', 3, 8], ['pallof', 3, 10], ['carry', 3, 30]] },
-  upperB:        { title: 'Upper B', est: 35, items: [['ohp', 4, 5], ['csrow', 4, 8], ['incline', 3, 8], ['facepull', 3, 15], ['abwheel', 3, 10]] },
+  /* build-phase sessions extended after week-1 feedback (finished in ~20 min):
+     +1 exercise on lower A, +1 set on most mains. Race/taper weeks stay deliberately short. */
+  lowerA:        { title: 'Lower A · Light', est: 48, items: [['boxjump', 3, 3], ['bss', 4, 8], ['slrdl', 3, 8], ['slhipthrust', 3, 10], ['calfstand', 4, 10], ['copen', 3, 30]] },
+  lowerA_noplyo: { title: 'Lower A · Light', est: 44, items: [['bss', 4, 8], ['slrdl', 3, 8], ['slhipthrust', 3, 10], ['calfstand', 4, 10], ['copen', 3, 30]] },
+  lowerB:        { title: 'Lower B · Heavy', est: 50, items: [['boxjump', 3, 3], ['squat', 5, 4], ['rdl', 4, 6], ['hipthrust', 3, 8], ['calfseat', 4, 12]] },
+  upperA:        { title: 'Upper A', est: 45, items: [['bench', 5, 5], ['pullup', 5, 6], ['dbrow', 4, 8], ['pallof', 3, 12], ['carry', 4, 30]] },
+  upperB:        { title: 'Upper B', est: 45, items: [['ohp', 5, 5], ['csrow', 4, 8], ['incline', 4, 8], ['facepull', 4, 15], ['abwheel', 4, 10]] },
   // Week 5 — Geelong mini-taper (~40% lower volume, no plyo, nothing heavy after Tue)
   lowerTaperG:   { title: 'Lower · Geelong taper', est: 25, items: [['bss', 2, 6], ['slrdl', 2, 6], ['calfstand', 2, 8], ['copen', 2, 20]] },
   upperLight:    { title: 'Upper · Light', est: 25, items: [['bench', 3, 5], ['pullup', 3, 5], ['pallof', 2, 10]] },
@@ -180,18 +182,22 @@ function buildProgram() {
 /* ---- progression engine ---- */
 function roundToStep(w, step) { return Math.max(0, Math.round(w / step) * step); }
 
-/* history: array of {date, sets:[{weight,reps,rpe,failed}]} for one exercise variant, oldest→newest */
-function nextPrescription(exId, history, step) {
+/* history: array of {date, sets:[{weight,reps,rpe,failed}]} for one exercise variant, oldest→newest.
+   tplReps = the session's target reps for this exercise (per side where applicable).
+   Recommends BOTH weight and reps, using last session's RPE + reps completed + weight. */
+function nextPrescription(exId, history, step, tplReps) {
   const ex = EXERCISES[exId];
   const targetRPE = ex.rpe;
-  if (!history.length) return { weight: null, reason: 'First time — start light (you should have 3–4 reps in the tank, RPE 6–7).' };
+  if (!history.length) return { weight: null, reps: tplReps, reason: 'First time — start light (you should have 3–4 reps left in the tank, RPE 6–7).' };
   const last = history[history.length - 1];
   const worked = last.sets.filter(s => s.weight != null && s.reps > 0);
-  if (!worked.length) return { weight: null, reason: 'No logged sets last time — set your weight.' };
+  if (!worked.length) return { weight: null, reps: tplReps, reason: 'No logged sets last time — set your weight.' };
   const topW = Math.max(...worked.map(s => s.weight));
-  if (!targetRPE) return { weight: topW, reason: 'Same as last time.' };
+  const avgReps = worked.reduce((a, s) => a + s.reps, 0) / worked.length;
+  const repsMet = !tplReps || avgReps >= tplReps - 0.34;   // hit (or basically hit) every set
+  if (!targetRPE) return { weight: topW, reps: tplReps, reason: 'Same as last time.' };
   const rpes = worked.filter(s => s.rpe != null).map(s => s.rpe);
-  if (!rpes.length) return { weight: topW, reason: 'No RPE logged last time — holding.' };
+  if (!rpes.length) return { weight: topW, reps: tplReps, reason: 'No RPE logged last time — holding.' };
   const avg = rpes.reduce((a, b) => a + b, 0) / rpes.length;
   const tgt = (targetRPE[0] + targetRPE[1]) / 2;
   const lower = ex.group === 'lower';
@@ -200,20 +206,24 @@ function nextPrescription(exId, history, step) {
   if (anyFail) {
     w = topW * (lower ? 0.93 : 0.95);
     reason = 'RPE 10 / failed set last time — backing off.';
+  } else if (!repsMet) {
+    // reps were missed: fix reps before touching load
+    if (avg > tgt + 1) { w = topW * (lower ? 0.95 : 0.965); reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps at RPE ${avg.toFixed(1)} — dropping weight to hit all reps.`; }
+    else { w = topW; reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps last time — same weight, hit all ${tplReps} before adding.`; }
   } else if (avg <= tgt - 1) {
     w = topW * (lower ? 1.075 : 1.0375); // aggressive: +5–10% lower, +2.5–5% upper
-    reason = `Last avg RPE ${avg.toFixed(1)} vs target ${tgt} — jumping up.`;
+    reason = `All reps at avg RPE ${avg.toFixed(1)} vs target ${tgt} — jumping up.`;
   } else if (avg <= tgt) {
     w = topW + step;
-    reason = 'RPE on target — small step up.';
+    reason = 'All reps, RPE on target — small step up.';
   } else if (avg <= tgt + 1) {
     w = topW;
-    reason = `RPE slightly high (${avg.toFixed(1)}) — holding.`;
+    reason = `RPE slightly high (${avg.toFixed(1)}) — holding weight.`;
   } else {
     w = topW * (lower ? 0.95 : 0.965);
     reason = `RPE too high (${avg.toFixed(1)}) — reducing.`;
   }
-  return { weight: roundToStep(w, step), reason };
+  return { weight: roundToStep(w, step), reps: tplReps, reason };
 }
 
 /* warm-up ramp for heavy lifts. Returns display string or null. */
