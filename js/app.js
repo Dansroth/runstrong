@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function defaultState() {
   return {
@@ -13,6 +13,7 @@ function defaultState() {
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
+    strava: { clientId: '', clientSecret: '', tokenUrl: '', auth: null, activities: {}, lastSync: null, includeOther: false },
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
@@ -27,6 +28,13 @@ const MIGRATIONS = {
   2: (s) => { s.runs = s.runs || {}; s.lastBackup = s.lastBackup || null; s.schemaVersion = 3; return s; },
   // 3 → 4: HRV / RHR / VO2 max tracking (Garmin morning check-in).
   3: (s) => { s.fitness = s.fitness || { daily: {}, vo2: {}, skipped: null }; s.schemaVersion = 4; return s; },
+  // 4 → 5: Strava integration. A full backup of the pre-migration state is written
+  // to localStorage 'runstrong.backup.v4' BEFORE the schema changes — recoverable from Settings.
+  4: (s) => {
+    try { localStorage.setItem('runstrong.backup.v4', JSON.stringify(s)); } catch (e) {}
+    s.strava = s.strava || { clientId: '', clientSecret: '', tokenUrl: '', auth: null, activities: {}, lastSync: null, includeOther: false };
+    s.schemaVersion = 5; return s;
+  },
 };
 
 function migrate(s) {
@@ -349,13 +357,14 @@ function vHome() {
           <div class="card-sub">${TEMPLATES[day.tpl].items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')}</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button></div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
-    const r = ST.runs[t];
-    const logged = r
-      ? (r.skipped
+    const mr = mergedRunFor(t);
+    const skippedManual = ST.runs[t] && ST.runs[t].skipped && !stravaRunOn(t);
+    const logged = mr
+      ? `<div class="run-logged">✓ ${mr.src === 'strava' ? `<span class="svbadge">strava</span> ${esc(mr.name || 'Run')} — ` : ''}${mr.km} km · ${mr.min} min · ${paceStr(mr.km, mr.min) || ''}${mr.hr ? ` · ${mr.hr} bpm` : ''}${mr.feel ? ` · felt ${mr.feel}` : ''}${mr.note ? ` · 📝 ${esc(mr.note)}` : ''}</div>
+         <button class="mini" onclick="openRunLog('${t}')">${mr.feel ? 'edit' : 'add feel'}</button>`
+      : skippedManual
         ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openRunLog('${t}')">log anyway</button>`
-        : `<div class="run-logged">✓ ${r.km} km · ${r.min} min · ${paceStr(r.km, r.min) || ''}${r.hr ? ` · ${r.hr} bpm` : ''} · felt ${r.feel}${r.splits && r.splits.length ? `<br>splits: ${r.splits.map(fmtSplit).join(' · ')}` : ''}${r.note ? ` · 📝 ${esc(r.note)}` : ''}</div>
-         <button class="mini" onclick="openRunLog('${t}')">edit</button>`)
-      : `<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
+        : `<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
     card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}</div>`;
   } else {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
@@ -386,6 +395,21 @@ function isHardRun(date) { const d = dayFor(date); return d && d.title === 'Hard
 
 window.openRunLog = function (date) {
   const day = dayFor(date);
+  const sr = stravaRunOn(date);
+  if (sr) {   // Strava already has the numbers — just capture how it felt (feeds the deload radar)
+    const mr = ST.runs[date] || {};
+    const m = $('#modal');
+    m.innerHTML = `<div class="sheet"><h2>${esc(sr.name || 'Run')} — ${fmtDate(date)} <span class="svbadge">strava</span></h2>
+      <div class="pace-line">${sr.km} km · ${sr.movingMin} min · <b>${paceStr(sr.km, sr.movingMin) || '—'}</b>${sr.avgHr ? ` · ${sr.avgHr} bpm` : ''}${sr.elevM ? ` · ${sr.elevM} m↑` : ''}</div>
+      <div class="stepper"><div class="stepper-lbl">How did it feel?</div><div class="rpes">
+        ${['good', 'ok', 'rough'].map(f => `<button class="rpe feel ${mr.feel === f ? 'sel' : ''}" data-f="${f}" onclick="pickFeel('${f}')">${f === 'good' ? '😀 good' : f === 'ok' ? '😐 ok' : '😖 rough'}</button>`).join('')}</div></div>
+      <input id="runnote" class="notefield" placeholder="Notes (optional)" value="${esc(mr.note || '')}">
+      <button class="btn primary big" onclick="saveStravaFeel('${date}')">Save</button>
+      <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+    m.classList.add('open');
+    m.dataset.feel = mr.feel || '';
+    return;
+  }
   const r = ST.runs[date] && !ST.runs[date].skipped ? ST.runs[date] : { km: day && day.title === 'Long Run' ? 20 : day && (day.kind === 'race') ? 21.1 : day && day.title === 'Hard Run' ? 10 : 8, min: 60, feel: null, note: '', hr: '', splits: [] };
   const hard = isHardRun(date);
   const m = $('#modal');
@@ -433,11 +457,196 @@ window.saveRun = function (date) {
   save(); closeModal(); render();
   autoPromptRun(); // catch-up: chain to the next unlogged run day, if any
 };
+window.saveStravaFeel = function (date) {
+  const m = $('#modal');
+  if (!m.dataset.feel) { toast('Tap how it felt — it feeds the deload radar.'); return; }
+  const sr = stravaRunOn(date);
+  ST.runs[date] = { km: sr.km, min: sr.movingMin, hr: sr.avgHr || null, feel: m.dataset.feel, note: ($('#runnote')?.value || '').trim(), splits: [], fromStrava: true };
+  save(); closeModal(); render();
+  autoPromptRun();
+};
 window.skipRun = function (date) {
   ST.runs[date] = { skipped: true };
   save(); closeModal(); render();
   autoPromptRun();
 };
+
+/* ================= Strava integration =================
+   Fully client-side: credentials live ONLY in this device's storage; calls go
+   browser → Strava directly. Everything degrades gracefully offline — a failed
+   sync never touches the strength log. Optional tokenUrl supports a proxy
+   (Cloudflare Worker) if the browser ever hits CORS on the token endpoint. */
+const STRAVA_TOKEN_URL = 'https://www.strava.com/api/v3/oauth/token';
+const STRAVA_API = 'https://www.strava.com/api/v3';
+
+function stravaConnected() { return !!(ST.strava && ST.strava.auth && ST.strava.auth.refresh_token); }
+function stravaRedirectUri() { return location.origin + location.pathname; }
+
+window.stravaConnect = function () {
+  const c = ST.strava;
+  c.clientId = $('#sv-id').value.trim();
+  c.clientSecret = $('#sv-secret').value.trim();
+  c.tokenUrl = ($('#sv-proxy')?.value || '').trim();
+  save();
+  if (!c.clientId || !c.clientSecret) { toast('Enter your Strava Client ID and Client Secret first.'); return; }
+  const u = new URL('https://www.strava.com/oauth/authorize');
+  u.search = new URLSearchParams({
+    client_id: c.clientId, redirect_uri: stravaRedirectUri(), response_type: 'code',
+    scope: 'activity:read_all', approval_prompt: 'auto', state: 'runstrong',
+  });
+  location.href = u.toString();
+};
+window.stravaDisconnect = function () {
+  ST.strava.auth = null; ST.strava.activities = {}; ST.strava.lastSync = null;
+  save(); render(); toast('Strava disconnected. Synced runs removed; your strength log is untouched.');
+};
+async function stravaTokenRequest(params) {
+  const c = ST.strava;
+  const body = new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret, ...params });
+  const r = await fetch(c.tokenUrl || STRAVA_TOKEN_URL, { method: 'POST', body });
+  if (!r.ok) throw new Error('token ' + r.status);
+  return r.json();
+}
+async function stravaHandleCallback() {
+  const q = new URLSearchParams(location.search);
+  if (!q.get('code') || q.get('state') !== 'runstrong') return false;
+  history.replaceState({}, '', location.pathname);      // clean the URL either way
+  try {
+    const d = await stravaTokenRequest({ grant_type: 'authorization_code', code: q.get('code') });
+    ST.strava.auth = { access_token: d.access_token, refresh_token: d.refresh_token, expires_at: d.expires_at, athlete: d.athlete ? { id: d.athlete.id, name: (d.athlete.firstname || '') + ' ' + (d.athlete.lastname || '') } : null };
+    save();
+    toast('✓ Strava connected' + (ST.strava.auth.athlete ? ' as ' + ST.strava.auth.athlete.name : '') + ' — syncing runs…');
+    await stravaSync(true);
+    return true;
+  } catch (e) {
+    toast('Strava connect failed (' + e.message + '). If this keeps happening it is likely CORS — see Settings for the proxy option.', 6000);
+    return false;
+  }
+}
+async function stravaToken() {
+  const a = ST.strava.auth;
+  if (!a) throw new Error('not connected');
+  if (a.expires_at * 1000 > Date.now() + 5 * 60 * 1000) return a.access_token;
+  const d = await stravaTokenRequest({ grant_type: 'refresh_token', refresh_token: a.refresh_token });
+  ST.strava.auth = { ...a, access_token: d.access_token, refresh_token: d.refresh_token, expires_at: d.expires_at };
+  save();
+  return d.access_token;
+}
+/* sync last 6 weeks of activities; cached by id; auto-sync at most every 6h (rate-limit friendly) */
+let stravaSyncing = false;
+async function stravaSync(force) {
+  if (!stravaConnected() || stravaSyncing) return;
+  if (!force && ST.strava.lastSync && Date.now() - ST.strava.lastSync < 6 * 3600 * 1000) return;
+  stravaSyncing = true;
+  try {
+    const token = await stravaToken();
+    const after = Math.floor((Date.now() - 42 * 86400 * 1000) / 1000);
+    const r = await fetch(`${STRAVA_API}/athlete/activities?after=${after}&per_page=100`, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) throw new Error('api ' + r.status);
+    const acts = await r.json();
+    let added = 0;
+    for (const a of acts) {
+      const rec = {
+        id: a.id, name: a.name, type: a.type,
+        date: (a.start_date_local || a.start_date || '').slice(0, 10),
+        km: Math.round((a.distance || 0) / 10) / 100,
+        movingMin: Math.round((a.moving_time || 0) / 60),
+        elevM: Math.round(a.total_elevation_gain || 0),
+        avgHr: a.average_heartrate ? Math.round(a.average_heartrate) : null,
+        effort: a.suffer_score || null,
+      };
+      if (!ST.strava.activities[a.id]) added++;
+      ST.strava.activities[a.id] = rec;
+    }
+    // drop cached activities older than 8 weeks (keeps storage lean)
+    const cutoff = dadd(today(), -56);
+    for (const id of Object.keys(ST.strava.activities)) if (ST.strava.activities[id].date < cutoff) delete ST.strava.activities[id];
+    ST.strava.lastSync = Date.now();
+    save();
+    if (force) toast(`Strava sync ✓ — ${acts.length} activities (${added} new).`);
+    render();
+  } catch (e) {
+    if (force) toast('Strava sync failed (' + e.message + '). The app works fine without it — try again later.', 5000);
+  } finally { stravaSyncing = false; }
+}
+window.stravaSyncNow = () => stravaSync(true);
+
+/* ---- merged runs: Strava is the source of truth for distance/time/HR; manual log keeps feel/notes ---- */
+function stravaRunOn(date) {
+  const acts = Object.values(ST.strava?.activities || {});
+  return acts.find(a => a.date === date && (a.type === 'Run' || ST.strava.includeOther)) || null;
+}
+function mergedRunFor(date) {
+  const sr = stravaRunOn(date);
+  const mr = ST.runs[date];
+  if (sr) return { km: sr.km, min: sr.movingMin, hr: sr.avgHr ?? (mr && mr.hr) ?? null, feel: mr && !mr.skipped ? mr.feel : null, note: (mr && mr.note) || '', splits: (mr && mr.splits) || [], src: 'strava', name: sr.name, effort: sr.effort, elevM: sr.elevM };
+  if (mr && !mr.skipped) return { ...mr, src: 'manual' };
+  return null;
+}
+function mergedRunsAll() {
+  const dates = new Set(Object.keys(ST.runs).filter(d => !ST.runs[d].skipped));
+  for (const a of Object.values(ST.strava?.activities || {})) if (a.type === 'Run' || ST.strava.includeOther) dates.add(a.date);
+  const out = {};
+  for (const d of [...dates].sort()) { const r = mergedRunFor(d); if (r) out[d] = r; }
+  return out;
+}
+/* run classification for trends: hard runs excluded from EF like-for-like */
+function runKind(date, r) {
+  if (/interval|tempo|speed|rep|fartlek|race/i.test(r.name || '')) return 'Hard Run';
+  const day = dayFor(date);
+  if (day && day.title === 'Hard Run') return 'Hard Run';
+  if ((r.km || 0) >= 14) return 'Long Run';
+  return day ? day.title : 'Easy Run';
+}
+/* long-run day pattern from actual Strava history (last 4 weeks) */
+function longRunPattern() {
+  const acts = Object.values(ST.strava?.activities || {}).filter(a => a.type === 'Run' && a.date >= dadd(today(), -28));
+  if (acts.length < 3) return null;
+  const byDow = {};
+  for (const a of acts) {
+    const dow = new Date(a.date + 'T12:00').getDay();
+    (byDow[dow] = byDow[dow] || []).push(a.km);
+  }
+  let best = null;
+  for (const [dow, kms] of Object.entries(byDow)) {
+    kms.sort((a, b) => a - b);
+    const med = kms[Math.floor(kms.length / 2)];
+    if (med >= 12 && (!best || med > best.medKm)) best = { dow: +dow, medKm: med, n: kms.length };
+  }
+  return best;
+}
+/* weekly combined load: run km + strength tonnes, ramp flag vs 4-week average */
+function weeklyLoad() {
+  const merged = mergedRunsAll();
+  return ST.program.weeks.map(wk => {
+    let km = 0, vol = 0;
+    for (const d of wk.days) {
+      const r = merged[d.date]; if (r) km += r.km || 0;
+      const s = ST.sessions[d.date];
+      if (s && s.status === 'done') for (const e of s.exercises) {
+        const ex = EXERCISES[e.exId]; if (ex.mode !== 'reps') continue;
+        for (const t of e.sets.filter(x => x.done)) vol += (t.weight || 0) * (t.reps || 0) * (ex.perSide ? 2 : 1);
+      }
+    }
+    return { wk: wk.num, monday: wk.days[0].date, km: Math.round(km * 10) / 10, tonnes: Math.round(vol / 100) / 10 };
+  });
+}
+function loadRampFlag() {
+  const t = today();
+  const weeks = weeklyLoad();
+  const curIdx = weeks.findIndex(w => t >= w.monday && t <= dadd(w.monday, 6));
+  if (curIdx < 1) return null;
+  const prior = weeks.slice(Math.max(0, curIdx - 4), curIdx).filter(w => w.km + w.tonnes > 0);
+  if (prior.length < 2) return null;
+  const avgKm = prior.reduce((a, w) => a + w.km, 0) / prior.length;
+  const avgT = prior.reduce((a, w) => a + w.tonnes, 0) / prior.length;
+  const cur = weeks[curIdx];
+  const dayN = Math.max(1, Math.round((new Date(t + 'T12:00') - new Date(cur.monday + 'T12:00')) / 86400000) + 1);
+  const projKm = cur.km * 7 / dayN, projT = cur.tonnes * 7 / dayN;
+  const ramp = ((avgKm ? projKm / avgKm : 1) + (avgT ? projT / avgT : 1)) / 2;
+  if (ramp > 1.3) return `Combined training load is tracking ~${Math.round((ramp - 1) * 100)}% above your 4-week average (runs + lifting). Big jumps are where niggles start — no need to panic, just notice.`;
+  return null;
+}
 
 /* ================= fitness: HRV / RHR / VO2 (Garmin morning check-in) ================= */
 function fitnessEntries() {
@@ -542,14 +751,15 @@ window.updateVo2 = function () {
   const n = parseInt(v, 10);
   if (!isNaN(n) && n > 20 && n < 90) { ST.fitness.vo2[today()] = n; save(); render(); }
 };
-/* aerobic efficiency: EF = (m/min) / avg HR, easy + long runs only (like vs like) */
+/* aerobic efficiency: EF = (m/min) / avg HR, easy + long runs only (like vs like).
+   Uses merged Strava + manual runs — Strava supplies distance/time/HR automatically. */
 function efSeries() {
   const out = [];
-  for (const d of Object.keys(ST.runs).sort()) {
-    const r = ST.runs[d];
-    if (r.skipped || !r.km || !r.min || !r.hr) continue;
-    const day = dayFor(d);
-    const type = day ? day.title : 'Run';
+  const merged = mergedRunsAll();
+  for (const d of Object.keys(merged)) {
+    const r = merged[d];
+    if (!r.km || !r.min || !r.hr) continue;
+    const type = runKind(d, r);
     if (type === 'Hard Run') continue;   // intervals lie in this trend
     out.push({ date: d, ef: (r.km * 1000 / r.min) / r.hr, type });
   }
@@ -557,12 +767,10 @@ function efSeries() {
 }
 /* honest half-marathon projection: range from actual long-run pace, VO2 as secondary adjuster */
 function raceProjection() {
-  const longs = Object.keys(ST.runs).sort().filter(d => {
-    const r = ST.runs[d]; const day = dayFor(d);
-    return r && !r.skipped && r.km >= 12 && r.min && day && (day.kind === 'run' || day.kind === 'race');
-  }).slice(-4);
+  const merged = mergedRunsAll();
+  const longs = Object.keys(merged).filter(d => merged[d].km >= 12 && merged[d].min).slice(-4);
   if (!longs.length) return null;
-  const paces = longs.map(d => ST.runs[d].min * 60 / ST.runs[d].km); // sec/km
+  const paces = longs.map(d => merged[d].min * 60 / merged[d].km); // sec/km
   const longPace = paces.reduce((a, b) => a + b, 0) / paces.length;
   let fast = longPace * 0.93 * 21.1, slow = longPace * 0.99 * 21.1;  // seconds
   // VO2 adjuster (rough Daniels-style anchor points), only nudges the range
@@ -613,8 +821,17 @@ window.openReadiness = function (date, tpl) {
   ensureAudio();
   const m = $('#modal');
   const radar = deloadRadar();
+  // run-aware guidance: today's completed run (context) + tomorrow's likely long run (suggestion)
+  const todayRun = stravaRunOn(date);
+  const isLower = tpl.startsWith('lower');
+  const pat = longRunPattern();
+  const tomorrowDow = new Date(dadd(date, 1) + 'T12:00').getDay();
+  const runAware = isLower && pat && pat.dow === tomorrowDow
+    ? `Your Strava history says tomorrow is long-run day (median ${pat.medKm.toFixed(0)} km over ${pat.n} runs). A lighter leg session today protects it.` : null;
   m.innerHTML = `<div class="sheet">
     <h2>Quick readiness check</h2>
+    ${todayRun ? `<div class="pace-line">🏃 Already run today: <b>${esc(todayRun.name || 'Run')}</b> — ${todayRun.km} km · ${paceStr(todayRun.km, todayRun.movingMin) || ''}${todayRun.avgHr ? ` · ${todayRun.avgHr} bpm` : ''}. Expect legs to feel heavier than the numbers suggest.</div>` : ''}
+    ${runAware ? `<div class="notice">🏃 ${esc(runAware)}</div><button class="btn warn big" onclick="beginSession('${date}','${tpl}',{sore:3,fat:3},true)">Start lighter version (run-aware)</button>` : ''}
     ${radar ? `<div class="notice">⚠️ ${esc(radar)}</div>` : ''}
     <div class="ready-q"><div>Muscle soreness</div><div class="scale" id="r-sore">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>fresh</span><span>wrecked</span></div></div>
     <div class="ready-q"><div>Overall fatigue</div><div class="scale" id="r-fat">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>energised</span><span>flat</span></div></div>
@@ -705,6 +922,7 @@ function vSession() {
       <div class="prog-txt">${doneSets}/${totalSets} sets · ~${remainMin} min left · ⏱ <span id="sess-elapsed">${fmtElapsed(Date.now() - s.startedTs)}</span></div></div>
     </header>
     <main class="session">
+      ${(() => { const tr = stravaRunOn(s.date); return tr ? `<div class="pace-line">🏃 <span class="svbadge">strava</span> Already run today: <b>${esc(tr.name || 'Run')}</b> — ${tr.km} km · ${paceStr(tr.km, tr.movingMin) || ''}${tr.avgHr ? ` · ${tr.avgHr} bpm` : ''}</div>` : ''; })()}
       <div class="ex-head">
         <div class="ex-count">Exercise ${s.curIdx + 1} / ${s.exercises.length}</div>
         <h1>${esc(ex.name)}${ex.perSide ? ' <span class="perside">each side</span>' : ''}</h1>
@@ -937,17 +1155,19 @@ function vSchedule() {
         const s = ST.sessions[d.date];
         const done = s && s.status === 'done';
         const isRun = d.kind === 'run' || d.kind === 'race';
-        const runRec = isRun && ST.runs[d.date];
-        const runLogged = runRec && !runRec.skipped;
-        const runSkipped = runRec && runRec.skipped;
+        const merged = mergedRunFor(d.date);
+        const runRec = isRun && (merged || ST.runs[d.date]);
+        const runLogged = isRun && !!merged;
+        const runSkipped = isRun && !merged && ST.runs[d.date] && ST.runs[d.date].skipped;
+        const extraRun = !isRun && merged && merged.src === 'strava';   // Strava run on a non-plan day (Runna ≠ plan)
         const icon = d.kind === 'run' ? '🏃' : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
         if (done) action = `<button class="mini" onclick="go('summary',{sid:'${d.date}'})">view</button>`;
         else if (isRun && d.date <= t) action = `<button class="mini" onclick="openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}">
           <span class="wk-date">${fmtDate(d.date)}</span>
-          <span class="wk-icon">${icon}</span>
-          <span class="wk-title">${esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${runLogged ? ` <span class="dim">${ST.runs[d.date].km}km · ${paceStr(ST.runs[d.date].km, ST.runs[d.date].min) || ''}</span>` : ''}</span>
+          <span class="wk-icon">${extraRun ? '🏃' : icon}</span>
+          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge">strava</span>' : esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
           ${action}
         </div>`;
       }).join('')}
@@ -984,16 +1204,16 @@ function vHistory() {
   const maxV = Math.max(1, ...weekVols.map(v => v.vol));
   // exercises with history
   const withHist = Object.keys(EXERCISES).filter(id => exHistory(id).length > 0);
-  // running progress
-  const runDates = Object.keys(ST.runs).sort().filter(d => !ST.runs[d].skipped);
-  const runPts = runDates.map(d => {
-    const r = ST.runs[d]; const day = dayFor(d);
-    const type = day ? (day.kind === 'race' ? 'race' : day.title) : 'Run';
-    return { date: d, km: r.km, min: r.min, hr: r.hr, feel: r.feel, splits: r.splits || [], type, pace: r.km && r.min ? r.min * 60 / r.km : null };
+  // running progress (merged: Strava is source of truth, manual entries fill gaps + carry feel)
+  const mergedAll = mergedRunsAll();
+  const runPts = Object.keys(mergedAll).map(d => {
+    const r = mergedAll[d]; const day = dayFor(d);
+    const type = day && day.kind === 'race' ? 'race' : runKind(d, r);
+    return { date: d, km: r.km, min: r.min, hr: r.hr, feel: r.feel, splits: r.splits || [], type, src: r.src, name: r.name, pace: r.km && r.min ? r.min * 60 / r.km : null };
   }).filter(p => p.pace);
   const weekKms = ST.program.weeks.map(wk => {
     let km = 0;
-    for (const d of wk.days) { const r = ST.runs[d.date]; if (r && !r.skipped) km += r.km || 0; }
+    for (const d of wk.days) { const r = mergedAll[d.date]; if (r) km += r.km || 0; }
     return { wk: wk.num, km };
   });
   const maxKm = Math.max(1, ...weekKms.map(v => v.km));
@@ -1006,8 +1226,8 @@ function vHistory() {
     <div class="section-label">Pace trend (min/km — up = faster)</div>
     ${runPaceChart(runPts)}
     ${runPts.length ? `<div class="section-label">Run log</div>` + runPts.slice().reverse().map(p =>
-      `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}</b>
-       <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''} · felt ${p.feel}</span>
+      `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}${p.src === 'strava' ? ' <span class="svbadge">strava</span>' : ''}</b>
+       <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''}${p.feel ? ` · felt ${p.feel}` : ''}</span>
        ${p.splits.length ? `<div class="notesum">splits: ${p.splits.map(fmtSplit).join(' · ')}</div>` : ''}</div>`).join('') : ''}
     <div class="section-label">🏋️ Lifting — weekly volume (tonnes)</div>
     <div class="volchart">${weekVols.map(v => `<div class="volcol"><div class="volbar" style="height:${Math.max(2, 100 * v.vol / maxV)}%"></div><div class="voln">${(v.vol / 1000).toFixed(1)}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
@@ -1066,6 +1286,14 @@ function vFitness() {
   if (proj) {
     for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0) lines.push(`${r.name} (${d}d): projected <b>${proj.range}</b> from your last ${proj.nLongs} long run${proj.nLongs === 1 ? '' : 's'}${vo2 ? ' + VO₂ ' + vo2 : ''}. A range, honestly — race day picks the number.`); }
   } else lines.push('Race projection unlocks after your first logged long run (12 km+ with time).');
+  // weekly combined load (runs + lifting)
+  const loads = weeklyLoad().filter(w => w.km + w.tonnes > 0);
+  if (loads.length >= 2) {
+    const recent = loads.slice(-3).map(w => `W${w.wk}: ${w.km}km + ${w.tonnes}t`).join(' · ');
+    lines.push(`Weekly load — ${recent}${stravaConnected() ? '' : ' (connect Strava in Settings for automatic run data)'}`);
+  }
+  const ramp = loadRampFlag();
+  if (ramp) lines.push(`⚠ ${ramp}`);
   return `<div class="section-label">💓 Fitness — HRV · VO₂ max <button class="mini" style="margin-left:8px" onclick="updateVo2()">VO₂: ${vo2 ?? '—'} ✎</button></div>
     ${hrvChart(es, t)}
     ${efs.length >= 2 ? efChart(efs) : ''}
@@ -1166,7 +1394,22 @@ function vSettings() {
       </select></div>
     <div class="set-row"><span>Rest chime</span><button class="toggle ${ST.settings.sound ? 'on' : ''}" onclick="ST.settings.sound=!ST.settings.sound;save();render()">${ST.settings.sound ? 'ON' : 'OFF'}</button></div>
     <div class="set-row"><span>Vibration</span><button class="toggle ${ST.settings.vibrate ? 'on' : ''}" onclick="ST.settings.vibrate=!ST.settings.vibrate;save();render()">${ST.settings.vibrate ? 'ON' : 'OFF'}</button></div>
+    <div class="section-label">Strava</div>
+    ${stravaConnected() ? `
+      <div class="set-row"><span>Connected${ST.strava.auth.athlete ? ' as <b>' + esc(ST.strava.auth.athlete.name) + '</b>' : ''}</span><span class="svbadge">✓ strava</span></div>
+      <div class="set-row"><span>Last sync</span><span class="dim small">${ST.strava.lastSync ? new Date(ST.strava.lastSync).toLocaleString() : 'never'} · ${Object.keys(ST.strava.activities).length} activities cached</span></div>
+      <div class="set-row"><span>Include non-run activities</span><button class="toggle ${ST.strava.includeOther ? 'on' : ''}" onclick="ST.strava.includeOther=!ST.strava.includeOther;save();render()">${ST.strava.includeOther ? 'ON' : 'OFF'}</button></div>
+      <button class="btn big" onclick="stravaSyncNow()">🔄 Sync now</button>
+      <button class="btn danger" onclick="if(confirm('Disconnect Strava and remove synced activities? (Your strength log and manual run logs are untouched.)'))stravaDisconnect()">Disconnect Strava</button>
+    ` : `
+      <div class="dim small" style="margin-bottom:8px">Connect your Strava (where Runna syncs your runs) so the app sees your real running. Credentials stay on this device only; data flows browser → Strava directly. Create an API app at <b>strava.com/settings/api</b> first.</div>
+      <div class="set-row"><span>Client ID</span><input id="sv-id" inputmode="numeric" style="width:130px" value="${esc(ST.strava.clientId)}"></div>
+      <div class="set-row"><span>Client Secret</span><input id="sv-secret" type="password" style="width:180px" value="${esc(ST.strava.clientSecret)}"></div>
+      <div class="set-row"><span class="small">Token proxy URL <span class="dim">(only if connect fails with CORS)</span></span><input id="sv-proxy" style="width:180px" placeholder="optional" value="${esc(ST.strava.tokenUrl || '')}"></div>
+      <button class="btn primary big" onclick="stravaConnect()">🔗 Connect Strava</button>
+    `}
     <div class="section-label">Backup</div>
+    ${localStorage.getItem('runstrong.backup.v4') ? `<div class="dim small" style="margin-bottom:6px">A pre-Strava backup of your data was saved automatically (schema v4). <button class="mini" onclick="restoreV4Backup()">Restore it</button> <button class="mini" onclick="downloadV4Backup()">Download it</button></div>` : ''}
     <button class="btn big" onclick="exportJSON()">⬇ Export all data (JSON)</button>
     <button class="btn big" onclick="exportCSV()">⬇ Export workout log (CSV)</button>
     <button class="btn big" onclick="document.getElementById('importfile').click()">⬆ Import data (JSON)</button>
@@ -1179,6 +1422,18 @@ function vSettings() {
   </main>${navBar()}`;
 }
 
+window.restoreV4Backup = function () {
+  if (!confirm('Restore the automatic pre-Strava backup? This replaces current data with the state from just before the Strava update.')) return;
+  try {
+    const raw = localStorage.getItem('runstrong.backup.v4');
+    ST = migrate(JSON.parse(raw)); save(); render();
+    toast('Backup restored (and re-migrated to the current version).');
+  } catch (e) { alert('Restore failed: ' + e.message); }
+};
+window.downloadV4Backup = function () {
+  const raw = localStorage.getItem('runstrong.backup.v4'); if (!raw) return;
+  download('runstrong-backup-v4.json', raw, 'application/json');
+};
 window.exportJSON = function () {
   ST.lastBackup = Date.now(); save();
   download(`runstrong-backup-${today()}.json`, JSON.stringify(ST, null, 1), 'application/json');
@@ -1281,5 +1536,9 @@ if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.acti
 }
 render();
 if (ST.timer) runTimerLoop();
-if (checkInDue()) openCheckIn();   // morning HRV first; run prompt chains after save/skip
-else autoPromptRun();
+stravaHandleCallback().then(handled => {
+  stravaSync(false);               // quiet auto-sync (6h throttle, never blocks or breaks offline use)
+  if (handled) return;             // fresh connect already toasts + renders
+  if (checkInDue()) openCheckIn(); // morning HRV first; run prompt chains after save/skip
+  else autoPromptRun();
+});
