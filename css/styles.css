@@ -111,6 +111,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* strava */
 .svbadge { display: inline-block; font-size: .62rem; font-weight: 800; letter-spacing: .04em; background: #fc4c02; color: #fff; border-radius: 8px; padding: 1px 7px; vertical-align: middle; text-transform: uppercase; }
+.svbadge.garmin { background: #007cc3; }
 
 /* hold timer + next-exercise hand-off */
 .holdbtn { margin: 4px 0 10px; border-color: var(--acc); }

@@ -360,7 +360,7 @@ function vHome() {
     const mr = mergedRunFor(t);
     const skippedManual = ST.runs[t] && ST.runs[t].skipped && !stravaRunOn(t);
     const logged = mr
-      ? `<div class="run-logged">✓ ${mr.src === 'strava' ? `<span class="svbadge">strava</span> ${esc(mr.name || 'Run')} — ` : ''}${mr.km} km · ${mr.min} min · ${paceStr(mr.km, mr.min) || ''}${mr.hr ? ` · ${mr.hr} bpm` : ''}${mr.feel ? ` · felt ${mr.feel}` : ''}${mr.note ? ` · 📝 ${esc(mr.note)}` : ''}</div>
+      ? `<div class="run-logged">✓ ${mr.src !== 'manual' ? `<span class="svbadge ${mr.src}">${mr.src}</span> ${esc(mr.name || 'Run')} — ` : ''}${mr.km} km · ${mr.min} min · ${paceStr(mr.km, mr.min) || ''}${mr.hr ? ` · ${mr.hr} bpm` : ''}${mr.feel ? ` · felt ${mr.feel}` : ''}${mr.note ? ` · 📝 ${esc(mr.note)}` : ''}</div>
          <button class="mini" onclick="openRunLog('${t}')">${mr.feel ? 'edit' : 'add feel'}</button>`
       : skippedManual
         ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openRunLog('${t}')">log anyway</button>`
@@ -399,7 +399,7 @@ window.openRunLog = function (date) {
   if (sr) {   // Strava already has the numbers — just capture how it felt (feeds the deload radar)
     const mr = ST.runs[date] || {};
     const m = $('#modal');
-    m.innerHTML = `<div class="sheet"><h2>${esc(sr.name || 'Run')} — ${fmtDate(date)} <span class="svbadge">strava</span></h2>
+    m.innerHTML = `<div class="sheet"><h2>${esc(sr.name || 'Run')} — ${fmtDate(date)} <span class="svbadge ${sr.src || 'strava'}">${sr.src || 'strava'}</span></h2>
       <div class="pace-line">${sr.km} km · ${sr.movingMin} min · <b>${paceStr(sr.km, sr.movingMin) || '—'}</b>${sr.avgHr ? ` · ${sr.avgHr} bpm` : ''}${sr.elevM ? ` · ${sr.elevM} m↑` : ''}</div>
       <div class="stepper"><div class="stepper-lbl">How did it feel?</div><div class="rpes">
         ${['good', 'ok', 'rough'].map(f => `<button class="rpe feel ${mr.feel === f ? 'sel' : ''}" data-f="${f}" onclick="pickFeel('${f}')">${f === 'good' ? '😀 good' : f === 'ok' ? '😐 ok' : '😖 rough'}</button>`).join('')}</div></div>
@@ -571,6 +571,87 @@ async function stravaSync(force) {
 }
 window.stravaSyncNow = () => stravaSync(true);
 
+/* ---- Garmin Connect CSV import: same activities store, no API, no subscription ----
+   Garmin Connect → Activities → All Activities → Export CSV. Re-imports dedupe by date+distance. */
+function parseCSV(text) {
+  const rows = []; let row = [], field = '', inQ = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(field); field = ''; if (row.some(f => f.trim() !== '')) rows.push(row); row = []; }
+      else field += c;
+    }
+  }
+  row.push(field);
+  if (row.some(f => f.trim() !== '')) rows.push(row);
+  return rows;
+}
+function gNum(s) {
+  s = String(s ?? '').trim(); if (!s || s === '--') return null;
+  if (s.includes(',') && !s.includes('.')) s = s.replace(',', '.');   // decimal-comma locales
+  const v = parseFloat(s.replace(/,/g, ''));
+  return isNaN(v) ? null : v;
+}
+function gMins(s) {
+  s = String(s ?? '').trim(); if (!s || s === '--') return null;
+  const parts = s.split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return Math.round(parts[0] * 60 + parts[1] + parts[2] / 60);
+  if (parts.length === 2) return Math.round(parts[0] + parts[1] / 60);
+  return Math.round(parts[0]);
+}
+function importGarminText(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return { added: 0, dupes: 0, skipped: 0, error: 'No data rows found in that file.' };
+  const head = rows[0].map(h => h.toLowerCase().trim());
+  const col = (...names) => { for (const n of names) { const i = head.findIndex(h => h === n || h.includes(n)); if (i >= 0) return i; } return -1; };
+  const iType = col('activity type'), iDate = col('date'), iTitle = col('title', 'name'),
+        iDist = col('distance'), iTimeMv = col('moving time'), iTime = head.findIndex(h => h === 'time'),
+        iHr = col('avg hr', 'average heart rate', 'avg heart'), iAsc = col('total ascent', 'elev gain', 'elevation gain');
+  if (iDate < 0 || iDist < 0) return { added: 0, dupes: 0, skipped: 0, error: 'That does not look like a Garmin Connect activities CSV (no Date/Distance columns).' };
+  let added = 0, dupes = 0, skipped = 0;
+  for (const r of rows.slice(1)) {
+    const typeRaw = iType >= 0 ? (r[iType] || '').trim() : 'Running';
+    const isRun = /running/i.test(typeRaw) && !/virtual/i.test(typeRaw);
+    const date = (r[iDate] || '').trim().slice(0, 10);
+    const km = gNum(r[iDist]);
+    const min = gMins(iTimeMv >= 0 ? r[iTimeMv] : (iTime >= 0 ? r[iTime] : null));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !km || !min) { skipped++; continue; }
+    if (!isRun && !ST.strava.includeOther) { skipped++; continue; }
+    const id = 'g' + date + '-' + km.toFixed(2);
+    if (ST.strava.activities[id]) { dupes++; continue; }
+    ST.strava.activities[id] = {
+      id, src: 'garmin', name: (iTitle >= 0 && r[iTitle]) ? r[iTitle].trim() : (isRun ? 'Run' : typeRaw),
+      type: isRun ? 'Run' : typeRaw, date, km: Math.round(km * 100) / 100, movingMin: min,
+      avgHr: iHr >= 0 ? (gNum(r[iHr]) ? Math.round(gNum(r[iHr])) : null) : null,
+      elevM: iAsc >= 0 ? Math.round(gNum(r[iAsc]) || 0) : 0, effort: null,
+    };
+    added++;
+  }
+  const cutoff = dadd(today(), -56);
+  for (const id of Object.keys(ST.strava.activities)) if (ST.strava.activities[id].date < cutoff) delete ST.strava.activities[id];
+  ST.strava.lastSync = Date.now();
+  save(); render();
+  return { added, dupes, skipped };
+}
+window.importGarminFile = function (input) {
+  const f = input.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const res = importGarminText(rd.result);
+    if (res.error) { alert(res.error); return; }
+    toast(`Garmin import ✓ — ${res.added} new run${res.added === 1 ? '' : 's'}, ${res.dupes} already known${res.skipped ? `, ${res.skipped} skipped (non-runs / unreadable)` : ''}. 💾 Export a backup when you get a chance.`, 5500);
+  };
+  rd.readAsText(f);
+  input.value = '';
+};
+
 /* ---- merged runs: Strava is the source of truth for distance/time/HR; manual log keeps feel/notes ---- */
 function stravaRunOn(date) {
   const acts = Object.values(ST.strava?.activities || {});
@@ -579,7 +660,7 @@ function stravaRunOn(date) {
 function mergedRunFor(date) {
   const sr = stravaRunOn(date);
   const mr = ST.runs[date];
-  if (sr) return { km: sr.km, min: sr.movingMin, hr: sr.avgHr ?? (mr && mr.hr) ?? null, feel: mr && !mr.skipped ? mr.feel : null, note: (mr && mr.note) || '', splits: (mr && mr.splits) || [], src: 'strava', name: sr.name, effort: sr.effort, elevM: sr.elevM };
+  if (sr) return { km: sr.km, min: sr.movingMin, hr: sr.avgHr ?? (mr && mr.hr) ?? null, feel: mr && !mr.skipped ? mr.feel : null, note: (mr && mr.note) || '', splits: (mr && mr.splits) || [], src: sr.src || 'strava', name: sr.name, effort: sr.effort, elevM: sr.elevM };
   if (mr && !mr.skipped) return { ...mr, src: 'manual' };
   return null;
 }
@@ -922,7 +1003,7 @@ function vSession() {
       <div class="prog-txt">${doneSets}/${totalSets} sets · ~${remainMin} min left · ⏱ <span id="sess-elapsed">${fmtElapsed(Date.now() - s.startedTs)}</span></div></div>
     </header>
     <main class="session">
-      ${(() => { const tr = stravaRunOn(s.date); return tr ? `<div class="pace-line">🏃 <span class="svbadge">strava</span> Already run today: <b>${esc(tr.name || 'Run')}</b> — ${tr.km} km · ${paceStr(tr.km, tr.movingMin) || ''}${tr.avgHr ? ` · ${tr.avgHr} bpm` : ''}</div>` : ''; })()}
+      ${(() => { const tr = stravaRunOn(s.date); return tr ? `<div class="pace-line">🏃 <span class="svbadge ${tr.src || 'strava'}">${tr.src || 'strava'}</span> Already run today: <b>${esc(tr.name || 'Run')}</b> — ${tr.km} km · ${paceStr(tr.km, tr.movingMin) || ''}${tr.avgHr ? ` · ${tr.avgHr} bpm` : ''}</div>` : ''; })()}
       <div class="ex-head">
         <div class="ex-count">Exercise ${s.curIdx + 1} / ${s.exercises.length}</div>
         <h1>${esc(ex.name)}${ex.perSide ? ' <span class="perside">each side</span>' : ''}</h1>
@@ -1159,7 +1240,7 @@ function vSchedule() {
         const runRec = isRun && (merged || ST.runs[d.date]);
         const runLogged = isRun && !!merged;
         const runSkipped = isRun && !merged && ST.runs[d.date] && ST.runs[d.date].skipped;
-        const extraRun = !isRun && merged && merged.src === 'strava';   // Strava run on a non-plan day (Runna ≠ plan)
+        const extraRun = !isRun && merged && merged.src !== 'manual';   // synced run on a non-plan day (Runna ≠ plan)
         const icon = d.kind === 'run' ? '🏃' : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
         if (done) action = `<button class="mini" onclick="go('summary',{sid:'${d.date}'})">view</button>`;
@@ -1167,7 +1248,7 @@ function vSchedule() {
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}">
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${extraRun ? '🏃' : icon}</span>
-          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge">strava</span>' : esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
+          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge '+merged.src+'">'+merged.src+'</span>' : esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
           ${action}
         </div>`;
       }).join('')}
@@ -1226,7 +1307,7 @@ function vHistory() {
     <div class="section-label">Pace trend (min/km — up = faster)</div>
     ${runPaceChart(runPts)}
     ${runPts.length ? `<div class="section-label">Run log</div>` + runPts.slice().reverse().map(p =>
-      `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}${p.src === 'strava' ? ' <span class="svbadge">strava</span>' : ''}</b>
+      `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}${p.src !== 'manual' ? ' <span class="svbadge ' + p.src + '">' + p.src + '</span>' : ''}</b>
        <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''}${p.feel ? ` · felt ${p.feel}` : ''}</span>
        ${p.splits.length ? `<div class="notesum">splits: ${p.splits.map(fmtSplit).join(' · ')}</div>` : ''}</div>`).join('') : ''}
     <div class="section-label">🏋️ Lifting — weekly volume (tonnes)</div>
@@ -1394,7 +1475,14 @@ function vSettings() {
       </select></div>
     <div class="set-row"><span>Rest chime</span><button class="toggle ${ST.settings.sound ? 'on' : ''}" onclick="ST.settings.sound=!ST.settings.sound;save();render()">${ST.settings.sound ? 'ON' : 'OFF'}</button></div>
     <div class="set-row"><span>Vibration</span><button class="toggle ${ST.settings.vibrate ? 'on' : ''}" onclick="ST.settings.vibrate=!ST.settings.vibrate;save();render()">${ST.settings.vibrate ? 'ON' : 'OFF'}</button></div>
-    <div class="section-label">Strava</div>
+    <div class="section-label">Run sync</div>
+    <div class="dim small" style="margin-bottom:8px">Import your runs from <b>Garmin Connect</b> (free): on connect.garmin.com go to Activities → All Activities → Export CSV, then load the file here. Re-imports skip runs it already knows.</div>
+    <button class="btn primary big" onclick="document.getElementById('garminpick').click()">📥 Import Garmin CSV</button>
+    <input type="file" id="garminpick" accept=".csv,text/csv" style="display:none" onchange="importGarminFile(this)">
+    <div class="set-row"><span>Synced activities</span><span class="dim small">${Object.keys(ST.strava.activities).length} cached${ST.strava.lastSync ? ' · updated ' + new Date(ST.strava.lastSync).toLocaleDateString() : ''}</span></div>
+    <div class="set-row"><span>Include non-run activities</span><button class="toggle ${ST.strava.includeOther ? 'on' : ''}" onclick="ST.strava.includeOther=!ST.strava.includeOther;save();render()">${ST.strava.includeOther ? 'ON' : 'OFF'}</button></div>
+    ${Object.keys(ST.strava.activities).length ? `<button class="btn small" onclick="if(confirm('Remove all synced activities? Manual run logs are kept.')){ST.strava.activities={};save();render();}">Clear synced activities</button>` : ''}
+    <div class="section-label">Strava (optional — needs a paid Strava subscription for API access)</div>
     ${stravaConnected() ? `
       <div class="set-row"><span>Connected${ST.strava.auth.athlete ? ' as <b>' + esc(ST.strava.auth.athlete.name) + '</b>' : ''}</span><span class="svbadge">✓ strava</span></div>
       <div class="set-row"><span>Last sync</span><span class="dim small">${ST.strava.lastSync ? new Date(ST.strava.lastSync).toLocaleString() : 'never'} · ${Object.keys(ST.strava.activities).length} activities cached</span></div>
@@ -1402,7 +1490,7 @@ function vSettings() {
       <button class="btn big" onclick="stravaSyncNow()">🔄 Sync now</button>
       <button class="btn danger" onclick="if(confirm('Disconnect Strava and remove synced activities? (Your strength log and manual run logs are untouched.)'))stravaDisconnect()">Disconnect Strava</button>
     ` : `
-      <div class="dim small" style="margin-bottom:8px">Connect your Strava (where Runna syncs your runs) so the app sees your real running. Credentials stay on this device only; data flows browser → Strava directly. Create an API app at <b>strava.com/settings/api</b> first.</div>
+      <div class="dim small" style="margin-bottom:8px">Auto-sync from Strava works but requires a Strava subscription (their June 2026 API change). If you subscribe: create an API app at <b>strava.com/settings/api</b>, then connect here. Credentials stay on this device only.</div>
       <div class="set-row"><span>Client ID</span><input id="sv-id" inputmode="numeric" style="width:130px" value="${esc(ST.strava.clientId)}"></div>
       <div class="set-row"><span>Client Secret</span><input id="sv-secret" type="password" style="width:180px" value="${esc(ST.strava.clientSecret)}"></div>
       <div class="set-row"><span class="small">Token proxy URL <span class="dim">(only if connect fails with CORS)</span></span><input id="sv-proxy" style="width:180px" placeholder="optional" value="${esc(ST.strava.tokenUrl || '')}"></div>
