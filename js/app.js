@@ -283,6 +283,13 @@ function deloadRadar() {
 /* ================= rendering ================= */
 const APP = $('#app');
 let view = { name: 'home' };
+let whyOpen = false;   // in-session "why this helps" expander (transient, resets per exercise)
+
+/* taper/race phases get a phase-aware insight line instead of a "build" message */
+function isTaperPhase(date) {
+  const w = weekFor(date);
+  return !!w && /taper|race week/i.test(w.phase);
+}
 
 function go(name, params) { view = Object.assign({ name }, params); render(); window.scrollTo(0, 0); }
 
@@ -1013,6 +1020,10 @@ function vSession() {
         ${(() => { const noneDone = !e.sets.some(x => x.done); const wp = noneDone ? warmupPlan(e.exId, e.prescWeight != null ? e.prescWeight : (e.sets[0] && e.sets[0].weight), ST.settings.step) : null; return wp ? `<div class="ex-warm">🔥 Warm-up: ${wp}</div>` : ''; })()}
         <div class="ex-last">Last: ${lastStr}</div>
         <div class="ex-cue">${esc(ex.cue || '')}</div>
+        ${ex.why ? `<div class="ex-why ${whyOpen ? 'open' : ''}" onclick="whyOpen=!whyOpen;render()">
+          <span class="ex-why-t">🎯 Why this helps your half ${whyOpen ? '▾' : '▸'}</span>
+          ${whyOpen ? `<div class="ex-why-body">${isTaperPhase(s.date) ? esc(ex.taperWhy || TAPER_WHY) + '<br><span class="dim">' + esc(ex.why) + '</span>' : esc(ex.why)}</div>` : ''}
+        </div>` : ''}
         ${ex.swaps.length ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
       </div>
       <div class="sets">${setRows}</div>
@@ -1083,6 +1094,7 @@ window.logSet = function (failed) {
   if (!(wasLast && s.curIdx === s.exercises.length - 1)) startRest(ex.rest, esc(ex.name));
   if (wasLast && s.curIdx < s.exercises.length - 1) {
     s.curIdx++;
+    whyOpen = false;
     save(); render();
     showNextExercise(ex, s);          // unmissable hand-off between exercises
     return;
@@ -1113,6 +1125,7 @@ window.undoSet = function (i) {
 window.moveEx = function (d) {
   const s = ST.sessions[ST.activeSessionId];
   s.curIdx = Math.max(0, Math.min(s.exercises.length - 1, s.curIdx + d));
+  whyOpen = false;
   save(); render();
 };
 
@@ -1332,6 +1345,9 @@ function vExDetail() {
   }));
   return `<header class="top slim"><button class="backbtn" onclick="go('history')">‹</button><div class="phase">${esc(ex.name)}</div></header>
   <main>
+    ${ex.why ? `<div class="card"><div class="card-kicker">🎯 Why this helps your half</div>
+      <div class="card-sub" style="color:var(--fg)">${esc(ex.why)}</div>
+      ${ex.deep ? `<div class="card-sub" style="margin-top:8px">${esc(ex.deep)}</div>` : ''}</div>` : ''}
     ${svgChart(pts)}
     ${h.slice().reverse().map(s => `<div class="sumrow"><b>${fmtDate(s.date)}</b><span>${s.sets.map(t => setStr(ex, t)).join(' · ')}</span>
       ${s.sets.filter(t => t.note).map(t => `<div class="notesum">📝 ${esc(t.note)}</div>`).join('')}</div>`).join('')}

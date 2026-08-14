@@ -85,6 +85,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .ex-last { margin-top: 8px; font-size: .9rem; background: var(--bg2); border-radius: 10px; padding: 9px 12px; }
 .ex-cue { margin-top: 8px; font-size: .85rem; color: var(--dim); font-style: italic; }
 
+.ex-why { margin-top: 8px; border: 1px solid #232c3a; border-radius: 10px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
+.ex-why-t { font-size: .8rem; font-weight: 700; color: var(--run); }
+.ex-why.open { border-color: var(--run); }
+.ex-why-body { margin-top: 6px; font-size: .88rem; line-height: 1.5; color: var(--fg); }
+
 .sets { margin: 14px 0 4px; }
 .setrow { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--bg2); border-radius: 10px; margin-bottom: 6px; font-size: .95rem; }
 .setrow.done { border: 1px solid var(--acc-d); }
