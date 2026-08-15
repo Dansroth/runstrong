@@ -84,6 +84,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
+const APP_VERSION = 'v15';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2349,7 +2350,7 @@ function vSettings() {
     <button class="btn big" onclick="showInstall(true)">📲 Add to Home Screen — how</button>
     <div class="section-label">Danger zone</div>
     <button class="btn danger big" onclick="resetAll()">Reset everything</button>
-    <div class="dim" style="text-align:center;margin-top:16px">RunStrong · schema v${SCHEMA_VERSION} · all data stays on this device</div>
+    <div class="dim" style="text-align:center;margin-top:16px">RunStrong <b>${APP_VERSION}</b> · schema v${SCHEMA_VERSION} · all data stays on this device</div>
   </main>${navBar()}`;
 }
 
