@@ -84,7 +84,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v16';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v17';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -374,7 +374,17 @@ let elapsedInterval = null;
 function render() {
   const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, history: vHistory, exdetail: vExDetail, settings: vSettings, stretch: vStretch, trends: vTrends };
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
-  APP.innerHTML = (views[view.name] || vHome)();
+  // a crashing view must never leave the app silently frozen — show what broke instead
+  try {
+    APP.innerHTML = (views[view.name] || vHome)();
+  } catch (err) {
+    APP.innerHTML = `<header class="top"><div class="phase">Something broke</div></header>
+      <main><div class="card deload"><div class="card-kicker">⚠️ This screen hit an error</div>
+        <div class="card-sub" style="user-select:text;-webkit-user-select:text">${esc(err.message)}${err.stack ? `<br><span class="dim small">${esc(String(err.stack).split('\n').slice(0, 2).join(' · ').slice(0, 200))}</span>` : ''}</div>
+        <div class="card-sub dim">Your data is safe. Screenshot this and send it to Dan's assistant. 🙂</div>
+        <button class="btn primary big" onclick="go('home')">Back to Today</button></div>
+      </main>${navBar()}`;
+  }
   // sheets float above the tab bar on tabbar views so nav stays tappable
   document.body.classList.toggle('has-tabbar', view.name !== 'session' && view.name !== 'stretch');
   bindNav();
@@ -1846,7 +1856,7 @@ function buildWeeklySummary(monday) {
     sessionsDone: doneSessions.length, planned, improvements, prs,
     hrvPts, hrvAvg: hrvAvg != null ? Math.round(hrvAvg) : null, hrvBase: base.ready ? Math.round(base.mean) : null,
     soreAvg: avg(sore), fatAvg: avg(fat), readLine, runKm: Math.round(runKm * 10) / 10, tonnes: Math.round(thisT / 100) / 10, note,
-    insight: topInsight() };
+    insight: (() => { try { return topInsight(); } catch (e) { return null; } })() };
 }
 function spark(vals, w, h) {
   if (!vals || vals.length < 2) return '';
@@ -2232,15 +2242,18 @@ function trajBars(traj) {
   </div>`).join('');
 }
 function vTrends() {
-  const traj = liftTrajectories();
-  const prsL = liftPRBook();
-  const rb = runBests();
-  const ef = efVerdict();
+  // every section computes independently — one bad analysis must not kill the tab
+  const safe = (fn, fallback) => { try { return fn(); } catch (e) { return typeof fallback === 'function' ? fallback(e) : fallback; } };
+  const traj = safe(liftTrajectories, []);
+  const prsL = safe(liftPRBook, []);
+  const rb = safe(runBests, null);
+  const ef = safe(efVerdict, { ready: false, n: 0, pts: [] });
+  const explErr = e => ({ ready: false, line: `This one hit an error (${e.message}) — the rest of the tab still works.` });
   const explorers = [
-    { icon: '🔻', title: 'Do red days pay off?', s: redDayStory() },
-    { icon: '🔁', title: 'Big weeks → next-week recovery', s: loadHrvLag() },
-    { icon: '🏃', title: 'Do long runs hurt your lifting?', s: runInterference() },
-    { icon: '⚖️', title: 'Same weight, less effort?', s: rpeDrift() },
+    { icon: '🔻', title: 'Do red days pay off?', s: safe(redDayStory, explErr) },
+    { icon: '🔁', title: 'Big weeks → next-week recovery', s: safe(loadHrvLag, explErr) },
+    { icon: '🏃', title: 'Do long runs hurt your lifting?', s: safe(runInterference, explErr) },
+    { icon: '⚖️', title: 'Same weight, less effort?', s: safe(rpeDrift, explErr) },
   ];
   const trajLine = !traj.length ? 'Log each lift 3+ times and its trajectory appears here.'
     : traj[0].pct >= 5 ? `${traj[0].name} leads the pack, up ${traj[0].pct}% in estimated strength.${traj[traj.length - 1].pct < 0 ? ` ${traj[traj.length - 1].name} is the laggard (${traj[traj.length - 1].pct}%) — worth a look.` : ''}`
@@ -2248,7 +2261,7 @@ function vTrends() {
   const retroReady = daysUntil(RACES[1].date) < 0 || ST.maintenance.active;
   return `<header class="top"><div class="phase">Trends</div></header>
   <main>
-    <div class="card insight"><div class="card-kicker">💡 Insight of the week</div><div class="card-sub">${topInsight()}</div></div>
+    <div class="card insight"><div class="card-kicker">💡 Insight of the week</div><div class="card-sub">${safe(topInsight, 'Insights are having a moment — the rest of the tab still works.')}</div></div>
 
     <div class="section-label">Strength trajectory</div>
     <div class="card"><div class="card-sub" style="margin-bottom:10px">${esc(trajLine)}</div>
