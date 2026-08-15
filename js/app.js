@@ -84,7 +84,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v17';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v18';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2271,7 +2271,7 @@ function vTrends() {
     <div class="card">${prsL.length ? `<div class="prb-h">🏋️ Lifts</div>` + prsL.map(p => `<div class="prb-row" onclick="go('exdetail',{ex:'${p.exId}',back:'trends'})">
         <span class="prb-name">${esc(p.name)}</span>
         <span class="prb-val">${p.maxW} kg × ${p.wReps}</span>
-        <span class="prb-sub">e1RM ${p.maxE.toFixed(1)} · ${fmtDate(p.eDate)}</span></div>`).join('')
+        <span class="prb-sub">${p.maxE > 0 ? `e1RM ${p.maxE.toFixed(1)} · ${fmtDate(p.eDate)}` : fmtDate(p.wDate)}</span></div>`).join('')
       : `<div class="card-sub">Your first logged lift starts the book.</div>`}
     ${rb ? `<div class="prb-h" style="margin-top:12px">🏃 Runs</div>
       ${rb.buckets.map(b => `<div class="prb-row"><span class="prb-name">${esc(b.label)}</span><span class="prb-val">${b.pace}</span><span class="prb-sub">${b.km} km · ${fmtDate(b.date)}</span></div>`).join('')}

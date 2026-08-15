@@ -256,7 +256,7 @@ Week 1 is a short intro (Thu–Sun) so the program starts right away without wai
 function dstr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function dadd(iso, days) { const [y, m, dd] = iso.split('-').map(Number); const d = new Date(y, m - 1, dd + days); return dstr(d); }
 function today() { return dstr(new Date()); }
-function fmtDate(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }); }
+function fmtDate(iso) { if (!iso) return '—'; const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }); }
 function daysUntil(iso) { const [y, m, d] = iso.split('-').map(Number); const t = new Date(); const a = new Date(y, m - 1, d); const b = new Date(t.getFullYear(), t.getMonth(), t.getDate()); return Math.round((a - b) / 86400000); }
 
 /* ---- program generation ---- */
