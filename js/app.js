@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 function defaultState() {
   return {
@@ -15,6 +15,8 @@ function defaultState() {
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     strava: { clientId: '', clientSecret: '', tokenUrl: '', auth: null, activities: {}, lastSync: null, includeOther: false },
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
+    races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, melbourne: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
+    maintenance: { active: false, startedOn: null },
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
@@ -43,6 +45,12 @@ const MIGRATIONS = {
     s.weeklySummaries = s.weeklySummaries || [];
     s.settings.disclaimerSeen = s.settings.disclaimerSeen || false;
     s.schemaVersion = 6; return s;
+  },
+  // 6 → 7: race kits + maintenance mode. Additive: races{}, maintenance{}.
+  6: (s) => {
+    s.races = s.races || { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, melbourne: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } };
+    s.maintenance = s.maintenance || { active: false, startedOn: null };
+    s.schemaVersion = 7; return s;
   },
 };
 
@@ -77,6 +85,13 @@ save(); // persist immediately so migrations and first-visit program generation 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function toast(msg, ms) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), ms || 3500);
+}
 
 function weekFor(date) {
   return ST.program.weeks.find(w => date >= w.days[0].date && date <= w.days[w.days.length - 1].date) || null;
@@ -351,7 +366,7 @@ function go(name, params) { view = Object.assign({ name }, params); render(); wi
 
 let elapsedInterval = null;
 function render() {
-  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, history: vHistory, exdetail: vExDetail, settings: vSettings, stretch: vStretch };
+  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, history: vHistory, exdetail: vExDetail, settings: vSettings, stretch: vStretch, trends: vTrends };
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   APP.innerHTML = (views[view.name] || vHome)();
   bindNav();
@@ -381,25 +396,60 @@ function navBar() {
     <button data-nav="home" onclick="go('home')"><span>🏠</span>Today</button>
     <button data-nav="schedule" onclick="go('schedule')"><span>📅</span>Plan</button>
     <button data-nav="history" onclick="go('history')"><span>📈</span>History</button>
+    <button data-nav="trends" onclick="go('trends')"><span>📊</span>Trends</button>
     <button data-nav="settings" onclick="go('settings')"><span>⚙️</span>Settings</button>
   </nav>`;
 }
 
 function raceCountdowns() {
+  if (ST.maintenance.active) return ''; // race clocks retired
   return `<div class="races">` + RACES.map(r => {
     const d = daysUntil(r.date);
-    const txt = d > 0 ? `${d} day${d === 1 ? '' : 's'}` : d === 0 ? 'TODAY 🏁' : 'done ✓';
+    const st = ST.races[r.key];
+    const txt = st.result ? `✓ ${st.result}` : d > 0 ? `${d} day${d === 1 ? '' : 's'}` : d === 0 ? 'TODAY 🏁' : 'done ✓';
     return `<div class="race ${r.tag === 'A race' ? 'arace' : ''}"><div class="race-name">${r.name}</div><div class="race-tag">${r.tag}</div><div class="race-count">${txt}</div></div>`;
   }).join('') + `</div>`;
+}
+
+/* race-week / post-race cards for the home screen */
+function raceExtraCards() {
+  if (ST.maintenance.active) return '';
+  let out = '';
+  const rw = activeRaceWeek();
+  if (rw) {
+    const r = raceInfo(rw); const st = raceState(rw);
+    const done = Object.values(st.checklist).filter(Boolean).length;
+    out += `<div class="card racekit" onclick="openChecklist('${rw}')"><div class="card-kicker">🏁 ${esc(r.name)} — race week</div><div class="card-sub">Checklist: ${done} of ${RACE_CHECKLIST.length} ticked. Tap to open.</div></div>`;
+  }
+  const ur = unloggedPastRace();
+  if (ur) {
+    const r = raceInfo(ur);
+    out += `<div class="card racekit"><div class="card-kicker">🏁 ${esc(r.name)} — how did it go?</div><div class="card-sub">Log your time and it'll sit next to what the app projected.</div><button class="btn primary big" onclick="openRaceResult('${ur}')">Log result</button></div>`;
+  }
+  for (const r of RACES) {
+    const st = raceState(r.key);
+    const d = daysUntil(r.date);
+    if (st.result && d < 0 && d >= -7) {
+      out += `<div class="card"><div class="card-kicker">🏁 ${esc(r.name)} result</div><div class="card-sub">${st.projAtRace ? `Projected ${esc(st.projAtRace)} → ran <b>${esc(st.result)}</b>.` : `Ran <b>${esc(st.result)}</b>.`}${st.feel ? ` Felt ${esc(st.feel)}.` : ''}${r.key === 'melbourne' ? ` <button class="mini" onclick="offerRecoveryMode()">What now?</button>` : ''}</div></div>`;
+    }
+  }
+  return out;
 }
 
 /* ---------- Home / Today ---------- */
 function vHome() {
   const t = today();
   const day = dayFor(t);
-  const phase = phaseLabel(t);
+  const phase = ST.maintenance.active ? (inRecoveryWeek() ? 'Recovery week' : 'Maintenance') : phaseLabel(t);
   let card = '';
   const active = ST.activeSessionId && ST.sessions[ST.activeSessionId];
+  if (ST.maintenance.active && !(active && active.status === 'active')) {
+    const hasData2 = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0;
+    const backupDue2 = hasData2 && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
+    const backupCard2 = backupDue2 ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
+    return `<header class="top"><div class="phase">${esc(phase)}</div></header>
+      <main>${maintenanceCard()}${backupCard2}</main>${navBar()}${installBanner()}`;
+  }
   if (active && active.status === 'active') {
     card = `<div class="card action" onclick="go('session')">
       <div class="card-kicker">Workout in progress</div>
@@ -409,7 +459,7 @@ function vHome() {
   } else if (!day) {
     card = t < ST.program.startDate
       ? `<div class="card"><div class="card-title">Program starts ${fmtDate(ST.program.startDate)}</div><div class="card-sub">Browse the plan meanwhile 👇</div></div>`
-      : `<div class="card"><div class="card-title">Program complete 🎉</div><div class="card-sub">Hope Melbourne went fast.</div></div>`;
+      : `<div class="card"><div class="card-title">Program complete 🎉</div><div class="card-sub">Hope Melbourne went fast.</div><button class="btn primary big" onclick="offerRecoveryMode()">What's next?</button></div>`;
   } else if (day.kind === 'lift') {
     const done = ST.sessions[t] && ST.sessions[t].status === 'done';
     card = done
@@ -428,7 +478,9 @@ function vHome() {
       : skippedManual
         ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openRunLog('${t}')">log anyway</button>`
         : `<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
-    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}</div>`;
+    const raceHere = day.kind === 'race' ? RACES.find(r => r.date === t) : null;
+    const raceBtn = raceHere && !ST.races[raceHere.key].result ? `<button class="btn big" onclick="openRaceResult('${raceHere.key}')" style="margin-top:8px">🏁 Log official result</button>` : '';
+    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}${raceBtn}</div>`;
   } else {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
@@ -439,7 +491,7 @@ function vHome() {
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this schedule?</button>`;
   return `<header class="top"><div class="phase">${esc(phase)}</div>${raceCountdowns()}</header>
-    <main>${radarCard}${card}${upNext(t)}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
+    <main>${raceExtraCards()}${radarCard}${card}${upNext(t)}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
 
 /* ---------- run logging ---------- */
@@ -960,6 +1012,96 @@ function upNext(t) {
     `<div class="upnext-row"><span class="upnext-date">${fmtDate(d.date)}</span><span class="upnext-title ${d.kind}">${d.kind === 'run' ? '🏃 ' : d.kind === 'race' ? '' : d.kind === 'lift' ? '🏋️ ' : ''}${esc(d.title)}</span></div>`).join('') + `</div>`;
 }
 
+/* ================= race kit + maintenance mode ================= */
+function raceState(key) { return ST.races[key]; }
+function raceInfo(key) { return RACES.find(r => r.key === key); }
+function activeRaceWeek() {
+  for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0 && d <= 6 && !raceState(r.key).result) return r.key; }
+  return null;
+}
+function unloggedPastRace() {
+  for (const r of RACES) { if (daysUntil(r.date) < 0 && !raceState(r.key).result) return r.key; }
+  return null;
+}
+window.openChecklist = function (key) {
+  const r = raceInfo(key); const st = raceState(key);
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>🏁 ${esc(r.name)} — race week</h2>
+    <div class="dim small" style="margin-bottom:10px">${daysUntil(r.date)} day${daysUntil(r.date) === 1 ? '' : 's'} out. Tick things off as the week goes.</div>
+    ${RACE_CHECKLIST.map((item, i) => `<label class="chk-row"><input type="checkbox" ${st.checklist[i] ? 'checked' : ''} onchange="ST.races['${key}'].checklist[${i}]=this.checked;save()"> <span>${esc(item)}</span></label>`).join('')}
+    <button class="btn primary big" onclick="closeModal()" style="margin-top:12px">Close</button></div>`;
+  m.classList.add('open');
+};
+window.openRaceResult = function (key) {
+  const r = raceInfo(key); const st = raceState(key);
+  const m = $('#modal');
+  const proj = raceProjection();
+  m.innerHTML = `<div class="sheet"><h2>🏁 ${esc(r.name)} — how did it go?</h2>
+    <div class="stepper"><div class="stepper-lbl">Finish time (h:mm:ss)</div>
+      <input id="race-time" class="notefield" inputmode="numeric" placeholder="1:56:32" value="${esc(st.result || '')}"></div>
+    <div class="stepper"><div class="stepper-lbl">How did it feel?</div><div class="rpes">
+      ${['strong', 'mixed', 'rough'].map(f => `<button class="rpe feel ${st.feel === f ? 'sel' : ''}" data-f="${f}" onclick="pickFeel('${f}')">${f === 'strong' ? '💪 strong' : f === 'mixed' ? '😐 mixed' : '😖 rough'}</button>`).join('')}</div></div>
+    <input id="race-note" class="notefield" placeholder="Anything worth remembering (optional)" value="${esc(st.note || '')}">
+    <button class="btn primary big" onclick="saveRaceResult('${key}')">Save result</button>
+    <button class="linkbtn" onclick="closeModal()">Later</button></div>`;
+  m.classList.add('open');
+  m.dataset.feel = st.feel || '';
+};
+window.saveRaceResult = function (key) {
+  const m = $('#modal');
+  const t = ($('#race-time').value || '').trim();
+  if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) { toast('Time as h:mm or h:mm:ss — e.g. 1:56:32'); return; }
+  const st = raceState(key);
+  st.result = t; st.feel = m.dataset.feel || null; st.note = ($('#race-note').value || '').trim();
+  st.projAtRace = raceProjection() ? raceProjection().range : null;
+  save(); closeModal(); render();
+  toast(`${raceInfo(key).name}: ${t} logged. ${st.projAtRace ? 'Projection was ' + st.projAtRace + '.' : ''} 🎉`);
+  if (key === 'melbourne') offerRecoveryMode();
+};
+function offerRecoveryMode() {
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
+    <p class="dim" style="line-height:1.6;margin-bottom:10px">Nine weeks, two races. Next: one guided recovery week, then maintenance mode — 3 flexible sessions a week, no race clock.</p>
+    ${RECOVERY_WEEK.map(l => `<div class="wksum-li">• ${esc(l)}</div>`).join('')}
+    <button class="btn primary big" onclick="startMaintenance()" style="margin-top:12px">Start recovery week → maintenance</button>
+    <button class="linkbtn" onclick="closeModal()">Not yet</button></div>`;
+  m.classList.add('open');
+}
+window.startMaintenance = function () {
+  ST.maintenance = { active: true, startedOn: today() };
+  save(); closeModal(); go('home');
+  toast('Maintenance mode on: recovery first, then 3 sessions a week, your pace.');
+};
+function inRecoveryWeek() {
+  if (!ST.maintenance.active || !ST.maintenance.startedOn) return false;
+  return daysUntil(dadd(ST.maintenance.startedOn, 7)) > 0 && today() >= ST.maintenance.startedOn;
+}
+function maintenanceCard() {
+  const t = today();
+  if (inRecoveryWeek()) {
+    const dayN = Math.max(1, Math.round((new Date(t + 'T12:00') - new Date(ST.maintenance.startedOn + 'T12:00')) / 86400000) + 1);
+    return `<div class="card run"><div class="card-kicker">Recovery week — day ${dayN} of 7</div>
+      <div class="card-sub">${esc(RECOVERY_WEEK[Math.min(dayN <= 2 ? 0 : dayN === 3 ? 1 : dayN === 4 ? 2 : dayN <= 6 ? 3 : 4, 4)])}</div>
+      ${dayN >= 3 && !(ST.sessions[t] && ST.sessions[t].status === 'done') ? `<button class="btn big" onclick="openReadiness('${t}','recoverySession')">Optional: Recovery session (~25 min)</button>` : ''}</div>`;
+  }
+  // regular maintenance: 3 sessions per calendar week (Mon-Sun), any order, any day
+  const dow = new Date(t + 'T12:00').getDay();
+  const monday = dadd(t, -( (dow + 6) % 7 ));
+  const doneThisWeek = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= monday && s.date <= dadd(monday, 6));
+  const usedTpls = new Set(doneThisWeek.map(s => s.tpl));
+  const options = ['maintLower', 'maintUpper', 'maintFull'].filter(tp => !usedTpls.has(tp));
+  const doneToday = ST.sessions[t] && ST.sessions[t].status === 'done';
+  // light run-awareness: a 12km+ run today or yesterday → suggest not-legs
+  const bigRun = [t, dadd(t, -1)].some(d => { const r = mergedRunFor(d); return r && r.km >= 12; });
+  const rec = options.find(tp => !(bigRun && tp === 'maintLower')) || options[0];
+  return `<div class="card action"><div class="card-kicker">Maintenance · ${doneThisWeek.length}/3 this week</div>
+    ${doneToday ? `<div class="card-sub">Done today ✓ — rest or go again tomorrow.</div>` : options.length ? `
+      ${bigRun && options.includes('maintLower') ? `<div class="card-sub dim">🏃 Long run in the legs — Upper or Full Body is the smarter pick today.</div>` : ''}
+      ${options.map(tp => `<button class="btn big ${tp === rec ? 'primary' : ''}" onclick="openReadiness('${t}','${tp}')" style="margin-top:8px">${esc(TEMPLATES[tp].title)} · ~${TEMPLATES[tp].est} min</button>`).join('')}` :
+    `<div class="card-sub">All 3 sessions done this week. 🎉 Anything more is bonus.</div>`}
+  </div>`;
+}
+
 /* ---------- readiness check ---------- */
 window.openReadiness = function (date, tpl) {
   ensureAudio();
@@ -1109,13 +1251,36 @@ function setStr(ex, t) {
 
 function stepper(id, label, val, step) {
   return `<div class="stepper">
-    <div class="stepper-lbl">${label}</div>
+    <div class="stepper-lbl">${label} <span class="dim" style="font-weight:400">· tap number to type</span></div>
     <div class="stepper-row">
       <button class="stepbtn" onclick="step_('${id}',-${step})">−</button>
-      <div class="stepval" id="v-${id}">${val}</div>
+      <div class="stepval" id="v-${id}" onclick="typeSetVal('${id}')">${val}</div>
       <button class="stepbtn" onclick="step_('${id}',${step})">+</button>
     </div></div>`;
 }
+/* tap-to-type: swap the value for a numeric input, commit on blur/enter */
+window.typeSetVal = function (id) {
+  const el = document.getElementById('v-' + id);
+  if (!el || el.tagName === 'INPUT') return;
+  const cur = el.textContent;
+  el.outerHTML = `<input class="stepval typeval" id="v-${id}" type="number" inputmode="decimal" step="any" value="${cur}">`;
+  const inp = document.getElementById('v-' + id);
+  inp.focus(); inp.select();
+  const commit = () => {
+    const s = ST.sessions[ST.activeSessionId]; if (!s) return;
+    const e = s.exercises[s.curIdx];
+    const cur2 = e.sets.findIndex(t => !t.done); if (cur2 === -1) return;
+    const v = parseFloat(inp.value);
+    if (!isNaN(v) && v >= 0) {
+      if (id === 'weight') e.sets[cur2].weight = Math.round(v * 100) / 100;
+      else e.sets[cur2].reps = Math.round(v);
+      save();
+    }
+    render();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); });
+};
 window.step_ = function (id, d) {
   ensureAudio();
   const s = ST.sessions[ST.activeSessionId]; const e = s.exercises[s.curIdx];
@@ -1352,11 +1517,65 @@ function vStretch() {
     </main>`;
 }
 
+/* ================= PR taxonomy + adherence ================= */
+/* PR types per exercise: weight (heaviest ever), reps (most reps at ≥ a given weight), e1RM. */
+function bestsBefore(exId, date) {
+  const hist = exHistory(exId, date);
+  let maxW = 0, maxE = 0;
+  const repsAt = {};   // weight → best reps at ≥ that weight
+  for (const h of hist) for (const t of h.sets) {
+    if (t.weight == null || !t.reps) continue;
+    maxW = Math.max(maxW, t.weight);
+    maxE = Math.max(maxE, e1rm(t.weight, t.reps, t.rpe));
+    repsAt[t.weight] = Math.max(repsAt[t.weight] || 0, t.reps);
+  }
+  return { maxW, maxE, repsAt, any: hist.length > 0 };
+}
+function sessionPRs(s) {
+  const out = [];
+  for (const e of s.exercises) {
+    const ex = EXERCISES[e.exId];
+    if (!ex || ex.mode === 'bw' || ex.mode === 'time' || ex.mode === 'carry') continue;
+    const done = e.sets.filter(t => t.done && t.weight != null && t.reps > 0);
+    if (!done.length) continue;
+    const b = bestsBefore(e.exId, s.date);
+    if (!b.any) continue;   // first exposure isn't a PR, it's a baseline
+    const topW = Math.max(...done.map(t => t.weight));
+    if (topW > b.maxW) out.push({ ex: ex.name, kind: 'weight', text: `${ex.name} — weight PR: ${topW} kg` });
+    for (const t of done) {
+      const prevBest = Math.max(0, ...Object.entries(b.repsAt).filter(([w]) => +w >= t.weight).map(([, r]) => r));
+      if (prevBest > 0 && t.reps > prevBest && t.weight <= b.maxW) { out.push({ ex: ex.name, kind: 'reps', text: `${ex.name} — rep PR: ${t.reps} reps @ ${t.weight} kg` }); break; }
+    }
+    const bestE = Math.max(...done.map(t => e1rm(t.weight, t.reps, t.rpe)));
+    if (bestE > b.maxE && b.maxE > 0) out.push({ ex: ex.name, kind: 'e1rm', text: `${ex.name} — e1RM PR: ${bestE.toFixed(1)} kg` });
+  }
+  return out;
+}
+/* adherence: planned lift days to date (program or maintenance) vs completed, + current streak */
+function adherence() {
+  const t = today();
+  if (ST.maintenance.active) {
+    // maintenance: 3/week since start
+    const weeks = Math.max(1, Math.ceil((new Date(t) - new Date(ST.maintenance.startedOn || t)) / (7 * 86400000)));
+    const done = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= (ST.maintenance.startedOn || t)).length;
+    return { done, planned: weeks * 3, streak: null };
+  }
+  const days = [];
+  for (const wk of ST.program.weeks) for (const d of wk.days) if (d.kind === 'lift' && d.date <= t) days.push(d.date);
+  const done = days.filter(d => ST.sessions[d] && ST.sessions[d].status === 'done').length;
+  let streak = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (ST.sessions[days[i]] && ST.sessions[days[i]].status === 'done') streak++;
+    else if (days[i] !== t) break;   // today's not-yet-done session doesn't break the streak
+  }
+  return { done, planned: days.length, streak };
+}
+
 /* ---------- summary ---------- */
 function vSummary() {
   const s = ST.sessions[view.sid];
   if (!s) return vHome();
-  let vol = 0, prs = [], rpeNow = [], rpePrev = [];
+  let vol = 0, rpeNow = [], rpePrev = [];
   for (const e of s.exercises) {
     const ex = EXERCISES[e.exId];
     const done = e.sets.filter(t => t.done);
@@ -1364,14 +1583,10 @@ function vSummary() {
       if (ex.mode === 'reps') vol += (t.weight || 0) * (t.reps || 0) * (ex.perSide ? 2 : 1);
       if (t.rpe != null) rpeNow.push(t.rpe);
     }
-    // PR check: best e1RM this session vs all history before
-    const bestNow = Math.max(0, ...done.map(t => e1rm(t.weight, t.reps, t.rpe)));
-    const hist = exHistory(e.exId, s.date);
-    const bestPrev = Math.max(0, ...hist.flatMap(h => h.sets.map(t => e1rm(t.weight, t.reps, t.rpe))));
-    if (bestNow > 0 && bestNow > bestPrev && hist.length) prs.push(`${ex.name} — e1RM ${bestNow.toFixed(1)} kg`);
-    const prev = hist[hist.length - 1];
+    const prev = exHistory(e.exId, s.date).slice(-1)[0];
     if (prev) prev.sets.forEach(t => { if (t.rpe != null) rpePrev.push(t.rpe); });
   }
+  const prs = sessionPRs(s).map(p => p.text);   // weight + rep + e1RM PRs
   const avg = a => a.length ? (a.reduce((x, y) => x + y, 0) / a.length) : null;
   const rN = avg(rpeNow), rP = avg(rpePrev);
   const mins = s.finishedTs && s.startedTs ? Math.round((s.finishedTs - s.startedTs) / 60000) : null;
@@ -1384,7 +1599,7 @@ function vSummary() {
       <div class="stat"><div class="stat-v">${rN ? rN.toFixed(1) : '—'}</div><div class="stat-l">avg RPE${rP ? ` (last: ${rP.toFixed(1)})` : ''}</div></div>
       <div class="stat"><div class="stat-v">${prs.length}</div><div class="stat-l">PRs</div></div>
     </div>
-    ${prs.length ? `<div class="card gold"><div class="card-kicker">🏆 New e1RM PRs</div>${prs.map(p => `<div class="pr">${esc(p)}</div>`).join('')}</div>` : ''}
+    ${prs.length ? `<div class="card gold"><div class="card-kicker">🏆 New PRs</div>${prs.map(p => `<div class="pr">${esc(p)}</div>`).join('')}</div>` : ''}
     ${s.exercises.map((e, ei) => {
       const ex = EXERCISES[e.exId];
       const done = e.sets.filter(t => t.done);
@@ -1427,7 +1642,9 @@ window.saveEditSets = function (sid, ei) {
 function vSchedule() {
   const t = today();
   const w = weekFor(t);
-  return `<header class="top"><div class="phase">${esc(phaseLabel(t))}</div>${raceCountdowns()}</header>
+  const ad = adherence();
+  return `<header class="top"><div class="phase">${esc(phaseLabel(t))}</div>${raceCountdowns()}
+    <div class="dim small" style="margin-top:6px">💪 ${ad.done} of ${ad.planned} sessions${ad.streak != null && ad.streak >= 2 ? ` · 🔥 ${ad.streak}-session streak` : ''}</div></header>
   <main>
   ${ST.program.weeks.map(wk => `
     <div class="wk ${w && wk.num === w.num ? 'cur' : ''}">
@@ -1532,7 +1749,7 @@ function vExDetail() {
     top: Math.max(...s.sets.map(t => t.weight || 0)),
     e1: Math.max(...s.sets.map(t => e1rm(t.weight, t.reps, t.rpe))),
   }));
-  return `<header class="top slim"><button class="backbtn" onclick="go('history')">‹</button><div class="phase">${esc(ex.name)}</div></header>
+  return `<header class="top slim"><button class="backbtn" onclick="go('${view.back === 'trends' ? 'trends' : 'history'}')">‹</button><div class="phase">${esc(ex.name)}</div></header>
   <main>
     ${ex.why ? `<div class="card"><div class="card-kicker">🎯 Why this helps your half</div>
       <div class="card-sub" style="color:var(--fg)">${esc(ex.why)}</div>
@@ -1549,7 +1766,7 @@ function buildWeeklySummary(monday) {
   const wk = ST.program.weeks.find(w => w.days[0].date === monday) || weekFor(monday);
   const inWeek = d => d >= monday && d <= sunday;
   const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && inWeek(s.date));
-  const planned = wk ? wk.days.filter(d => d.kind === 'lift').length : 4;
+  const planned = ST.maintenance.active ? 3 : wk ? wk.days.filter(d => d.kind === 'lift').length : 4;
   // strength movement vs LAST week
   const prevMon = dadd(monday, -7), prevSun = dadd(monday, -1);
   const topIn = (exId, from, to) => {
@@ -1614,12 +1831,14 @@ function buildWeeklySummary(monday) {
   let note = null;
   for (const s of doneSessions) for (const e of s.exercises) for (const t of e.sets) if (t.note && (!note || t.note.length > note.length)) note = t.note;
   for (const d of Object.keys(ST.runs)) if (inWeek(d) && ST.runs[d].note && (!note || ST.runs[d].note.length > note.length)) note = ST.runs[d].note;
-  return { weekOf: monday, phase: wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
-    nextPhase: nextWk ? `Week ${nextWk.num} — ${nextWk.phase}` : null, nextFocus,
+  return { weekOf: monday, phase: ST.maintenance.active ? 'Maintenance' : wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
+    nextPhase: ST.maintenance.active ? null : nextWk ? `Week ${nextWk.num} — ${nextWk.phase}` : null,
+    nextFocus: ST.maintenance.active ? 'maintenance — 3 sessions a week, your pace' : nextFocus,
     raceWeeks: Math.max(0, Math.ceil(raceDays / 7)),
     sessionsDone: doneSessions.length, planned, improvements, prs,
     hrvPts, hrvAvg: hrvAvg != null ? Math.round(hrvAvg) : null, hrvBase: base.ready ? Math.round(base.mean) : null,
-    soreAvg: avg(sore), fatAvg: avg(fat), readLine, runKm: Math.round(runKm * 10) / 10, tonnes: Math.round(thisT / 100) / 10, note };
+    soreAvg: avg(sore), fatAvg: avg(fat), readLine, runKm: Math.round(runKm * 10) / 10, tonnes: Math.round(thisT / 100) / 10, note,
+    insight: topInsight() };
 }
 function spark(vals, w, h) {
   if (!vals || vals.length < 2) return '';
@@ -1657,7 +1876,8 @@ function showWeeklySummary(sum, archived) {
       <div class="wksum-li dim">${esc(soreTxt)}</div>
       <div class="wksum-li">${esc(sum.readLine)}</div></div>
     <div class="wksum-block"><div class="wksum-h">The plan</div>
-      <div class="wksum-li">${sum.raceWeeks} week${sum.raceWeeks === 1 ? '' : 's'} to Melbourne. ${sum.nextPhase ? `Next: ${esc(sum.nextPhase)} — ${esc(sum.nextFocus)}.` : esc(sum.nextFocus)}</div></div>
+      <div class="wksum-li">${sum.phase === 'Maintenance' ? '' : `${sum.raceWeeks} week${sum.raceWeeks === 1 ? '' : 's'} to Melbourne. `}${sum.nextPhase ? `Next: ${esc(sum.nextPhase)} — ${esc(sum.nextFocus)}.` : esc(sum.nextFocus)}</div></div>
+    ${sum.insight ? `<div class="wksum-block insight"><div class="wksum-h">💡 Insight of the week</div><div class="wksum-li">${esc(sum.insight)}</div><button class="mini" onclick="closeWeeklySummary(${archived ? 'true' : 'false'});go('trends')">More in Trends →</button></div>` : ''}
     ${sum.note ? `<div class="wksum-block"><div class="wksum-h">In your words</div><div class="wksum-li">📝 “${esc(sum.note)}”</div></div>` : ''}
     <button class="btn primary big" onclick="closeWeeklySummary(${archived ? 'true' : 'false'})" style="margin-top:12px">${archived ? 'Close' : 'Nice — archive it'}</button>
   </div>`;
@@ -1806,6 +2026,275 @@ function svgChart(pts) {
   </svg></div>`;
 }
 
+/* ================= Trends tab ================= */
+function mondayOf(d) { const dow = new Date(d + 'T12:00').getDay(); return dadd(d, -((dow + 6) % 7)); }
+function tonnageIn(from, to) {
+  let v = 0;
+  for (const s of Object.values(ST.sessions)) {
+    if (s.status !== 'done' || s.date < from || s.date > to) continue;
+    for (const e of s.exercises) {
+      const ex = EXERCISES[e.exId]; if (!ex || ex.mode !== 'reps') continue;
+      for (const t of e.sets.filter(x => x.done)) v += (t.weight || 0) * (t.reps || 0) * (ex.perSide ? 2 : 1);
+    }
+  }
+  return v;
+}
+/* per-lift e1RM movement: early average vs recent average, ranked */
+function liftTrajectories() {
+  const out = [];
+  for (const exId of Object.keys(EXERCISES)) {
+    const ex = EXERCISES[exId]; if (ex.mode !== 'reps') continue;
+    const hist = exHistory(exId);
+    const vals = hist.map(h => Math.max(0, ...h.sets.map(t => e1rm(t.weight, t.reps, t.rpe)))).filter(v => v > 0);
+    if (vals.length < 3) continue;
+    const k = Math.max(1, Math.min(3, Math.floor(vals.length / 2)));
+    const first = vals.slice(0, k).reduce((a, b) => a + b, 0) / k;
+    const last = vals.slice(-k).reduce((a, b) => a + b, 0) / k;
+    if (!first) continue;
+    out.push({ exId, name: ex.name, pct: Math.round((last - first) / first * 1000) / 10, first, last, n: vals.length });
+  }
+  return out.sort((a, b) => b.pct - a.pct);
+}
+function liftPRBook() {
+  const out = [];
+  for (const exId of Object.keys(EXERCISES)) {
+    const ex = EXERCISES[exId]; if (ex.mode !== 'reps') continue;
+    let maxW = 0, wReps = 0, wDate = null, maxE = 0, eDate = null;
+    for (const h of exHistory(exId)) for (const t of h.sets) {
+      if (t.weight == null || !t.reps) continue;
+      if (t.weight > maxW || (t.weight === maxW && t.reps > wReps)) { maxW = t.weight; wReps = t.reps; wDate = h.date; }
+      const e1 = e1rm(t.weight, t.reps, t.rpe);
+      if (e1 > maxE) { maxE = e1; eDate = h.date; }
+    }
+    if (maxW > 0) out.push({ exId, name: ex.name, maxW, wReps, wDate, maxE, eDate });
+  }
+  return out.sort((a, b) => b.maxE - a.maxE);
+}
+function runBests() {
+  const merged = mergedRunsAll();
+  const runs = Object.keys(merged).map(d => ({ date: d, ...merged[d] })).filter(r => r.km >= 3 && r.min > 0);
+  if (!runs.length) return null;
+  const paceSec = r => r.min * 60 / r.km;
+  const bucket = (lo, hi, label) => {
+    const c = runs.filter(r => r.km >= lo && r.km < hi);
+    if (!c.length) return null;
+    const best = c.reduce((a, b) => paceSec(a) <= paceSec(b) ? a : b);
+    return { label, km: best.km, date: best.date, pace: paceStr(best.km, best.min) };
+  };
+  const longest = runs.reduce((a, b) => a.km >= b.km ? a : b);
+  const wkKm = {};
+  for (const r of runs) { const m = mondayOf(r.date); wkKm[m] = (wkKm[m] || 0) + r.km; }
+  const bigM = Object.keys(wkKm).sort((a, b) => wkKm[b] - wkKm[a])[0];
+  return {
+    buckets: [bucket(3, 8, 'Short (3–8 km)'), bucket(8, 14, 'Medium (8–14 km)'), bucket(14, 99, 'Long (14 km+)')].filter(Boolean),
+    longest, bigWeek: { monday: bigM, km: Math.round(wkKm[bigM] * 10) / 10 },
+  };
+}
+/* EF trend verdict from the same series the chart draws */
+function efVerdict() {
+  const pts = efSeries();
+  if (pts.length < 6) return { ready: false, n: pts.length, pts };
+  const vals = pts.map(p => p.ef);
+  const n = vals.length, xs = vals.map((_, i) => i);
+  const mx = (n - 1) / 2, my = vals.reduce((a, b) => a + b, 0) / n;
+  const slope = xs.reduce((a, xi, i) => a + (xi - mx) * (vals[i] - my), 0) / xs.reduce((a, xi) => a + (xi - mx) ** 2, 0);
+  const pct = Math.round(slope * (n - 1) / my * 1000) / 10;
+  const line = pct >= 2 ? `Your engine is getting more efficient: same heart rate now buys ~${pct}% more speed than when you started.`
+    : pct <= -2 ? `Aerobic efficiency has slipped ~${Math.abs(pct)}% across the block — heat, fatigue, or a heavy patch can all do this. Worth watching, not panicking.`
+    : `Aerobic efficiency is holding steady — the engine is idling where it was.`;
+  return { ready: true, pct, line, pts };
+}
+/* red-day efficacy: what happened the day after red guidance, by what you chose */
+function redDayStory() {
+  const reds = Object.values(ST.sessions).filter(s => s.status === 'done' && s.guidance && s.guidance.level === 'red');
+  if (reds.length < 2) return { ready: false, line: reds.length === 0 ? 'No red-flag days yet — good. When one comes, this will track whether backing off actually pays.' : 'One red day so far — need a couple more before comparing choices.' };
+  const groups = { lighter: [], full: [] };
+  for (const s of reds) {
+    const nd = fitnessEntries().find(e => e.date === dadd(s.date, 1) && e.hrv != null);
+    if (!nd) continue;
+    const base = hrvBaseline(nd.date);
+    if (!base.ready) continue;
+    groups[s.guidance.followed === 'lighter' ? 'lighter' : 'full'].push(nd.hrv - base.mean);
+  }
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const L = avg(groups.lighter), F = avg(groups.full);
+  if (L == null && F == null) return { ready: false, line: `${reds.length} red days logged, but no next-morning HRV to judge them by — the morning check-in feeds this.` };
+  if (L != null && F != null) {
+    const diff = Math.round((L - F) * 10) / 10;
+    return { ready: true, line: diff > 1.5 ? `Backing off works for you: next-morning HRV averaged ${diff} ms better after taking the lighter option than after pushing through.`
+      : diff < -1.5 ? `Interesting: pushing through red days hasn't cost you next-morning HRV so far (${Math.abs(diff)} ms better than backing off). Small sample — don't make it a habit.`
+      : `Lighter vs pushing through: next-morning HRV looks about the same either way so far (${groups.lighter.length + groups.full.length} red days).` };
+  }
+  const only = L != null ? 'lighter' : 'full';
+  return { ready: true, line: `On red days you've always ${only === 'lighter' ? 'taken the lighter option' : 'pushed through'} — next-morning HRV ran ${Math.abs(Math.round((L ?? F) * 10) / 10)} ms ${(L ?? F) >= 0 ? 'above' : 'below'} baseline after. No comparison yet.` };
+}
+/* load → next-week HRV: Pearson r on weekly combined load vs following week's HRV */
+function loadHrvLag() {
+  const firstDate = Object.keys(ST.sessions).sort()[0];
+  if (!firstDate) return { ready: false, line: 'Needs a few training weeks first.' };
+  const merged = mergedRunsAll();
+  const weeks = [];
+  for (let m = mondayOf(firstDate); m <= dadd(today(), -7); m = dadd(m, 7)) {
+    const sun = dadd(m, 6);
+    const ton = tonnageIn(m, sun);
+    const km = Object.keys(merged).filter(d => d >= m && d <= sun).reduce((a, d) => a + (merged[d].km || 0), 0);
+    const nxt = fitnessEntries().filter(e => e.date >= dadd(m, 7) && e.date <= dadd(m, 13) && e.hrv != null).map(e => e.hrv);
+    if ((ton > 0 || km > 0) && nxt.length >= 2) weeks.push({ ton, km, hrv: nxt.reduce((a, b) => a + b, 0) / nxt.length });
+  }
+  if (weeks.length < 4) return { ready: false, line: `Needs 4 weeks of load + HRV pairs to say anything honest (have ${weeks.length}).` };
+  const z = arr => { const mn = arr.reduce((a, b) => a + b, 0) / arr.length; const sd = Math.sqrt(arr.reduce((a, b) => a + (b - mn) ** 2, 0) / arr.length) || 1; return arr.map(v => (v - mn) / sd); };
+  const zt = z(weeks.map(w => w.ton)), zk = z(weeks.map(w => w.km));
+  const load = weeks.map((_, i) => zt[i] + zk[i]);
+  const hrv = weeks.map(w => w.hrv);
+  const zl = z(load), zh = z(hrv);
+  const r = zl.reduce((a, v, i) => a + v * zh[i], 0) / weeks.length;
+  const line = r <= -0.4 ? `Clear lag effect: your bigger training weeks tend to pull HRV down the week after (r=${r.toFixed(2)} over ${weeks.length} weeks). This is exactly why the taper gets lighter.`
+    : r >= 0.4 ? `You absorb load well: HRV has actually run higher after bigger weeks (r=${r.toFixed(2)}). Fitness is outpacing fatigue.`
+    : `No strong lag between weekly load and next-week HRV yet (r=${r.toFixed(2)} over ${weeks.length} weeks) — your recovery is keeping up.`;
+  return { ready: true, r, n: weeks.length, line };
+}
+/* run interference: set RPE on lift days that follow a long run vs other lift days */
+function runInterference() {
+  const dayAfterLong = [], other = [];
+  for (const s of Object.values(ST.sessions)) {
+    if (s.status !== 'done') continue;
+    const rpes = s.exercises.flatMap(e => e.sets.filter(t => t.done && t.rpe != null).map(t => t.rpe));
+    if (!rpes.length) continue;
+    const prev = mergedRunFor(dadd(s.date, -1));
+    (prev && prev.km >= 10 ? dayAfterLong : other).push(rpes.reduce((a, b) => a + b, 0) / rpes.length);
+  }
+  if (dayAfterLong.length < 3 || other.length < 3) return { ready: false, line: `Needs at least 3 lift sessions in each bucket — after a 10 km+ run: ${dayAfterLong.length}, other days: ${other.length}.` };
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const d = Math.round((avg(dayAfterLong) - avg(other)) * 10) / 10;
+  const line = d >= 0.5 ? `Long runs leak into the gym: sessions the day after a 10 km+ run feel ~${d} RPE harder at the same work. The schedule already keeps heavy legs off those days — that's why.`
+    : d <= -0.3 ? `Unusually, you lift slightly easier the day after long runs (${Math.abs(d)} RPE). Either you're a robot or the easy-day pacing is spot on.`
+    : `Long runs barely dent your lifting (${d >= 0 ? '+' : ''}${d} RPE the day after) — your legs recover fast.`;
+  return { ready: true, d, line };
+}
+/* RPE drift: same top weight in consecutive sessions — does it feel easier over time? */
+function rpeDrift() {
+  const deltas = [];
+  for (const exId of Object.keys(EXERCISES)) {
+    if (EXERCISES[exId].mode !== 'reps') continue;
+    const hist = exHistory(exId);
+    for (let i = 1; i < hist.length; i++) {
+      const topW = h => Math.max(0, ...h.sets.filter(t => t.weight != null).map(t => t.weight));
+      const w1 = topW(hist[i - 1]), w2 = topW(hist[i]);
+      if (!w1 || w1 !== w2) continue;
+      const rpeAt = (h, w) => { const r = h.sets.filter(t => t.weight === w && t.rpe != null).map(t => t.rpe); return r.length ? r.reduce((a, b) => a + b, 0) / r.length : null; };
+      const r1 = rpeAt(hist[i - 1], w1), r2 = rpeAt(hist[i], w2);
+      if (r1 != null && r2 != null) deltas.push(r2 - r1);
+    }
+  }
+  if (deltas.length < 5) return { ready: false, line: `Needs ~5 repeat-weight pairs to read (have ${deltas.length}). Keeps building as you train.` };
+  const d = Math.round(deltas.reduce((a, b) => a + b, 0) / deltas.length * 100) / 100;
+  const line = d <= -0.3 ? `The same weights are feeling easier: on repeat exposures, RPE drops ~${Math.abs(d)} on average. That's fitness you can't see on the bar yet.`
+    : d >= 0.3 ? `Repeat weights are feeling ~${d} RPE harder — accumulated fatigue talks like this. The deload radar and lighter days are your friends.`
+    : `Repeat weights feel about the same (${d >= 0 ? '+' : ''}${d} RPE) — steady state.`;
+  return { ready: true, d, n: deltas.length, line };
+}
+/* the single strongest thing the data says right now */
+function topInsight() {
+  const t = today();
+  const weekPRs = Object.values(ST.sessions)
+    .filter(s => s.status === 'done' && s.date >= mondayOf(t) && s.date <= t)
+    .flatMap(s => sessionPRs(s));
+  if (weekPRs.length) return `🏆 ${weekPRs.length} PR${weekPRs.length > 1 ? 's' : ''} this week — ${weekPRs[0].text}.`;
+  const traj = liftTrajectories();
+  if (traj.length && traj[0].pct >= 5) return `📈 Biggest mover: ${traj[0].name}, up ${traj[0].pct}% in estimated strength since your first sessions.`;
+  const ef = efVerdict();
+  if (ef.ready && Math.abs(ef.pct) >= 2) return `🫀 ${ef.line}`;
+  const lag = loadHrvLag();
+  if (lag.ready && Math.abs(lag.r) >= 0.4) return `🔁 ${lag.line}`;
+  const drift = rpeDrift();
+  if (drift.ready && Math.abs(drift.d) >= 0.3) return `⚖️ ${drift.line}`;
+  const inter = runInterference();
+  if (inter.ready && Math.abs(inter.d) >= 0.5) return `🏃 ${inter.line}`;
+  const ad = adherence();
+  if (ad.streak && ad.streak >= 4) return `🔥 ${ad.streak} planned sessions in a row without a miss. Consistency is the whole game.`;
+  if (traj.length) return `📈 ${traj[0].name} is your biggest mover so far (${traj[0].pct >= 0 ? '+' : ''}${traj[0].pct}%). More data sharpens this every week.`;
+  return `Keep logging — every session and morning check-in makes these insights sharper.`;
+}
+function trajBars(traj) {
+  const maxAbs = Math.max(5, ...traj.map(x => Math.abs(x.pct)));
+  return traj.map(x => `<div class="tj-row" onclick="go('exdetail',{ex:'${x.exId}',back:'trends'})">
+    <div class="tj-name">${esc(x.name)}</div>
+    <div class="tj-track"><div class="tj-bar ${x.pct >= 0 ? 'up' : 'down'}" style="width:${Math.min(100, Math.abs(x.pct) / maxAbs * 100)}%"></div></div>
+    <div class="tj-pct ${x.pct >= 0 ? 'up' : 'down'}">${x.pct >= 0 ? '+' : ''}${x.pct}%</div>
+  </div>`).join('');
+}
+function vTrends() {
+  const traj = liftTrajectories();
+  const prsL = liftPRBook();
+  const rb = runBests();
+  const ef = efVerdict();
+  const explorers = [
+    { icon: '🔻', title: 'Do red days pay off?', s: redDayStory() },
+    { icon: '🔁', title: 'Big weeks → next-week recovery', s: loadHrvLag() },
+    { icon: '🏃', title: 'Do long runs hurt your lifting?', s: runInterference() },
+    { icon: '⚖️', title: 'Same weight, less effort?', s: rpeDrift() },
+  ];
+  const trajLine = !traj.length ? 'Log each lift 3+ times and its trajectory appears here.'
+    : traj[0].pct >= 5 ? `${traj[0].name} leads the pack, up ${traj[0].pct}% in estimated strength.${traj[traj.length - 1].pct < 0 ? ` ${traj[traj.length - 1].name} is the laggard (${traj[traj.length - 1].pct}%) — worth a look.` : ''}`
+    : 'Strength is roughly holding across the board — during a running block, holding IS winning.';
+  const retroReady = daysUntil(RACES[1].date) < 0 || ST.maintenance.active;
+  return `<header class="top"><div class="phase">Trends</div></header>
+  <main>
+    <div class="card insight"><div class="card-kicker">💡 Insight of the week</div><div class="card-sub">${topInsight()}</div></div>
+
+    <div class="section-label">Strength trajectory</div>
+    <div class="card"><div class="card-sub" style="margin-bottom:10px">${esc(trajLine)}</div>
+      ${traj.length ? `<div class="tj-wrap">${trajBars(traj)}</div><div class="dim small" style="margin-top:6px">Estimated 1-rep max, early sessions vs recent. Tap a lift for its full chart.</div>` : ''}</div>
+
+    <div class="section-label">PR book</div>
+    <div class="card">${prsL.length ? `<div class="prb-h">🏋️ Lifts</div>` + prsL.map(p => `<div class="prb-row" onclick="go('exdetail',{ex:'${p.exId}',back:'trends'})">
+        <span class="prb-name">${esc(p.name)}</span>
+        <span class="prb-val">${p.maxW} kg × ${p.wReps}</span>
+        <span class="prb-sub">e1RM ${p.maxE.toFixed(1)} · ${fmtDate(p.eDate)}</span></div>`).join('')
+      : `<div class="card-sub">Your first logged lift starts the book.</div>`}
+    ${rb ? `<div class="prb-h" style="margin-top:12px">🏃 Runs</div>
+      ${rb.buckets.map(b => `<div class="prb-row"><span class="prb-name">${esc(b.label)}</span><span class="prb-val">${b.pace}</span><span class="prb-sub">${b.km} km · ${fmtDate(b.date)}</span></div>`).join('')}
+      <div class="prb-row"><span class="prb-name">Longest run</span><span class="prb-val">${rb.longest.km} km</span><span class="prb-sub">${fmtDate(rb.longest.date)}</span></div>
+      <div class="prb-row"><span class="prb-name">Biggest week</span><span class="prb-val">${rb.bigWeek.km} km</span><span class="prb-sub">wk of ${fmtDate(rb.bigWeek.monday)}</span></div>` : ''}</div>
+
+    <div class="section-label">Aerobic engine</div>
+    ${ef.ready ? `${efChart(ef.pts)}<div class="card"><div class="card-sub">${esc(ef.line)}</div></div>`
+      : `<div class="card"><div class="card-sub">Needs ${6 - ef.n} more runs with heart rate to read the engine trend (have ${ef.n}).</div></div>`}
+
+    <div class="section-label">Cause & effect</div>
+    ${explorers.map(x => `<div class="card explorer ${x.s.ready ? '' : 'dim-card'}"><div class="card-kicker">${x.icon} ${esc(x.title)}</div><div class="card-sub">${esc(x.s.line)}</div></div>`).join('')}
+
+    ${retroReady ? `<div class="section-label">The block</div>
+      <div class="card"><div class="card-sub">Nine weeks, two races — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}
+  </main>${navBar()}`;
+}
+/* one-shot post-block report */
+window.showRetro = function () {
+  const traj = liftTrajectories();
+  const ef = efVerdict();
+  const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done');
+  const merged = mergedRunsAll();
+  const totKm = Math.round(Object.values(merged).reduce((a, r) => a + (r.km || 0), 0) * 10) / 10;
+  const firstD = Object.keys(ST.sessions).sort()[0] || today();
+  const totTon = Math.round(tonnageIn(firstD, today()) / 100) / 10;
+  const raceLines = RACES.map(r => {
+    const st = ST.races[r.key];
+    if (!st.result) return `${r.name}: not logged.`;
+    return `${r.name}: ${st.result}${st.projAtRace ? ` (projected ${st.projAtRace})` : ''}${st.feel ? ` — felt ${st.feel}` : ''}.`;
+  });
+  const lifters = traj.slice(0, 5).map(x => `${x.name}: ${x.pct >= 0 ? '+' : ''}${x.pct}% e1RM`);
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>📜 The block, in numbers</h2>
+    <div class="wksum-sec"><div class="wksum-h">🏁 Races</div>${raceLines.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
+    <div class="wksum-sec"><div class="wksum-h">🏋️ Strength (est. 1RM change)</div>
+      ${lifters.length ? lifters.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('') : '<div class="wksum-li dim">Not enough repeat lifts to compare.</div>'}</div>
+    <div class="wksum-sec"><div class="wksum-h">🫀 Engine</div><div class="wksum-li">${esc(ef.ready ? ef.line : 'Not enough HR runs to score the engine.')}</div></div>
+    <div class="wksum-sec"><div class="wksum-h">📦 Totals</div>
+      <div class="wksum-li">${doneSessions.length} gym sessions · ${totTon} t lifted · ${totKm} km run</div></div>
+    <button class="btn primary big" onclick="closeModal()">Close</button></div>`;
+  m.classList.add('open');
+};
+
 /* ---------- settings ---------- */
 function vSettings() {
   return `<header class="top"><div class="phase">Settings</div></header>
@@ -1816,6 +2305,12 @@ function vSettings() {
       </select></div>
     <div class="set-row"><span>Rest chime</span><button class="toggle ${ST.settings.sound ? 'on' : ''}" onclick="ST.settings.sound=!ST.settings.sound;save();render()">${ST.settings.sound ? 'ON' : 'OFF'}</button></div>
     <div class="set-row"><span>Vibration</span><button class="toggle ${ST.settings.vibrate ? 'on' : ''}" onclick="ST.settings.vibrate=!ST.settings.vibrate;save();render()">${ST.settings.vibrate ? 'ON' : 'OFF'}</button></div>
+    <div class="section-label">Mode</div>
+    ${ST.maintenance.active
+      ? `<div class="dim small" style="margin-bottom:8px">Maintenance mode is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: 3 flexible gym sessions a week, no race clock.</div>
+         <button class="btn big" onclick="if(confirm('Switch back to the race program view?')){ST.maintenance={active:false,startedOn:null};save();render();}">Back to program mode</button>`
+      : `<div class="dim small" style="margin-bottom:8px">After Melbourne the app offers maintenance mode automatically — or start it any time here.</div>
+         <button class="btn big" onclick="if(confirm('Start maintenance mode? The race program view is replaced by 3 flexible sessions a week. You can switch back here any time.'))startMaintenance()">Start maintenance mode</button>`}
     <div class="section-label">Run sync</div>
     <div class="dim small" style="margin-bottom:8px">Import your runs from <b>Garmin Connect</b> (free): on connect.garmin.com go to Activities → All Activities → Export CSV, then load the file here. Re-imports skip runs it already knows.</div>
     <button class="btn primary big" onclick="document.getElementById('garminpick').click()">📥 Import Garmin CSV</button>
@@ -1963,6 +2458,7 @@ if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.acti
   view = { name: 'session' };
   acquireWakeLock();
 }
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});  // free eviction insurance
 render();
 if (ST.timer) runTimerLoop();
 stravaHandleCallback().then(handled => {

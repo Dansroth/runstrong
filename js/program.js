@@ -213,7 +213,32 @@ const TEMPLATES = {
   upperTaperB:   { title: 'Upper · Taper (optional)', est: 20, items: [['ohp', 2, 5], ['csrow', 2, 8], ['facepull', 2, 15]] },
   // Week 8 — race week primer
   primer:        { title: 'Full-Body Primer · Very light', est: 25, items: [['squat', 2, 5], ['bench', 2, 8], ['csrow', 2, 10], ['calfstand', 2, 10]] },
+  // Maintenance mode (post-Melbourne): 3 flexible sessions/week, ~40 min each
+  maintLower:    { title: 'Maintenance · Lower', est: 40, items: [['squat', 3, 5], ['rdl', 3, 6], ['bss', 3, 8], ['calfstand', 3, 10], ['copen', 3, 30]] },
+  maintUpper:    { title: 'Maintenance · Upper', est: 38, items: [['bench', 3, 5], ['csrow', 3, 8], ['ohp', 2, 6], ['pullup', 3, 6], ['pallof', 3, 12]] },
+  maintFull:     { title: 'Maintenance · Full Body', est: 42, items: [['hipthrust', 3, 8], ['incline', 3, 8], ['slrdl', 3, 8], ['dbrow', 3, 8], ['calfseat', 3, 12], ['abwheel', 3, 10]] },
+  // Post-race recovery week: one very light session, movement over load
+  recoverySession:{ title: 'Recovery · Move & Loosen', est: 25, items: [['glutebridge', 2, 10], ['pushup', 2, 8], ['bandpull', 2, 15], ['calfstand', 2, 10]] },
 };
+
+/* race-week checklist defaults (editable per race in-app) */
+const RACE_CHECKLIST = [
+  'Race kit laid out (shoes, socks, top, shorts, anti-chafe)',
+  'Bib collected / registration confirmed',
+  'Breakfast planned and tested (nothing new on race day)',
+  'Gels / fuel packed (~30-60g carbs per hour)',
+  'Hydration plan sorted (course drink stations checked)',
+  'Pacing plan set (check the app\'s projection — start conservative)',
+  'Transport & start-line logistics confirmed',
+  'Trust the taper: feeling flat this week is normal and temporary',
+];
+const RECOVERY_WEEK = [
+  'Day 1-2: walk, eat, sleep. Nothing else — the race is still in your legs.',
+  'Day 3: 20 minutes easy mobility or a gentle spin if you feel like moving.',
+  'Day 4: optional Recovery session in the app — light movement, zero grinding.',
+  'Day 5-6: easy short jog if the legs feel genuinely fresh; skip guilt-free.',
+  'Day 7: normal life resumes. Maintenance mode starts when you\'re ready.',
+];
 
 const WHY_SCHEDULE = `**Why this schedule?**
 
