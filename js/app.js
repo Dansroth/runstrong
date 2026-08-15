@@ -84,7 +84,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v15';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v16';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2348,6 +2348,7 @@ function vSettings() {
     <input type="file" id="importfile" accept=".json,application/json" style="display:none" onchange="importJSON(this)">
     <div class="section-label">Install</div>
     <button class="btn big" onclick="showInstall(true)">📲 Add to Home Screen — how</button>
+    <button class="btn big" onclick="checkForUpdates()">🔄 Check for app updates</button>
     <div class="section-label">Danger zone</div>
     <button class="btn danger big" onclick="resetAll()">Reset everything</button>
     <div class="dim" style="text-align:center;margin-top:16px">RunStrong <b>${APP_VERSION}</b> · schema v${SCHEMA_VERSION} · all data stays on this device</div>
@@ -2452,16 +2453,36 @@ window.go = go;
 window.skipRest = skipRest;
 document.addEventListener('click', ensureAudio, { once: true });
 /* update banner: new SW takes control (skipWaiting+claim) → offer one-tap reload */
+let swReg = null;
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(r => { swReg = r; r.update().catch(() => {}); }).catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) return; // first install, not an update
     if (document.getElementById('updatebar')) return;
     document.body.insertAdjacentHTML('beforeend',
       `<div class="updatebar" id="updatebar" onclick="location.reload()">⬆ App updated — tap to load the new version</div>`);
   });
+  // installed PWAs often resume from background without a cold start and never
+  // re-check for updates — so check every time the app comes to the foreground
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && swReg) swReg.update().catch(() => {});
+  });
 }
+window.checkForUpdates = async function () {
+  if (!('serviceWorker' in navigator)) { toast('Updates unavailable in this browser.'); return; }
+  toast('Checking for updates…');
+  try {
+    const r = swReg || await navigator.serviceWorker.getRegistration();
+    if (!r) { toast('Not installed as an app yet — updates apply on normal reload.'); return; }
+    await r.update();
+    setTimeout(() => {
+      if (document.getElementById('updatebar')) return;                    // banner already offering it
+      if (r.installing || r.waiting) toast('Update found — installing. The banner will appear in a moment.');
+      else toast(`You're on the latest version (${APP_VERSION}).`);
+    }, 2500);
+  } catch (e) { toast('Update check failed — are you online?'); }
+};
 if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.activeSessionId].status === 'active') {
   view = { name: 'session' };
   acquireWakeLock();
