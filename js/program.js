@@ -144,6 +144,52 @@ for (const id in INSIGHTS) if (EXERCISES[id]) Object.assign(EXERCISES[id], INSIG
 /* generic taper-phase line (exercise-specific taperWhy overrides if present) */
 const TAPER_WHY = 'Taper mode: today is about keeping this pattern sharp, not building it — light, crisp, done. Race legs are the priority.';
 
+/* =====================================================================
+   STRETCH LIBRARY + MUSCLE MAP (post-session routine)
+   MUSCLE_MAP: exId → muscle tags used to weight the routine toward what
+   you actually trained. Tags: quads glutes hams calves adductors hipflex
+   chest back shoulders core. Add a mapping when adding an exercise.
+   ===================================================================== */
+const MUSCLE_MAP = {
+  squat:['quads','glutes'], frontsquat:['quads','glutes','core'], hacksquat:['quads','glutes'], legpress:['quads','glutes'],
+  bss:['quads','glutes','adductors'], revlunge:['quads','glutes'], stepup:['quads','glutes'],
+  slrdl:['hams','glutes'], bstance:['hams','glutes'], cableslrdl:['hams','glutes'],
+  rdl:['hams','glutes','back'], trapbar:['hams','glutes','back'], goodmorning:['hams','back'],
+  hipthrust:['glutes'], slhipthrust:['glutes'], glutebridge:['glutes'],
+  calfstand:['calves'], slcalf:['calves'], lpcalf:['calves'], calfseat:['calves'], bkcalfpress:['calves'],
+  copen:['adductors','core'], sideplank:['core','glutes'], adductor:['adductors'],
+  boxjump:['calves','quads'], broadjump:['glutes','quads'], depthdrop:['quads','calves'],
+  bench:['chest','shoulders'], dbbench:['chest','shoulders'], machpress:['chest','shoulders'],
+  incline:['chest','shoulders'], incmach:['chest','shoulders'], pushup:['chest','core'],
+  pullup:['back'], latpull:['back'], assistpull:['back'],
+  dbrow:['back'], csrow:['back'], cablerow:['back'], sealrow:['back'],
+  ohp:['shoulders'], landmine:['shoulders','core'], dbshoulder:['shoulders'],
+  facepull:['shoulders','back'], revpec:['shoulders','back'], bandpull:['shoulders','back'],
+  pallof:['core'], cablechop:['core'], bandpallof:['core'],
+  carry:['core','back'], safarmer:['core','back'],
+  abwheel:['core','hipflex'], hangraise:['core','hipflex'], cablecrunch:['core'],
+};
+/* Stretches: written for someone tired at the end of a session — short sentences,
+   no jargon. hold = seconds (per side when perSide). */
+const STRETCHES = [
+  { id:'st-calf-wall', name:'Calf stretch (wall)', muscles:['calves'], perSide:true, hold:40, instr:'Hands on a wall. Step one foot back. Keep that leg straight, heel on the floor. Lean in until the calf pulls.' },
+  { id:'st-soleus', name:'Bent-knee calf stretch', muscles:['calves'], perSide:true, hold:30, instr:'Same wall position, back foot a bit closer. Now bend the back knee, heel down. You\'ll feel it lower, near the Achilles.' },
+  { id:'st-hipflex', name:'Kneeling hip flexor stretch', muscles:['hipflex'], perSide:true, hold:40, instr:'Kneel on one knee, other foot in front. Tuck your tailbone under, then shift your hips forward a little. Feel the front of the hip on the kneeling side.' },
+  { id:'st-fig4', name:'Figure-4 glute stretch', muscles:['glutes'], perSide:true, hold:40, instr:'Lie on your back. Cross one ankle over the other knee. Reach through and pull the bottom thigh toward your chest.' },
+  { id:'st-pigeon-seat', name:'Seated glute stretch', muscles:['glutes'], perSide:true, hold:35, instr:'Sit on a bench or chair. Ankle over the opposite knee. Sit tall, then lean forward slowly until the outside of the hip pulls.' },
+  { id:'st-ham-lying', name:'Lying hamstring stretch', muscles:['hams'], perSide:true, hold:40, instr:'Lie on your back. Lift one leg, hands behind the thigh. Keep the knee nearly straight and pull gently toward you.' },
+  { id:'st-quad', name:'Standing quad stretch', muscles:['quads'], perSide:true, hold:35, instr:'Stand tall, hold something if you need to. Grab your ankle behind you. Knees together, tailbone tucked. Feel the front of the thigh.' },
+  { id:'st-butterfly', name:'Butterfly stretch', muscles:['adductors'], perSide:false, hold:40, instr:'Sit down, soles of your feet together. Let your knees fall toward the floor. Lean forward slowly with a long back.' },
+  { id:'st-childpose', name:'Child\'s pose', muscles:['back','shoulders'], perSide:false, hold:45, instr:'Kneel, knees wide, sit back toward your heels. Walk your hands forward and let your chest sink. Breathe slow into your back.' },
+  { id:'st-twist', name:'Lying spinal twist', muscles:['back','core'], perSide:true, hold:35, instr:'Lie on your back. Bring one knee across your body toward the floor. Arms wide, look the other way. Let gravity do it.' },
+  { id:'st-doorway', name:'Doorway chest stretch', muscles:['chest'], perSide:true, hold:30, instr:'Forearm on a door frame, elbow at shoulder height. Step through gently until the chest opens. Don\'t force it.' },
+  { id:'st-crossbody', name:'Cross-body shoulder stretch', muscles:['shoulders'], perSide:true, hold:30, instr:'Bring one arm across your chest. Use the other arm to hug it in. Keep the shoulder down away from your ear.' },
+  { id:'st-latreach', name:'Overhead side reach', muscles:['back','shoulders'], perSide:true, hold:30, instr:'Stand, one arm overhead. Lean sideways away from that arm. One long line from hip to fingertips.' },
+  { id:'st-knees-chest', name:'Knees to chest', muscles:['back','glutes'], perSide:false, hold:35, instr:'Lie on your back. Hug both knees in. Rock gently side to side if that feels good.' },
+  { id:'st-cobra', name:'Cobra stretch', muscles:['core','hipflex'], perSide:false, hold:35, instr:'Lie face down, hands under your shoulders. Push your chest up, hips stay on the floor. Stop where it feels good.' },
+  { id:'st-downdog-calf', name:'Down-dog calf pedal', muscles:['calves','hams'], perSide:false, hold:40, instr:'Hands and feet on the floor, hips high like a triangle. Slowly pedal your heels toward the floor, one at a time.' },
+];
+
 /* Session templates. items: [exId, sets, reps] — reps is per side for perSide, seconds for 'time', metres for 'carry'. */
 const TEMPLATES = {
   /* build-phase sessions extended after week-1 feedback (finished in ~20 min):

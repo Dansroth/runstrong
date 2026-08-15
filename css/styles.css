@@ -85,6 +85,21 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .ex-last { margin-top: 8px; font-size: .9rem; background: var(--bg2); border-radius: 10px; padding: 9px 12px; }
 .ex-cue { margin-top: 8px; font-size: .85rem; color: var(--dim); font-style: italic; }
 
+/* readiness guidance */
+.guide { border-radius: 12px; padding: 13px 15px; margin-top: 12px; font-size: .92rem; line-height: 1.5; font-weight: 600; }
+.guide.green { background: rgba(74,222,128,.12); border: 1px solid var(--acc); }
+.guide.amber { background: rgba(251,146,60,.12); border: 1px solid var(--warn); }
+.guide.red { background: rgba(248,113,113,.12); border: 1px solid var(--red); }
+.guide-why { font-weight: 400; font-size: .8rem; color: var(--dim); margin-top: 6px; }
+/* stretch flow */
+.stretch-count { font-size: 4.5rem; font-weight: 900; color: var(--acc); font-variant-numeric: tabular-nums; margin: 18px 0 6px; }
+.stretch-instr { font-size: 1.05rem; line-height: 1.65; color: var(--fg); max-width: 340px; margin: 0 auto; }
+/* weekly summary */
+.wksum-row { font-size: 1rem; background: var(--bg3); border-radius: 10px; padding: 10px 13px; margin-bottom: 6px; }
+.wksum-block { margin-top: 12px; }
+.wksum-h { font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 800; margin-bottom: 4px; }
+.wksum-li { font-size: .92rem; padding: 2px 0; }
+
 .ex-why { margin-top: 8px; border: 1px solid #232c3a; border-radius: 10px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
 .ex-why-t { font-size: .8rem; font-weight: 700; color: var(--run); }
 .ex-why.open { border-color: var(--run); }
