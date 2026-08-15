@@ -279,3 +279,6 @@ input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit
 .tabbar button { font-size: .66rem; }
 #toast { position: fixed; left: 50%; transform: translateX(-50%) translateY(20px); bottom: calc(86px + env(safe-area-inset-bottom)); background: var(--bg3); border: 1px solid var(--acc-d); color: var(--fg); border-radius: 12px; padding: 11px 16px; font-size: .86rem; line-height: 1.45; max-width: 92vw; width: max-content; z-index: 60; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* v14: nav stays tappable while a prompt sheet is open */
+.tabbar { z-index: 55; }
+body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-bottom)); border-radius: 20px; }

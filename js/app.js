@@ -362,13 +362,20 @@ function isTaperPhase(date) {
   return !!w && /taper|race week/i.test(w.phase);
 }
 
-function go(name, params) { view = Object.assign({ name }, params); render(); window.scrollTo(0, 0); }
+function go(name, params) {
+  // a nav tap should always win: close any open prompt sheet (it re-offers next app open)
+  const m = $('#modal');
+  if (m && m.classList.contains('open')) { m.classList.remove('open'); m.innerHTML = ''; }
+  view = Object.assign({ name }, params); render(); window.scrollTo(0, 0);
+}
 
 let elapsedInterval = null;
 function render() {
   const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, history: vHistory, exdetail: vExDetail, settings: vSettings, stretch: vStretch, trends: vTrends };
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   APP.innerHTML = (views[view.name] || vHome)();
+  // sheets float above the tab bar on tabbar views so nav stays tappable
+  document.body.classList.toggle('has-tabbar', view.name !== 'session' && view.name !== 'stretch');
   bindNav();
   if (keepScroll !== null) window.scrollTo(0, keepScroll);
   // live session clock (⏱ elapsed) — one lightweight interval while a workout is on screen
@@ -2459,6 +2466,8 @@ if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.acti
   acquireWakeLock();
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});  // free eviction insurance
+// tapping the dimmed backdrop dismisses any prompt sheet (it re-offers next open)
+$('#modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 render();
 if (ST.timer) runTimerLoop();
 stravaHandleCallback().then(handled => {
