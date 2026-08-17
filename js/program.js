@@ -9,6 +9,16 @@ const RACES = [
 const PROGRAM_START = '2026-08-13'; // Thursday — partial intro week 1
 const WEEK2_MONDAY = '2026-08-17';  // full Mon–Sun weeks from here, anchored to race Sundays
 
+/* ---- weight increment (single source of truth) ----
+   Every stepper, rounding and auto-progression increment in the app derives from
+   ST.settings.step, which defaults to WEIGHT_STEP_DEFAULT. 1 kg rather than the
+   classic 2.5 kg plate jump: during a running block the aim is the smallest
+   overload that still counts, so load creeps up without punching RPE past the
+   target band (a 2.5 kg jump on a 40 kg lift is +6%, which reliably overshoots).
+   Change the default here and the whole app follows. */
+const WEIGHT_STEP_DEFAULT = 1;
+const WEIGHT_STEP_CHOICES = [0.5, 1, 2.5, 5];
+
 /*
  mode: 'reps' (weight x reps), 'time' (seconds per side/set), 'carry' (weight x metres), 'bw' (bodyweight reps)
  group: 'lower' | 'upper'  → progression aggressiveness
@@ -169,6 +179,13 @@ const MUSCLE_MAP = {
   carry:['core','back'], safarmer:['core','back'],
   abwheel:['core','hipflex'], hangraise:['core','hipflex'], cablecrunch:['core'],
 };
+/* "Get ready" gap before every hold: the next stretch is shown while this counts
+   down, so you have time to get on the floor and into position before the hold
+   timer starts. Applies to every stretch AND to each side of a per-side stretch
+   (swapping legs is its own setup). Budgeting in buildStretchRoutine() and the
+   "time left" readout both derive from this, so the routine estimate stays honest. */
+const STRETCH_SETUP_SECS = 10;
+
 /* Stretches: written for someone tired at the end of a session — short sentences,
    no jargon. hold = seconds (per side when perSide). */
 const STRETCHES = [
@@ -199,18 +216,27 @@ const TEMPLATES = {
   lowerB:        { title: 'Lower B · Heavy', est: 50, items: [['boxjump', 3, 3], ['squat', 5, 4], ['rdl', 4, 6], ['hipthrust', 3, 8], ['calfseat', 4, 12]] },
   upperA:        { title: 'Upper A', est: 45, items: [['bench', 5, 5], ['pullup', 5, 6], ['dbrow', 4, 8], ['pallof', 3, 12], ['carry', 4, 30]] },
   upperB:        { title: 'Upper B', est: 45, items: [['ohp', 5, 5], ['csrow', 4, 8], ['incline', 4, 8], ['facepull', 4, 15], ['abwheel', 4, 10]] },
-  // Week 5 — Geelong mini-taper (~40% lower volume, no plyo, nothing heavy after Tue)
-  lowerTaperG:   { title: 'Lower · Geelong taper', est: 25, items: [['bss', 2, 6], ['slrdl', 2, 6], ['calfstand', 2, 8], ['copen', 2, 20]] },
-  upperLight:    { title: 'Upper · Light', est: 25, items: [['bench', 3, 5], ['pullup', 3, 5], ['pallof', 2, 10]] },
-  upperLightB:   { title: 'Upper · Light', est: 25, items: [['ohp', 3, 5], ['csrow', 3, 8], ['facepull', 2, 15]] },
+  /* TAPER VOLUME — sized from Bosquet et al. 2007 (see PROGRESSION ENGINE header,
+     ref [4]): the biggest performance gains came from cutting training VOLUME by
+     roughly 41-60% while HOLDING intensity and frequency. So taper templates keep
+     the same rep schemes and loads (the progression engine freezes the load) and
+     cut sets only. Peak build week is 81 sets; the taper weeks below land at
+     32-34, i.e. a 58-60% cut — the deep end of the band, because these weeks have
+     only three lift days (the fourth slot is race-eve mobility). Nothing new is
+     introduced in a taper week by design. */
+  // Geelong (B race) mini-taper — no plyo, nothing heavy after Tue
+  lowerTaperG:   { title: 'Lower · Geelong taper', est: 32, items: [['bss', 3, 6], ['slrdl', 2, 6], ['calfstand', 3, 8], ['copen', 2, 20]] },
+  upperLight:    { title: 'Upper · Light', est: 32, items: [['bench', 4, 5], ['pullup', 4, 5], ['pallof', 3, 10]] },
+  upperLightB:   { title: 'Upper · Light', est: 32, items: [['ohp', 4, 5], ['csrow', 4, 8], ['facepull', 3, 15]] },
   // Week 6 — rebuild
   lowerFinal:    { title: 'Lower · Final stimulus', est: 35, items: [['squat', 3, 5], ['rdl', 2, 6], ['hipthrust', 2, 8], ['calfseat', 2, 12]] },
   upperMod:      { title: 'Upper · Moderate', est: 30, items: [['ohp', 3, 5], ['csrow', 3, 8], ['incline', 2, 8], ['abwheel', 2, 10]] },
-  // Week 7 — taper (−40–50% volume, touch of intensity, no plyo)
-  lowerTaperA:   { title: 'Lower · Taper', est: 25, items: [['bss', 2, 6], ['slrdl', 2, 6], ['calfstand', 2, 8]] },
-  lowerTaperB:   { title: 'Lower · Taper (crisp)', est: 22, items: [['squat', 2, 3], ['calfseat', 2, 10]] },
-  upperTaperA:   { title: 'Upper · Taper', est: 22, items: [['bench', 3, 4], ['pullup', 3, 5], ['pallof', 2, 10]] },
-  upperTaperB:   { title: 'Upper · Taper (optional)', est: 20, items: [['ohp', 2, 5], ['csrow', 2, 8], ['facepull', 2, 15]] },
+  // Melbourne taper week — volume ~58% down on peak, intensity untouched (heavy
+  // triples stay heavy triples), no plyo. Four lift days here, 34 sets total. [4]
+  lowerTaperA:   { title: 'Lower · Taper', est: 30, items: [['bss', 3, 6], ['slrdl', 2, 6], ['calfstand', 3, 8], ['copen', 2, 20]] },
+  lowerTaperB:   { title: 'Lower · Taper (crisp)', est: 26, items: [['squat', 3, 3], ['calfseat', 3, 10]] },
+  upperTaperA:   { title: 'Upper · Taper', est: 28, items: [['bench', 4, 4], ['pullup', 3, 5], ['pallof', 3, 10]] },
+  upperTaperB:   { title: 'Upper · Taper (optional)', est: 24, items: [['ohp', 3, 5], ['csrow', 3, 8], ['facepull', 2, 15]] },
   // Week 8 — race week primer
   primer:        { title: 'Full-Body Primer · Very light', est: 25, items: [['squat', 2, 5], ['bench', 2, 8], ['csrow', 2, 10], ['calfstand', 2, 10]] },
   // Maintenance mode (post-Melbourne): 3 flexible sessions/week, ~40 min each
@@ -235,12 +261,12 @@ const RACE_CHECKLIST = [
 const RECOVERY_WEEK = [
   'Day 1-2: walk, eat, sleep. Nothing else — the race is still in your legs.',
   'Day 3: 20 minutes easy mobility or a gentle spin if you feel like moving.',
-  'Day 4: optional Recovery session in the app — light movement, zero grinding.',
+  'Day 4: optional Recovery workout in the app — light movement, zero grinding.',
   'Day 5-6: easy short jog if the legs feel genuinely fresh; skip guilt-free.',
   'Day 7: normal life resumes. Maintenance mode starts when you\'re ready.',
 ];
 
-const WHY_SCHEDULE = `**Why this schedule?**
+const WHY_SCHEDULE = `**Why this plan?**
 
 Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat around them:
 
@@ -250,7 +276,9 @@ Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat
 
 • **Tue & Sat are upper days** — they sit directly before the Wed hard run and Sun long run, so no fresh leg fatigue is carried into either key run.
 
-Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 mini-tapers into Geelong (B race). Week 7 recovers, then one final lower session Thursday — the last real leg stimulus. Weeks 8–9 taper into Melbourne (A race): volume drops 40–50%, a touch of intensity stays so you don't feel flat.`;
+Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 mini-tapers into Geelong (B race). Week 7 recovers, then one final lower session Thursday — the last real leg stimulus. Weeks 8–9 taper into Melbourne (A race).
+
+**The taper rule:** cut the volume, keep the weights. Taper weeks drop to about 40% of peak sets (a ~60% cut) while the heavy triples stay heavy — that's the combination the tapering research backs, and it's why the app stops suggesting load increases in taper weeks instead of making the sessions feel easy. Race week is a primer only.`;
 
 /* ---- date helpers (local time) ---- */
 function dstr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -318,51 +346,239 @@ function buildProgram() {
   return { startDate: PROGRAM_START, weeks };
 }
 
-/* ---- progression engine ---- */
+/* =====================================================================
+   PROGRESSION ENGINE — RPE autoregulation × program phase
+   =====================================================================
+   Evidence base. Each rule below cites the number(s) it rests on, so a future
+   change can be checked against the same literature rather than vibes.
+
+   [1] Zourdos MC, Klemp A, Dolan C, et al. "Novel Resistance Training-Specific
+       Rating of Perceived Exertion Scale Measuring Repetitions in Reserve."
+       J Strength Cond Res. 2016;30(1):267-275.
+       → RPE maps to reps-in-reserve (RPE 10 = failure, RPE 8 ≈ 2 RIR). The gap
+         between logged RPE and target RPE is therefore a meaningful estimate of
+         how much load was left on the table, and is what drives load changes here.
+   [2] Helms ER, Cronin J, Storey A, Zourdos MC. "Application of the Repetitions
+       in Reserve-Based Rating of Perceived Exertion Scale for Resistance
+       Training." Strength Cond J. 2016;38(4):42-49.
+       → autoregulation: set the next session's load from the last session's
+         RPE/RIR rather than from a fixed percentage schedule, because readiness
+         varies day to day. This engine is that idea, per exercise variant.
+   [3] ACSM Position Stand. "Progression Models in Resistance Training for Healthy
+       Adults." Med Sci Sports Exerc. 2009;41(3):687-708.
+       → when the target reps are met with reps to spare, add roughly 2-10% load,
+         at the smaller end for upper body / small muscle groups. Hence the
+         asymmetric lower-vs-upper increment percentages below.
+   [4] Bosquet L, Montpetit J, Arvisais D, Mujika I. "Effects of tapering on
+       performance: a meta-analysis." Med Sci Sports Exerc. 2007;39(8):1358-1365.
+       → the largest performance gains came from a ~2-week taper that cut TRAINING
+         VOLUME by roughly 41-60% while HOLDING intensity and frequency. So in
+         taper phases: volume is cut by the session templates, and the load is
+         held — never increased, never trimmed unless something went wrong.
+   [5] Balsalobre-Fernández C, Santos-Concejero J, Grivas GV. "Effects of Strength
+       Training on Running Economy in Highly Trained Runners: A Systematic Review
+       With Meta-Analysis." J Strength Cond Res. 2016;30(8):2361-2368.
+   [6] Blagrove RC, Howatson G, Hayes PR. "Effects of Strength Training on the
+       Physiological Determinants of Middle- and Long-Distance Running
+       Performance: A Systematic Review." Sports Med. 2018;48(5):1117-1149.
+       → [5][6] heavy, low-rep strength work plus plyometrics improves running
+         economy; high-rep hypertrophy work is not the mechanism. Consequence for
+         this engine: progression goes into LOAD, and reps are always handed back
+         unchanged from the template. Adding reps would drift a runner's session
+         toward hypertrophy and away from the adaptation being bought.
+   [7] Rønnestad BR, Mujika I. "Optimizing strength training for running and
+       cycling endurance performance: a review." Scand J Med Sci Sports.
+       2014;24(4):603-612.
+       → heavy strength training complements endurance training provided running
+         stays the priority. Hence: when RPE runs over target, hold or back off
+         rather than push through, and say so out loud.
+   [8] Rhea MR, Ball SD, Phillips WT, Burkett LN. "A comparison of linear and
+       daily undulating periodized programs with equated volume and intensity for
+       strength." J Strength Cond Res. 2002;16(2):250-255.
+       → PERIODISATION CHOICE: daily-undulating (DUP) beat linear at equated
+         volume/intensity. This program is already undulating within the week —
+         Monday Lower A is light/single-leg at 8-10 reps, Thursday Lower B is
+         heavy at 4-6 reps; Upper A and Upper B likewise differ. So progression is
+         applied PER EXERCISE VARIANT against that variant's own history (see
+         exHistory in app.js): the light day never inherits the heavy day's jump,
+         and each slot undulates on its own track. That is the DUP model, and it
+         is what the existing schedule already implies — a linear model would have
+         required flattening the week, which would cost the runner the light day
+         that protects the Sunday long run.
+
+   VOLUME periodisation lives in TEMPLATES (sets × reps per phase), per [4].
+   LOAD  periodisation lives here.
+   ===================================================================== */
+
 function roundToStep(w, step) { return Math.max(0, Math.round(w / step) * step); }
+
+/* Phase policy. rpeAdj shifts the exercise's target RPE band for the phase;
+   allowUp gates load increases; upMult/maxUpPct scale and cap them; cutPct
+   forces a reduction (deload). Labels are used verbatim in the reason text. */
+const PHASE_POLICY = {
+  // Week 1-2 anatomical adaptation: groove the movements, tendons and connective
+  // tissue lag muscle in adapting, so target RPE drops a point and increments are
+  // halved and capped at 3%. [3] (low end of the range), [6] (base before load).
+  intro:    { label: 'intro week', rpeAdj: -1, allowUp: true, upMult: 0.5, maxUpPct: 3, atTargetHold: true },
+  // Build: the real progressive-overload phase. [2] drives size of jump, [3] caps it.
+  build:    { label: 'build', rpeAdj: 0, allowUp: true, upMult: 1, maxUpPct: 7, atTargetHold: false },
+  // Peak load week: same rules, slightly more headroom — the last week that pushes.
+  peak:     { label: 'peak week', rpeAdj: 0, allowUp: true, upMult: 1, maxUpPct: 8, atTargetHold: false },
+  // Post-B-race rebuild: race is in the legs, so half-size jumps for a week. [7]
+  rebuild:  { label: 'rebuild week', rpeAdj: -0.5, allowUp: true, upMult: 0.6, maxUpPct: 4, atTargetHold: false },
+  // Taper: hold intensity, cut volume — load is frozen. [4]
+  taper:    { label: 'taper', rpeAdj: -1, allowUp: false, hold: 'Taper: intensity held, volume cut by the plan — load stays put.' },
+  // Race week: primer only. Nothing should feel like work. [4]
+  raceweek: { label: 'race week', rpeAdj: -2, allowUp: false, hold: 'Race week: this is a primer, not a session — same load, feel crisp and stop early.' },
+  // Deload / reduced day (readiness red-amber or post-race recovery week): cut. [7]
+  deload:   { label: 'deload', rpeAdj: -1, allowUp: false, cutPct: 10, hold: 'Light day: load cut ~10% on top of the reduced volume.' },
+  // Maintenance (post-block): holding strength is the goal, not adding to it. [7]
+  maint:    { label: 'maintenance', rpeAdj: -0.5, allowUp: true, upMult: 0.5, maxUpPct: 4, atTargetHold: true },
+};
+function phasePolicy(key) { return PHASE_POLICY[key] || PHASE_POLICY.build; }
+
+/* week.phase string (set by buildProgram) → policy key. */
+function phaseKeyFromLabel(label) {
+  const s = String(label || '').toLowerCase();
+  if (/maintenance/.test(s)) return 'maint';
+  if (/race week/.test(s)) return 'raceweek';
+  if (/taper/.test(s)) return 'taper';            // 'Taper' and 'Geelong mini-taper'
+  if (/recover|rebuild/.test(s)) return 'rebuild';
+  if (/intro/.test(s)) return 'intro';
+  if (/peak/.test(s)) return 'peak';
+  if (/build/.test(s)) return 'build';
+  return 'build';
+}
+
+const clampRPE = v => Math.max(5, Math.min(10, Math.round(v * 2) / 2));
+/* Target RPE band for an exercise in a phase — the exercise's own band [1],
+   shifted by the phase. Returns null for exercises that aren't RPE-driven
+   (plyos, planks, carries: those are quality/technique work, not load work). */
+function targetRPEForPhase(exId, phaseKey) {
+  const ex = EXERCISES[exId];
+  if (!ex || !ex.rpe) return null;
+  const p = phasePolicy(phaseKey);
+  return [clampRPE(ex.rpe[0] + p.rpeAdj), clampRPE(ex.rpe[1] + p.rpeAdj)];
+}
+const rpeBandTxt = t => (t[0] === t[1] ? String(t[0]) : `${t[0]}–${t[1]}`);
+const rirBandTxt = t => (t[0] === t[1] ? String(10 - t[1]) : `${10 - t[1]}–${10 - t[0]}`);
+function meanOf(a) { return a.reduce((x, y) => x + y, 0) / a.length; }
+/* mean RPE of the working sets of one past session for this exercise */
+function sessionRPE(h) {
+  if (!h) return null;
+  const r = h.sets.filter(s => s.rpe != null && s.weight != null && s.reps > 0).map(s => s.rpe);
+  return r.length ? meanOf(r) : null;
+}
 
 /* history: array of {date, sets:[{weight,reps,rpe,failed}]} for one exercise variant, oldest→newest.
    tplReps = the session's target reps for this exercise (per side where applicable).
-   Recommends BOTH weight and reps, using last session's RPE + reps completed + weight. */
-function nextPrescription(exId, history, step, tplReps) {
+   ctx     = { phase } — policy key from phaseKeyFromLabel (see progressionCtx in app.js).
+   Returns { weight, reps, reason, warn, phase, target }. reps is always the
+   template's reps: load progresses, rep schemes don't drift. [5][6] */
+function nextPrescription(exId, history, step, tplReps, ctx) {
   const ex = EXERCISES[exId];
-  const targetRPE = ex.rpe;
-  if (!history.length) return { weight: null, reps: tplReps, reason: 'First time — start light (you should have 3–4 reps left in the tank, RPE 6–7).' };
+  const phaseKey = (ctx && ctx.phase) || 'build';
+  const pol = phasePolicy(phaseKey);
+  const inc = step || WEIGHT_STEP_DEFAULT;
+  const target = targetRPEForPhase(exId, phaseKey);
+  const out = (weight, reason, warn) => ({ weight, reps: tplReps, reason, warn: warn || null, phase: phaseKey, target });
+
+  if (!history.length) {
+    // First exposure: pick load by feel against the phase's RIR target, not by a
+    // percentage of a 1RM we don't have. [1][2]
+    return out(null, target
+      ? `First time — start light: a weight you could stop ${rirBandTxt(target)} reps short of failure (RPE ${rpeBandTxt(target)}).`
+      : 'First time — start light and learn the movement. Quality over load.');
+  }
   const last = history[history.length - 1];
   const worked = last.sets.filter(s => s.weight != null && s.reps > 0);
-  if (!worked.length) return { weight: null, reps: tplReps, reason: 'No logged sets last time — set your weight.' };
+  if (!worked.length) return out(null, 'No logged sets last time — set your weight.');
   const topW = Math.max(...worked.map(s => s.weight));
-  const avgReps = worked.reduce((a, s) => a + s.reps, 0) / worked.length;
+  const avgReps = meanOf(worked.map(s => s.reps));
   const repsMet = !tplReps || avgReps >= tplReps - 0.34;   // hit (or basically hit) every set
-  if (!targetRPE) return { weight: topW, reps: tplReps, reason: 'Same as last time.' };
+  if (!target) return out(topW, 'Same as last time — this one is about quality, not load.');
   const rpes = worked.filter(s => s.rpe != null).map(s => s.rpe);
-  if (!rpes.length) return { weight: topW, reps: tplReps, reason: 'No RPE logged last time — holding.' };
-  const avg = rpes.reduce((a, b) => a + b, 0) / rpes.length;
-  const tgt = (targetRPE[0] + targetRPE[1]) / 2;
+  if (!rpes.length) return out(topW, 'No RPE logged last time — holding. Tap an RPE next time and this steers itself.');
+  const avg = meanOf(rpes);
+  const tgt = (target[0] + target[1]) / 2;
   const lower = ex.group === 'lower';
   const anyFail = worked.some(s => s.failed) || rpes.some(r => r >= 10);
-  let w, reason;
+  // Accumulated fatigue: this lift has now run over target two sessions straight.
+  // Same signal the deload radar watches, but per-lift. [2][7]
+  const prev = sessionRPE(history[history.length - 2]);
+  const drifting = prev != null && prev > tgt + 0.5 && avg > tgt + 0.5;
+
+  /* ---- 1. what does the RPE say to do? (phase-independent) ---- */
+  let intent, reason, warn = null;
+  const avgTxt = avg.toFixed(1).replace(/\.0$/, '');
   if (anyFail) {
-    w = topW * (lower ? 0.93 : 0.95);
-    reason = 'RPE 10 / failed set last time — backing off.';
+    intent = 'down-hard';
+    reason = `RPE 10 / failed set last time — backing off to get back inside RPE ${rpeBandTxt(target)}.`;
   } else if (!repsMet) {
-    // reps were missed: fix reps before touching load
-    if (avg > tgt + 1) { w = topW * (lower ? 0.95 : 0.965); reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps at RPE ${avg.toFixed(1)} — dropping weight to hit all reps.`; }
-    else { w = topW; reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps last time — same weight, hit all ${tplReps} before adding.`; }
-  } else if (avg <= tgt - 1) {
-    w = topW * (lower ? 1.075 : 1.0375); // aggressive: +5–10% lower, +2.5–5% upper
-    reason = `All reps at avg RPE ${avg.toFixed(1)} vs target ${tgt} — jumping up.`;
-  } else if (avg <= tgt) {
-    w = topW + step;
-    reason = 'All reps, RPE on target — small step up.';
+    // Reps come before load: a missed rep target means the last load was already
+    // too heavy for the prescribed scheme. [3]
+    if (avg > tgt + 1) { intent = 'down'; reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps at RPE ${avgTxt} — dropping the load so all ${tplReps} land.`; }
+    else { intent = 'hold'; reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps last time — same load until all ${tplReps} land.`; }
+  } else if (avg <= tgt - 2) {
+    // 2+ points under target ≈ 2+ more reps in reserve than intended [1] — the
+    // load is clearly too light, take the bigger jump. [2][3]
+    intent = 'up-big';
+    reason = `All reps at RPE ${avgTxt} vs target ${rpeBandTxt(target)} — that's ${(tgt - avg).toFixed(1)} points of headroom, so a proper jump.`;
+  } else if (avg < tgt - 0.5) {
+    intent = 'up-mid';
+    reason = `All reps, RPE ${avgTxt} just under target ${rpeBandTxt(target)} — stepping up.`;
+  } else if (avg <= tgt + 0.5) {
+    intent = 'up-small';
+    reason = `All reps, RPE ${avgTxt} on target — smallest useful overload.`;
   } else if (avg <= tgt + 1) {
-    w = topW;
-    reason = `RPE slightly high (${avg.toFixed(1)}) — holding weight.`;
+    intent = 'hold';
+    reason = `RPE ${avgTxt} ran over target ${rpeBandTxt(target)} — same load, earn it back before adding.`;
   } else {
-    w = topW * (lower ? 0.95 : 0.965);
-    reason = `RPE too high (${avg.toFixed(1)}) — reducing.`;
+    intent = 'down';
+    reason = `RPE ${avgTxt} well over target ${rpeBandTxt(target)} — easing the load.`;
   }
-  return { weight: roundToStep(w, step), reps: tplReps, reason };
+  if (drifting && (intent === 'hold' || intent === 'up-small')) {
+    intent = 'down';
+    reason = `RPE has run over target two sessions straight (${prev.toFixed(1)} then ${avgTxt}) — trimming the load.`;
+  }
+  if (drifting || anyFail || intent === 'down' || intent === 'down-hard') {
+    warn = drifting
+      ? 'Possible accumulated fatigue on this lift — if the running also feels heavy, take the light-day option.'
+      : 'If this keeps happening, it\'s fatigue, not weakness — check the deload radar on Today.';
+  }
+
+  /* ---- 2. what does the phase allow? ---- */
+  const wantsUp = intent.startsWith('up');
+  if (wantsUp && !pol.allowUp) {
+    intent = 'hold';
+    reason = pol.hold;                       // taper / race week / deload wording
+  } else if (wantsUp && pol.atTargetHold && intent === 'up-small') {
+    intent = 'hold';
+    reason = `RPE ${avgTxt} on target — ${pol.label}: holding here rather than nudging up.`;
+  } else if (wantsUp) {
+    reason += pol.upMult < 1 ? ` (${pol.label}: half-size jump)` : '';
+  }
+  if (pol.cutPct && intent === 'hold') { intent = 'deload-cut'; reason = pol.hold; }
+
+  /* ---- 3. turn intent into a weight ---- */
+  // Lower body carries bigger absolute loads and tolerates bigger jumps than
+  // upper body / small muscle groups — the asymmetry is straight out of [3].
+  const UP = { 'up-big': lower ? 0.06 : 0.04, 'up-mid': lower ? 0.03 : 0.02, 'up-small': 0 };
+  const DOWN = { down: lower ? 0.05 : 0.035, 'down-hard': lower ? 0.07 : 0.05, 'deload-cut': (pol.cutPct || 10) / 100 };
+  let w = topW;
+  if (intent in UP) {
+    const cap = Math.max(topW * pol.maxUpPct / 100, inc);          // cap, but never below one step
+    const minSteps = intent === 'up-big' ? 2 : 1;
+    w = topW + Math.min(Math.max(topW * UP[intent] * pol.upMult, inc * minSteps), cap);
+  } else if (intent in DOWN) {
+    w = Math.max(0, topW - Math.max(topW * DOWN[intent], inc));    // always at least one real step down
+  }
+  // Round to the user's increment, but never let rounding cancel the decision:
+  // with a 1 kg step a 3% cut on a light lift must still move. [3]
+  let weight = roundToStep(w, inc);
+  if (w > topW && weight <= topW) weight = roundToStep(topW + inc, inc);
+  if (w < topW && weight >= topW) weight = Math.max(0, roundToStep(topW - inc, inc));
+  return out(weight, reason, warn);
 }
 
 /* warm-up ramp for heavy lifts. Returns display string or null. */
@@ -389,4 +605,15 @@ function e1rm(weight, reps, rpe) {
   const total = reps + rir;
   if (total > 12) return 0; // not meaningful past ~12 effective reps
   return weight * (1 + total / 30);
+}
+
+/* Node test hook — `module` is undefined in the browser, so this is a no-op there
+   and program.js stays a plain classic script. See tools/test-progression.js. */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    EXERCISES, TEMPLATES, STRETCHES, MUSCLE_MAP, RACES, PHASE_POLICY,
+    WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
+    nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
+    warmupPlan, e1rm, buildProgram,
+  };
 }

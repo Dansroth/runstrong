@@ -53,16 +53,31 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .btn.warn { background: #7c3a12; border-color: var(--warn); }
 .btn.danger { background: #7c1d1d; border-color: var(--red); }
 .btn.big { padding: 17px; font-size: 1.1rem; }
+.btn.small { padding: 11px; font-size: .92rem; }
 .btn:disabled { opacity: .4; }
-.linkbtn { display: block; margin: 14px auto 4px; color: var(--dim); text-decoration: underline; font-size: .9rem; padding: 8px; }
-.mini { background: var(--bg3); border: 1px solid #2b3648; border-radius: 8px; padding: 6px 12px; font-size: .8rem; font-weight: 600; }
+/* Touch targets: 44px minimum everywhere, because half of these get tapped
+   mid-workout with sweaty hands and the phone on the floor. linkbtn and mini
+   look secondary but are still real buttons — they get the height too. */
+.linkbtn { display: block; margin: 10px auto 4px; color: var(--dim); text-decoration: underline; font-size: .9rem; padding: 12px 14px; min-height: 44px; }
+.mini { display: inline-flex; align-items: center; justify-content: center; background: var(--bg3); border: 1px solid #2b3648; border-radius: 8px; padding: 6px 12px; font-size: .8rem; font-weight: 600; min-height: 44px; }
 .mini.swap { color: var(--acc); margin-top: 8px; }
+
+/* small print — used throughout for secondary lines under a control */
+.small { font-size: .82rem; line-height: 1.45; }
 
 /* up next */
 .section-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 700; margin: 18px 0 8px; }
 .upnext-row { display: flex; gap: 10px; padding: 9px 4px; border-bottom: 1px solid #1c2430; font-size: .92rem; }
 .upnext-date { color: var(--dim); min-width: 110px; }
 .upnext-title.run { color: var(--run); }
+
+/* segmented control (Progress tab: Log | Insights) */
+.seg { display: flex; gap: 4px; background: var(--bg2); border: 1px solid #232c3a; border-radius: 12px; padding: 4px; margin-bottom: 4px; }
+.seg-btn { flex: 1; min-height: 44px; border-radius: 9px; font-size: .95rem; font-weight: 700; color: var(--dim); }
+.seg-btn.sel { background: var(--bg3); color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc-d); }
+
+/* keyboard focus — invisible to touch users, essential for anyone on a keyboard */
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
 /* tab bar */
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: rgba(13,17,23,.96); backdrop-filter: blur(10px); border-top: 1px solid #232c3a; padding-bottom: env(safe-area-inset-bottom); z-index: 20; }
@@ -82,6 +97,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .ex-presc { margin-top: 6px; font-size: 1rem; }
 .ex-presc b { color: var(--gold); font-size: 1.15rem; }
 .ex-reason { font-size: .82rem; margin-top: 2px; }
+.ex-warn { font-size: .82rem; margin-top: 6px; color: var(--warn); line-height: 1.45; }
 .ex-last { margin-top: 8px; font-size: .9rem; background: var(--bg2); border-radius: 10px; padding: 9px 12px; }
 .ex-cue { margin-top: 8px; font-size: .85rem; color: var(--dim); font-style: italic; }
 
@@ -93,14 +109,20 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .guide-why { font-weight: 400; font-size: .8rem; color: var(--dim); margin-top: 6px; }
 /* stretch flow */
 .stretch-count { font-size: 4.5rem; font-weight: 900; color: var(--acc); font-variant-numeric: tabular-nums; margin: 18px 0 6px; }
+.stretch-count.ready { color: var(--warn); }   /* setup countdown reads differently from a live hold */
+.st-kicker { font-size: .78rem; font-weight: 800; letter-spacing: .12em; color: var(--acc); }
+.st-kicker.ready { color: var(--warn); }
+/* pill label (stretch side indicator) */
+.badge { display: inline-block; font-size: .8rem; font-weight: 700; background: var(--bg3); border: 1px solid #2b3648; border-radius: 999px; padding: 5px 14px; color: var(--fg); }
+.badge.mid { color: var(--acc); border-color: var(--acc-d); }
 .stretch-instr { font-size: 1.05rem; line-height: 1.65; color: var(--fg); max-width: 340px; margin: 0 auto; }
 /* weekly summary */
 .wksum-row { font-size: 1rem; background: var(--bg3); border-radius: 10px; padding: 10px 13px; margin-bottom: 6px; }
-.wksum-block { margin-top: 12px; }
+.wksum-block, .wksum-sec { margin-top: 12px; }
 .wksum-h { font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 800; margin-bottom: 4px; }
 .wksum-li { font-size: .92rem; padding: 2px 0; }
 
-.ex-why { margin-top: 8px; border: 1px solid #232c3a; border-radius: 10px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
+.ex-why { margin-top: 8px; border: 1px solid #232c3a; border-radius: 10px; padding: 11px 12px; min-height: 44px; cursor: pointer; touch-action: manipulation; }
 .ex-why-t { font-size: .8rem; font-weight: 700; color: var(--run); }
 .ex-why.open { border-color: var(--run); }
 .ex-why-body { margin-top: 6px; font-size: .88rem; line-height: 1.5; color: var(--fg); }
@@ -125,12 +147,15 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .rpes { display: flex; gap: 5px; flex-wrap: wrap; }
 .rpe { flex: 1; min-width: 46px; padding: 12px 0; background: var(--bg3); border: 1px solid #2b3648; border-radius: 10px; font-weight: 700; font-size: .95rem; }
 .rpe.sel { background: var(--acc-d); border-color: var(--acc); }
-.notefield { width: 100%; background: var(--bg3); border: 1px solid #2b3648; border-radius: 10px; padding: 12px; color: var(--fg); font-size: .9rem; margin-bottom: 4px; }
+/* "you forgot the RPE" nudge — replaces a blocking alert() mid-set */
+.rpes.nudge .rpe { border-color: var(--warn); animation: nudge .5s 2; }
+@keyframes nudge { 50% { background: rgba(251,146,60,.22); } }
+.notefield { width: 100%; min-height: 44px; background: var(--bg3); border: 1px solid #2b3648; border-radius: 10px; padding: 12px; color: var(--fg); font-size: .9rem; margin-bottom: 4px; }
 .ex-nav { display: flex; gap: 10px; }
 .ex-nav .btn { margin-top: 14px; }
 
 /* strava */
-.svbadge { display: inline-block; font-size: .62rem; font-weight: 800; letter-spacing: .04em; background: #fc4c02; color: #fff; border-radius: 8px; padding: 1px 7px; vertical-align: middle; text-transform: uppercase; }
+.svbadge { display: inline-block; font-size: .7rem; font-weight: 800; letter-spacing: .04em; background: #fc4c02; color: #fff; border-radius: 8px; padding: 2px 7px; vertical-align: middle; text-transform: uppercase; }
 .svbadge.garmin { background: #007cc3; }
 
 /* hold timer + next-exercise hand-off */
@@ -215,8 +240,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* settings */
 .set-row { display: flex; align-items: center; justify-content: space-between; background: var(--bg2); border-radius: 10px; padding: 13px 14px; margin-bottom: 8px; font-weight: 600; }
-.set-row select { background: var(--bg3); color: var(--fg); border: 1px solid #2b3648; border-radius: 8px; padding: 8px 10px; font-size: .95rem; }
-.toggle { background: var(--bg3); border: 1px solid #2b3648; border-radius: 20px; padding: 7px 16px; font-weight: 800; font-size: .8rem; color: var(--dim); }
+.set-row select { background: var(--bg3); color: var(--fg); border: 1px solid #2b3648; border-radius: 8px; padding: 12px 10px; font-size: .95rem; min-height: 44px; }
+.set-row input { background: var(--bg3); color: var(--fg); border: 1px solid #2b3648; border-radius: 8px; padding: 11px 10px; font-size: .95rem; min-height: 44px; }
+.toggle { min-width: 68px; min-height: 44px; background: var(--bg3); border: 1px solid #2b3648; border-radius: 22px; padding: 7px 16px; font-weight: 800; font-size: .8rem; color: var(--dim); }
 .toggle.on { background: var(--acc-d); border-color: var(--acc); color: var(--fg); }
 
 /* new-feature bits */
@@ -230,8 +256,8 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .editbtn { margin-left: 8px; font-size: .72rem; }
 .editgrid-head, .editrow { display: grid; grid-template-columns: 24px 1fr 1fr 1fr 44px; gap: 8px; align-items: center; margin-bottom: 8px; }
 .editgrid-head { font-size: .72rem; color: var(--dim); font-weight: 700; text-transform: uppercase; }
-.editrow input[type=number] { width: 100%; background: var(--bg3); border: 1px solid #2b3648; border-radius: 8px; padding: 11px 8px; color: var(--fg); font-size: 1rem; text-align: center; }
-.editrow input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--acc); justify-self: center; }
+.editrow input[type=number] { width: 100%; min-height: 44px; background: var(--bg3); border: 1px solid #2b3648; border-radius: 8px; padding: 12px 8px; color: var(--fg); font-size: 1rem; text-align: center; }
+.editrow input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--acc); justify-self: center; }
 .editrow span { color: var(--dim); font-weight: 700; }
 
 /* run logging + progress */
@@ -248,9 +274,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 /* ===== v13: tap-to-type, race kit, maintenance, trends ===== */
 input.stepval.typeval { background: var(--bg3); border: 1px solid var(--acc-d); border-radius: 10px; color: var(--fg); padding: 4px 6px; width: 100%; min-width: 0; -moz-appearance: textfield; }
 input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit-inner-spin-button { -webkit-appearance: none; }
-.chk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #232c3a; font-size: .92rem; line-height: 1.45; }
+/* the whole row is the tap target, not just the box */
+.chk-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; min-height: 44px; border-bottom: 1px solid #232c3a; font-size: .92rem; line-height: 1.45; }
 .chk-row:last-of-type { border-bottom: none; }
-.chk-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--acc); flex-shrink: 0; margin-top: 1px; }
+.chk-row input[type="checkbox"] { width: 26px; height: 26px; accent-color: var(--acc); flex-shrink: 0; }
 .chk-row input:checked + span { color: var(--dim); text-decoration: line-through; }
 .card.racekit { border-color: var(--gold); }
 .card.racekit .card-kicker { color: var(--gold); }
