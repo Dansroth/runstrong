@@ -91,7 +91,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v19';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v21';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1228,10 +1228,7 @@ function vSession() {
   const remainMin = estRemaining(s);
   const hist = exHistory(e.exId, s.date);
   const last = hist[hist.length - 1];
-  const lastStr = last ? last.sets.map(t => setStr(ex, t)).join(', ') + ` <span class="dim">(${fmtDate(last.date)})</span>` : 'first time — no history';
-  // the RPE shown must be the one the engine will judge against, i.e. phase-adjusted
-  const tgtRPE = targetRPEForPhase(e.exId, sessionPhase(s));
-  const rpeStr = tgtRPE ? `@ RPE ${rpeBandTxt(tgtRPE)}` : '';
+  const lastStr = lastSummary(ex, last);
   const unit = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
   const repsLabel = ex.mode === 'time' ? 'seconds' : ex.mode === 'carry' ? 'metres' : 'reps';
 
@@ -1274,12 +1271,12 @@ function vSession() {
       <div class="ex-head">
         <div class="ex-count">Exercise ${s.curIdx + 1} / ${s.exercises.length}</div>
         <h1>${esc(ex.name)}${ex.perSide ? ' <span class="perside">each side</span>' : ''}</h1>
-        <div class="ex-rx">${e.tplSets} × ${e.tplReps}${unit} ${rpeStr} · rest ${fmtSecs(ex.rest)}</div>
-        ${e.prescWeight != null && ex.mode !== 'bw' ? `<div class="ex-presc">Recommended: <b>${e.prescWeight} kg × ${e.tplReps}${unit}${ex.perSide ? '/side' : ''}</b></div>` : ''}
+        <div class="ex-rx">${e.tplSets} set${e.tplSets === 1 ? '' : 's'} · rest ${fmtSecs(ex.rest)}</div>
+        ${heroBlock(e, ex, last)}
         <div class="ex-reason dim">${esc(e.prescReason || '')}</div>
         ${e.prescWarn ? `<div class="ex-warn">⚠️ ${esc(e.prescWarn)}</div>` : ''}
-        ${(() => { const noneDone = !e.sets.some(x => x.done); const wp = noneDone ? warmupPlan(e.exId, e.prescWeight != null ? e.prescWeight : (e.sets[0] && e.sets[0].weight), ST.settings.step) : null; return wp ? `<div class="ex-warm">🔥 Warm-up: ${wp}</div>` : ''; })()}
-        <div class="ex-last">Last: ${lastStr}</div>
+        ${rampBlock(e, ex)}
+        <div class="ex-last">${lastStr}</div>
         <div class="ex-cue">${esc(ex.cue || '')}</div>
         ${ex.why ? `<div class="ex-why ${whyOpen ? 'open' : ''}" onclick="whyOpen=!whyOpen;render()">
           <span class="ex-why-t">🎯 Why this helps your half ${whyOpen ? '▾' : '▸'}</span>
@@ -1298,6 +1295,83 @@ function vSession() {
       ${s.curIdx < s.exercises.length - 1 ? `<button class="linkbtn" onclick="finishSession()">finish workout early</button>` : ''}
     </main>
     <div id="restbar" class="restbar" onclick="skipRest()"><div id="restbar-fill" class="restbar-fill"></div><div class="restbar-txt"><span id="restbar-label"></span><b id="restbar-time"></b><span class="dim">tap to skip</span></div></div>`;
+}
+
+/* ---- in-workout exercise header ----
+   Three lines used to answer "what do I lift right now?" in the same shape:
+   "Recommended: 60 kg × 5", "🔥 Warm-up: bar × 10 · 30 kg × 5 · …" and
+   "Last: 55kg × 5 @7, 55kg × 5 @7, …". All three were dense `N kg × R` runs in
+   near-identical type, so at arm's length none of them read as the answer.
+   Now: ONE hero number for the working set, the ramp as tappable pills below it,
+   and history compressed to a single dim line plus a delta chip. Different
+   shapes, not different separators. */
+function heroBlock(e, ex, last) {
+  const timeLike = ex.mode === 'time';
+  const bw = ex.mode === 'bw';
+  // hero = the number you act on: load for weighted work, reps/seconds otherwise
+  const num = (bw || timeLike) ? e.tplReps : e.prescWeight;
+  const perSide = ex.perSide ? '/side' : '';
+  const rpeTxt = (() => { const t = targetRPEForPhase(e.exId, sessionPhase(ST.sessions[ST.activeSessionId])); return t ? ` @ RPE ${rpeBandTxt(t)}` : ''; })();
+  const suffix = bw ? `reps${perSide}${rpeTxt}`
+    : timeLike ? `seconds${perSide}`
+    : ex.mode === 'carry' ? `kg × ${e.tplReps} m${perSide}`
+    : `kg × ${e.tplReps}${perSide}${rpeTxt}`;
+  if (num == null) {
+    return `<div class="ex-hero"><div class="hero-num none">—</div><div class="hero-suffix">${suffix} · pick a starting weight below</div></div>`;
+  }
+  // delta chip: the useful half of "last time", as an answer rather than raw sets
+  let chip = '';
+  if (!bw && !timeLike && last && e.prescWeight != null) {
+    const top = Math.max(...last.sets.map(t => t.weight || 0));
+    if (top > 0) {
+      const d = Math.round((e.prescWeight - top) * 100) / 100;
+      chip = d > 0 ? `<span class="hero-chip up">↑ ${d} kg</span>`
+        : d < 0 ? `<span class="hero-chip down">↓ ${Math.abs(d)} kg</span>`
+        : `<span class="hero-chip same">same as last</span>`;
+    }
+  }
+  return `<div class="ex-hero">
+      <div class="hero-num">${num}</div>
+      <div class="hero-suffix">${suffix}</div>
+      ${chip}
+    </div>`;
+}
+/* Ramp pills. Tapping one strikes it through — optional, never required before a
+   working set. State is transient: the ramp only shows before the first logged set. */
+let rampDone = new Set();
+window.tickRamp = function (i) {
+  if (rampDone.has(i)) rampDone.delete(i); else rampDone.add(i);
+  vibrate(25); render();
+};
+function rampBlock(e, ex) {
+  if (e.sets.some(x => x.done)) return '';   // ramp is done once real sets start
+  const wp = warmupPlan(e.exId, e.prescWeight != null ? e.prescWeight : (e.sets[0] && e.sets[0].weight), ST.settings.step);
+  if (!wp) return '';
+  const pills = wp.steps.map((txt, i) =>
+    `<button class="ramp-pill ${rampDone.has(i) ? 'done' : ''}" onclick="tickRamp(${i})">${esc(txt)}</button>`).join('');
+  return `<div class="ex-ramp">
+      <div class="ramp-kicker">🔥 Ramp up first${wp.steps.length ? ' — tap as you go' : ''}</div>
+      ${pills ? `<div class="ramp-pills">${pills}</div>` : ''}
+      ${wp.note ? `<div class="ramp-note">${esc(wp.note)}</div>` : ''}
+    </div>`;
+}
+/* One dim line of history. Identical sets collapse to sets × reps @ weight, which
+   reads differently from the hero on purpose. */
+function lastSummary(ex, last) {
+  if (!last) return '<span class="dim">First time — no history yet.</span>';
+  const sets = last.sets;
+  const u = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
+  const f = sets[0];
+  const uniform = sets.every(t => t.weight === f.weight && t.reps === f.reps && t.rpe === f.rpe);
+  const when = fmtDate(last.date).replace(/,.*$/, '');
+  let body;
+  if (uniform) {
+    const w = (ex.mode === 'bw' || !f.weight) ? '' : ` @ ${f.weight} kg`;
+    body = `${sets.length} × ${f.reps}${u}${w}${f.rpe != null ? ` · RPE ${f.rpe}` : ''}`;
+  } else {
+    body = sets.map(t => setStr(ex, t)).join(', ');
+  }
+  return `<span class="dim">Last ${esc(when)}:</span> ${body}`;
 }
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -1386,7 +1460,7 @@ window.logSet = function (failed) {
   if (!(wasLast && s.curIdx === s.exercises.length - 1)) startRest(ex.rest, esc(ex.name));
   if (wasLast && s.curIdx < s.exercises.length - 1) {
     s.curIdx++;
-    whyOpen = false;
+    whyOpen = false; rampDone = new Set();
     save(); render();
     showNextExercise(ex, s);          // unmissable hand-off between exercises
     return;
@@ -1418,7 +1492,7 @@ window.undoSet = function (i) {
 window.moveEx = function (d) {
   const s = ST.sessions[ST.activeSessionId];
   s.curIdx = Math.max(0, Math.min(s.exercises.length - 1, s.curIdx + d));
-  whyOpen = false;
+  whyOpen = false; rampDone = new Set();
   save(); render();
 };
 
@@ -1435,6 +1509,7 @@ window.openSwap = function () {
 window.doSwap = function (id) {
   const s = ST.sessions[ST.activeSessionId];
   swapExercise(s, s.curIdx, id);
+  rampDone = new Set();   // different lift, different ramp
   closeModal(); render();
 };
 
@@ -1463,43 +1538,29 @@ function finishSessionFinal() {
 }
 
 /* ================= post-session stretch routine ================= */
-/* Wall-clock cost of one stretch: every hold is preceded by a STRETCH_SETUP_SECS
-   "get ready" gap, and a per-side stretch pays for both a setup and a hold twice
-   (swapping legs needs its own setup). Routine budgeting, the "~X min" estimates
-   on the offer sheet and the live "time left" readout all use this one function. */
-function stretchDur(st, hold) {
-  const h = hold != null ? hold : st.hold;
-  return (STRETCH_SETUP_SECS + h) * (st.perSide ? 2 : 1);
-}
-/* Build from what was actually trained: weight toward most-worked muscles,
-   always touch the runner's essentials, bias to reported soreness. */
+/* Thin wrapper: turn the finished session into a { muscle: sets } load map, add
+   what the recent running did to the posterior chain, then hand off to
+   stretchRoutine() in program.js (pure, and unit-tested in tools/test-stretch.js). */
 function buildStretchRoutine(sess, mins) {
-  const budget = mins * 60;
   const loads = {};
   for (const e of sess.exercises) {
     const done = e.sets.filter(x => x.done).length;
     if (!done) continue;
     for (const m of (MUSCLE_MAP[e.exId] || [])) loads[m] = (loads[m] || 0) + done;
   }
-  const soreBias = sess.readiness && sess.readiness.sore >= 4;
-  const essentials = ['calves', 'hipflex', 'glutes', 'hams'];   // always included, even untrained
-  const order = [...essentials, ...Object.keys(loads).filter(m => !essentials.includes(m)).sort((a, b) => loads[b] - loads[a])];
-  const used = new Set(); const list = []; let total = 0;
-  for (const m of order) {
-    const st = STRETCHES.find(s => s.muscles.includes(m) && !used.has(s.id));
-    if (!st) continue;
-    const heavy = (loads[m] || 0) >= 6 || (soreBias && essentials.includes(m));
-    const hold = heavy ? Math.max(st.hold, soreBias && essentials.includes(m) ? 45 : 40) : (essentials.includes(m) && !loads[m]) ? Math.min(st.hold, 30) : st.hold;
-    if (total + stretchDur(st, hold) > budget + 20) continue;
-    used.add(st.id); list.push({ ...st, hold }); total += stretchDur(st, hold);
+  /* Running is training too. A long run today or yesterday leaves the calves,
+     hamstrings and hip flexors genuinely loaded even when the gym session was all
+     upper body — so they enter as trained muscles rather than as a special case.
+     Deliberately modest: on an Upper A day (back 13 sets) these sit below the
+     muscles actually lifted, so they get attention without taking over. */
+  const longRun = [sess.date, dadd(sess.date, -1)]
+    .map(d => mergedRunFor(d)).filter(r => r && r.km >= 12).sort((a, b) => b.km - a.km)[0];
+  if (longRun) {
+    const bias = longRun.km >= 18 ? 4 : 3;
+    for (const m of ['calves', 'hams', 'hipflex']) loads[m] = (loads[m] || 0) + bias;
+    loads.glutes = (loads.glutes || 0) + Math.max(1, bias - 1);
   }
-  for (const st of STRETCHES) {   // fill any remaining time with trained-muscle stretches
-    if (used.has(st.id) || !st.muscles.some(m => loads[m])) continue;
-    const d = stretchDur(st);
-    if (total + d > budget + 15) continue;
-    used.add(st.id); list.push({ ...st, hold: st.hold }); total += d;
-  }
-  return { list, total };
+  return stretchRoutine(loads, mins, { soreBias: !!(sess.readiness && sess.readiness.sore >= 4) });
 }
 function offerStretch() {
   const s = ST.sessions[ST.activeSessionId];

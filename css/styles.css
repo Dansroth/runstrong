@@ -93,12 +93,27 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .ex-head h1 { font-size: 1.55rem; font-weight: 800; margin: 4px 0; }
 .perside { font-size: .85rem; color: var(--dim); font-weight: 500; }
 .ex-count { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 700; }
-.ex-rx { font-size: 1.05rem; font-weight: 600; color: var(--acc); }
-.ex-presc { margin-top: 6px; font-size: 1rem; }
-.ex-presc b { color: var(--gold); font-size: 1.15rem; }
-.ex-reason { font-size: .82rem; margin-top: 2px; }
+.ex-rx { font-size: .85rem; font-weight: 600; color: var(--acc); }   /* sets + rest only — the hero owns load, reps and RPE */
+/* the working set, as one number you can read from the floor */
+.ex-hero { display: flex; align-items: baseline; gap: 9px; margin-top: 10px; flex-wrap: wrap; }
+.hero-num { font-size: 2.9rem; font-weight: 900; color: var(--gold); line-height: 1; font-variant-numeric: tabular-nums; }
+.hero-num.none { color: var(--dim); }
+.hero-suffix { font-size: .95rem; color: var(--fg); font-weight: 600; }
+.hero-chip { margin-left: auto; font-size: .75rem; font-weight: 700; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.hero-chip.up { color: var(--acc); background: rgba(74,222,128,.12); border: 1px solid var(--acc-d); }
+.hero-chip.down { color: var(--warn); background: rgba(251,146,60,.12); border: 1px solid var(--warn); }
+.hero-chip.same { color: var(--dim); background: var(--bg3); border: 1px solid #2b3648; }
+.ex-reason { font-size: .82rem; margin-top: 4px; }
+
+/* warm-up ramp: rungs, not a sentence. Tapping one is optional. */
+.ex-ramp { margin-top: 12px; }
+.ramp-kicker { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--gold); font-weight: 800; margin-bottom: 6px; }
+.ramp-pills { display: flex; gap: 7px; flex-wrap: wrap; }
+.ramp-pill { min-height: 44px; padding: 10px 15px; border-radius: 999px; border: 1px solid #2b3648; background: var(--bg3); color: var(--fg); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ramp-pill.done { color: var(--dim); text-decoration: line-through; background: rgba(74,222,128,.08); border-color: var(--acc-d); }
+.ramp-note { font-size: .85rem; color: var(--gold); margin-top: 4px; }
 .ex-warn { font-size: .82rem; margin-top: 6px; color: var(--warn); line-height: 1.45; }
-.ex-last { margin-top: 8px; font-size: .9rem; background: var(--bg2); border-radius: 10px; padding: 9px 12px; }
+.ex-last { margin-top: 10px; font-size: .85rem; color: var(--fg); }
 .ex-cue { margin-top: 8px; font-size: .85rem; color: var(--dim); font-style: italic; }
 
 /* readiness guidance */
@@ -250,7 +265,6 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .card.deload { border-color: var(--warn); }
 .card.deload .card-kicker { color: var(--warn); }
 .card.backup { border-color: #2b3648; }
-.ex-warm { margin-top: 8px; font-size: .88rem; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.35); border-radius: 10px; padding: 9px 12px; color: var(--gold); }
 .run-logged { margin-top: 12px; font-weight: 700; color: var(--acc); font-size: .95rem; }
 .rpe.feel { min-width: 90px; }
 .editbtn { margin-left: 8px; font-size: .72rem; }

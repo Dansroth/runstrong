@@ -205,7 +205,94 @@ const STRETCHES = [
   { id:'st-knees-chest', name:'Knees to chest', muscles:['back','glutes'], perSide:false, hold:35, instr:'Lie on your back. Hug both knees in. Rock gently side to side if that feels good.' },
   { id:'st-cobra', name:'Cobra stretch', muscles:['core','hipflex'], perSide:false, hold:35, instr:'Lie face down, hands under your shoulders. Push your chest up, hips stay on the floor. Stop where it feels good.' },
   { id:'st-downdog-calf', name:'Down-dog calf pedal', muscles:['calves','hams'], perSide:false, hold:40, instr:'Hands and feet on the floor, hips high like a triangle. Slowly pedal your heels toward the floor, one at a time.' },
+  /* Added because an upper-body day could previously only ever find ONE chest
+     stretch (and one quad, one adductor) — the library was too thin to fill a
+     routine from what an upper session actually trains. These sit at the end so
+     the long-standing primaries above stay the first pick for each muscle. */
+  { id:'st-chest-floor', name:'Floor chest opener', muscles:['chest','shoulders'], perSide:true, hold:35, instr:'Lie face down. Stretch one arm straight out to the side. Roll gently onto that shoulder until the chest opens.' },
+  { id:'st-chest-clasp', name:'Hands-behind-back stretch', muscles:['chest','shoulders'], perSide:false, hold:30, instr:'Stand tall. Clasp your hands behind your back. Straighten your arms and lift them a little. Chest forward, shoulders down.' },
+  { id:'st-openbook', name:'Open-book twist', muscles:['back','chest'], perSide:true, hold:35, instr:'Lie on your side, knees bent, arms together in front. Open the top arm across your body like a book. Follow your hand with your eyes.' },
+  { id:'st-couch', name:'Couch stretch', muscles:['quads','hipflex'], perSide:true, hold:40, instr:'Kneel with your back foot up on a bench or couch. Tuck your tailbone under and stand the front leg tall. Strong one — ease into it.' },
+  { id:'st-quad-side', name:'Side-lying quad stretch', muscles:['quads'], perSide:true, hold:35, instr:'Lie on your side. Grab the top ankle and draw your heel toward your backside. Knees stacked, hips pushed forward.' },
+  { id:'st-sidelunge', name:'Side lunge groin stretch', muscles:['adductors'], perSide:true, hold:35, instr:'Stand wide. Bend one knee and sink your weight onto it, the other leg straight. Feel the inside of the straight leg.' },
+  { id:'st-ham-seated', name:'Seated forward fold', muscles:['hams','back'], perSide:false, hold:40, instr:'Sit with your legs out in front. Hinge from the hips and reach toward your feet. Long back, soft knees if you need them.' },
 ];
+
+/* =====================================================================
+   STRETCH ROUTINE BUILDER
+   =====================================================================
+   Runner essentials (calves, hip flexors, glutes, hamstrings) used to be placed
+   FIRST unconditionally, ahead of anything the session actually trained. On an
+   upper-body day they ate the whole time budget before chest/back/shoulders were
+   even considered — a 5-minute routine after Upper A contained zero stretches for
+   anything that had been worked.
+
+   The fix is priority and proportion, not deletion. The essentials still belong in
+   every routine: this is a running app, and those four take their load from RUNNING
+   as much as from lifting, so they need attention on an upper day too. But they are
+   a TAIL, not the head, and they are capped at a share of the budget:
+
+     1. what you just trained, hardest-worked muscle first  (>= TRAINED_SHARE of time)
+     2. runner essentials you did NOT train — a shorter maintenance dose, capped
+     3. leftover time — a second stretch for the muscles you worked hardest
+
+   Callers can also pass synthetic loads for a recent long run (see
+   buildStretchRoutine in app.js), which is how "day after a long run" gets its
+   calves and hamstrings back to the front on an upper day — as trained muscles,
+   through rule 1, rather than as a special case. */
+const STRETCH_ESSENTIALS = ['calves', 'hipflex', 'glutes', 'hams'];
+const TRAINED_SHARE = 0.65;   // at least this much of the budget goes to what was trained
+
+/* Wall-clock cost of one stretch: every hold is preceded by a STRETCH_SETUP_SECS
+   "get ready" gap, and a per-side stretch pays for both a setup and a hold twice. */
+function stretchDur(st, hold) {
+  const h = hold != null ? hold : st.hold;
+  return (STRETCH_SETUP_SECS + h) * (st.perSide ? 2 : 1);
+}
+
+/* loads: { muscle: setsCompleted }. opts: { soreBias }.
+   Pure — no app state — so tools/test-stretch.js can drive it directly. */
+function stretchRoutine(loads, mins, opts) {
+  opts = opts || {};
+  loads = loads || {};
+  const budget = mins * 60;
+  const trained = Object.keys(loads).filter(m => loads[m] > 0).sort((a, b) => loads[b] - loads[a]);
+  // Nothing logged (mobility/rest day): fall back to the essentials as the routine,
+  // uncapped — otherwise the share cap would leave almost nothing to do.
+  const bare = !trained.length;
+  const tail = STRETCH_ESSENTIALS.filter(m => !loads[m]);
+  const tailCap = bare ? budget : budget * (1 - TRAINED_SHARE);
+
+  const used = new Set(); const list = []; let total = 0; let tailTime = 0;
+  const nextFor = m => STRETCHES.find(x => x.muscles.includes(m) && !used.has(x.id));
+  const take = (st, hold, isTail) => {
+    const d = stretchDur(st, hold);
+    if (total + d > budget + 20) return false;
+    if (isTail && tailTime + d > tailCap + 20) return false;
+    used.add(st.id); list.push({ ...st, hold }); total += d;
+    if (isTail) tailTime += d;
+    return true;
+  };
+
+  // 1. what you actually trained, hardest-worked first — longer holds where the
+  //    volume was heavy (6+ sets through a muscle)
+  for (const m of trained) {
+    const st = nextFor(m); if (!st) continue;
+    take(st, loads[m] >= 6 ? Math.max(st.hold, 40) : st.hold, false);
+  }
+  // 2. runner essentials that today did not train — maintenance dose, capped share.
+  //    Sore days get the full hold instead of the short one.
+  for (const m of tail) {
+    const st = nextFor(m); if (!st) continue;
+    take(st, opts.soreBias ? Math.max(st.hold, 45) : Math.min(st.hold, 30), true);
+  }
+  // 3. spend whatever is left on the muscles that took the most work
+  for (const m of trained) {
+    const st = nextFor(m); if (!st) continue;
+    take(st, st.hold, false);
+  }
+  return { list, total };
+}
 
 /* Session templates. items: [exId, sets, reps] — reps is per side for perSide, seconds for 'time', metres for 'carry'. */
 const TEMPLATES = {
@@ -581,22 +668,26 @@ function nextPrescription(exId, history, step, tplReps, ctx) {
   return out(weight, reason, warn);
 }
 
-/* warm-up ramp for heavy lifts. Returns display string or null. */
+/* Warm-up ramp for heavy lifts.
+   Returns { steps: [...labels], note } or null when the lift needs no ramp.
+   Structured rather than pre-joined because the session view renders each rung as
+   its own tappable pill — a single joined string read as just another "N kg × R"
+   sentence, indistinguishable from the working weight and from last session. */
 function warmupPlan(exId, workWeight, step) {
   const ex = EXERCISES[exId];
   if (!ex.wu) return null;
-  if (ex.wu === 'bw') return 'BW × 5 · BW × 3 (slow, full range)';
-  if (workWeight == null || workWeight <= 0) return 'Do 2–3 easy ramp sets before your first working set.';
+  if (ex.wu === 'bw') return { steps: ['BW × 5', 'BW × 3'], note: 'slow, full range' };
+  if (workWeight == null || workWeight <= 0) return { steps: [], note: 'Do 2–3 easy ramp sets before your first working set.' };
   const r = w => Math.max(0, Math.round(w / step) * step);
-  if (workWeight <= 40) return ex.wu === 'bar' ? 'bar × 10' : 'one easy set at half weight';
-  const parts = [];
-  if (ex.wu === 'bar') parts.push('bar × 10');
+  if (workWeight <= 40) return ex.wu === 'bar' ? { steps: ['bar × 10'], note: null } : { steps: [], note: 'One easy set at half weight.' };
+  const steps = [];
+  if (ex.wu === 'bar') steps.push('bar × 10');
   for (const [pct, reps] of [[0.5, 5], [0.7, 3], [0.85, 1]]) {
     const w = r(workWeight * pct);
-    if (w >= (ex.wu === 'bar' ? 25 : 10) && w < workWeight) parts.push(`${w} kg × ${reps}`);
+    if (w >= (ex.wu === 'bar' ? 25 : 10) && w < workWeight) steps.push(`${w} × ${reps}`);
   }
-  if (!parts.length) return null;
-  return parts.join(' · ');
+  if (!steps.length) return null;
+  return { steps, note: null };
 }
 
 function e1rm(weight, reps, rpe) {
@@ -614,6 +705,7 @@ if (typeof module !== 'undefined' && module.exports) {
     EXERCISES, TEMPLATES, STRETCHES, MUSCLE_MAP, RACES, PHASE_POLICY,
     WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
+    stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
     warmupPlan, e1rm, buildProgram,
   };
 }
