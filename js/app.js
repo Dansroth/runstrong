@@ -91,14 +91,28 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v21';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v23';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
-  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  if (!el) {
+    el = document.createElement('div'); el.id = 'toast';
+    // every confirmation in the app goes through here, so this is the one place
+    // that decides whether feedback is perceivable without looking at the screen
+    el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+    document.body.appendChild(el);
+  }
   el.textContent = msg; el.classList.add('show');
   clearTimeout(toast._t);
   toast._t = setTimeout(() => el.classList.remove('show'), ms || 3500);
+}
+/* off-screen announcement for things that are signalled visually only (the
+   full-screen rest flash, which is aria-hidden because it's decorative) */
+function announce(msg) {
+  const el = document.getElementById('live');
+  if (!el) return;
+  el.textContent = '';
+  setTimeout(() => { el.textContent = msg; }, 50);
 }
 
 function weekFor(date) {
@@ -211,12 +225,26 @@ function tickTimer() {
 function fireRestDone() {
   vibrate([300, 120, 300, 120, 500]);
   chime();
+  announce('Rest done — next set');
   const fl = $('#flash');
   fl.classList.add('on');
   setTimeout(() => fl.classList.remove('on'), 1800);
 }
 function fmtSecs(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function skipRest() { ST.timer = null; save(); clearTimeout(bgNotifyTimeout); tickTimer(); }
+/* Extending rest is the common need mid-workout; skipping is the rare one. The
+   bar surface does this, and skip is an explicit button — the reverse of before,
+   when any tap on a 73px full-bleed bar cancelled rest with no undo. */
+window.addRest = function (sec) {
+  if (!ST.timer) return;
+  ST.timer.endTs += sec * 1000;
+  ST.timer.total += sec;
+  save();
+  scheduleBgNotify(Math.ceil((ST.timer.endTs - Date.now()) / 1000), ST.timer.label);
+  vibrate(25);
+  toast('+' + sec + 's rest');
+  tickTimer();
+};
 
 /* ---- hold timer for time-based exercises (planks, carries-by-time) ---- */
 let holdEnd = null, holdInterval = null;
@@ -397,7 +425,18 @@ function go(name, params) {
   // a nav tap should always win: close any open prompt sheet (it re-offers next app open)
   const m = $('#modal');
   if (m && m.classList.contains('open')) { m.classList.remove('open'); m.innerHTML = ''; }
-  view = Object.assign({ name }, params); render(); window.scrollTo(0, 0);
+  view = Object.assign({ name }, params);
+  // Views are pure JS state, so without this the Android hardware Back button
+  // has nothing to pop and leaves the app — mid-workout if you're unlucky.
+  try { history.pushState({ view }, ''); } catch (e) {}
+  render();
+  // The plan is nine weeks tall (~3300px). Landing on Week 1 means scrolling to
+  // find today, and that gets worse every week of the block.
+  if (name === 'schedule') {
+    const cur = document.querySelector('.wk.cur');
+    if (cur) { window.scrollTo(0, Math.max(0, cur.getBoundingClientRect().top + window.scrollY - 12)); return; }
+  }
+  window.scrollTo(0, 0);
 }
 
 let elapsedInterval = null;
@@ -439,7 +478,11 @@ function fmtElapsed(ms) {
 
 function bindNav() {
   const NAV_OF = { exdetail: 'progress', history: 'progress', trends: 'progress' };
-  document.querySelectorAll('[data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === (NAV_OF[view.name] || view.name)));
+  document.querySelectorAll('[data-nav]').forEach(b => {
+    const on = b.dataset.nav === (NAV_OF[view.name] || view.name);
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
 }
 
 function navBar() {
@@ -536,12 +579,22 @@ function vHome() {
   }
   const radar = deloadRadar();
   const radarCard = radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '';
+  // Runs older than yesterday used to be a queue of modal sheets on every launch.
+  // They're a card you can ignore now — the data still matters (pace trend, deload
+  // radar), but not enough to stand between you and today's workout.
+  const backlog = unloggedRuns().filter(d => d < dadd(t, -1));
+  const backlogCard = backlog.length ? `<div class="card">
+      <div class="card-kicker">🏃 ${backlog.length} run${backlog.length === 1 ? '' : 's'} not logged</div>
+      <div class="card-sub">Oldest is ${fmtDate(backlog[0])}. Logging them keeps your pace trend and the deload radar honest.</div>
+      <button class="btn" onclick="openRunLog('${backlog[0]}')">Log ${fmtDate(backlog[0])}</button>
+      ${backlog.length > 1 ? `<button class="linkbtn" onclick="go('schedule')">See all ${backlog.length} in Plan</button>` : ''}
+    </div>` : '';
   const hasData = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0;
   const backupDue = hasData && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this plan?</button>`;
   return `<header class="top"><div class="phase">${esc(phase)}</div>${raceCountdowns()}</header>
-    <main>${raceExtraCards()}${radarCard}${card}${upNext(t)}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
+    <main>${raceExtraCards()}${radarCard}${card}${upNext(t)}${backlogCard}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
 
 /* ---------- run logging ---------- */
@@ -620,7 +673,8 @@ window.saveRun = function (date) {
   const hr = parseInt($('#runhr').value, 10);
   ST.runs[date] = { km: parseFloat(m.dataset.km), min: parseFloat(m.dataset.min), feel: m.dataset.feel, note: $('#runnote').value.trim(), hr: isNaN(hr) ? null : hr, splits };
   save(); closeModal(); render();
-  autoPromptRun(); // catch-up: chain to the next unlogged run day, if any
+  // deliberately does NOT chain to the next unlogged run — the backlog lives on
+  // the Today card instead, so logging one run never opens another sheet
 };
 window.saveStravaFeel = function (date) {
   const m = $('#modal');
@@ -628,12 +682,10 @@ window.saveStravaFeel = function (date) {
   const sr = stravaRunOn(date);
   ST.runs[date] = { km: sr.km, min: sr.movingMin, hr: sr.avgHr || null, feel: m.dataset.feel, note: ($('#runnote')?.value || '').trim(), splits: [], fromStrava: true };
   save(); closeModal(); render();
-  autoPromptRun();
 };
 window.skipRun = function (date) {
   ST.runs[date] = { skipped: true };
   save(); closeModal(); render();
-  autoPromptRun();
 };
 
 /* ================= Strava integration =================
@@ -1035,20 +1087,34 @@ function raceProjection() {
   return { range: fmtT(fast) + '–' + fmtT(slow), nLongs: longs.length };
 }
 
-/* auto-prompt: on app open, pop the log sheet for the oldest unlogged run day ≤ today.
-   Today's own run only prompts after 10:00 so a morning check-in doesn't nag pre-run. */
+/* every run day ≤ today that still has no log, oldest first */
+function unloggedRuns() {
+  const t = today();
+  const out = [];
+  for (const wk of ST.program.weeks) for (const d of wk.days) {
+    if ((d.kind === 'run' || d.kind === 'race') && d.date <= t && !ST.runs[d.date]) out.push(d.date);
+  }
+  return out;
+}
+
+/* auto-prompt: at most ONE run sheet per app launch, and only for today or
+   yesterday. This used to walk the entire backlog, and because saveRun/skipRun
+   each called back into it, dismissing one sheet summoned the next — a week
+   away from the app meant five sheets between you and the Today screen, with
+   "I didn't do this run" as the fastest way through. Anything older than
+   yesterday is a passive card on Today now (see runBacklogCard). */
+let runPromptShown = false;
 function autoPromptRun() {
   if (ST.activeSessionId) return;                      // never interrupt a workout
+  if (runPromptShown) return;                          // one per launch, never chained
   if ($('#modal').classList.contains('open')) return;
   const t = today();
-  const candidates = [];
-  for (const wk of ST.program.weeks) for (const d of wk.days) {
-    if ((d.kind === 'run' || d.kind === 'race') && d.date <= t && !ST.runs[d.date]) candidates.push(d.date);
-  }
-  if (!candidates.length) return;
-  const oldest = candidates[0];
-  if (oldest === t && new Date().getHours() < 10) return;
-  openRunLog(oldest);
+  const recent = unloggedRuns().filter(d => d === t || d === dadd(t, -1));
+  if (!recent.length) return;
+  const pick = recent[0];
+  if (pick === t && new Date().getHours() < 10) return;
+  runPromptShown = true;
+  openRunLog(pick);
 }
 
 function upNext(t) {
@@ -1202,6 +1268,58 @@ window.openReadiness = function (date, tpl) {
 };
 window.closeModal = function () { $('#modal').classList.remove('open'); $('#modal').innerHTML = ''; };
 
+/* ---- sheet a11y ----
+   Almost every decision in this app happens in a sheet, but #modal was a bare
+   div: focus stayed on whatever was behind it and Escape did nothing. Rather
+   than touch the dozen call sites that each do `m.classList.add('open')`, watch
+   the class and wire up dialog behaviour when it flips. */
+(function () {
+  const m = document.getElementById('modal');
+  if (!m) return;
+  let lastFocus = null;
+  const focusables = () => [...m.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(el => el.offsetParent !== null);
+  function onKey(ev) {
+    if (ev.key === 'Escape') { ev.preventDefault(); closeModal(); return; }
+    if (ev.key !== 'Tab') return;
+    const f = focusables(); if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  }
+  // Observer callbacks are async and coalesce, so a close-then-open inside one
+  // task (autoPromptRun chaining sheets, doSwap re-rendering) arrives as a
+  // single notification. Keying off the .sheet element rather than the class
+  // edge means each new sheet still gets its own label and focus.
+  let lastSheet = null;
+  new MutationObserver(() => {
+    const open = m.classList.contains('open');
+    const sheet = m.querySelector('.sheet');
+    if (open) {
+      if (!m.dataset.trapped) {
+        m.dataset.trapped = '1';
+        lastFocus = document.activeElement;
+        document.addEventListener('keydown', onKey, true);
+      }
+      if (sheet && sheet !== lastSheet) {
+        lastSheet = sheet;
+        const h = m.querySelector('h2');
+        m.setAttribute('aria-label', h ? h.textContent.trim() : 'Dialog');
+        // focus the sheet itself, never the first field — a keyboard springing up
+        // mid-workout is worse than no focus at all
+        sheet.setAttribute('tabindex', '-1');
+        sheet.focus({ preventScroll: true });
+      }
+    } else if (m.dataset.trapped) {
+      delete m.dataset.trapped;
+      lastSheet = null;
+      document.removeEventListener('keydown', onKey, true);
+      if (lastFocus && document.contains(lastFocus)) { try { lastFocus.focus({ preventScroll: true }); } catch (e) {} }
+      lastFocus = null;
+    }
+  }).observe(m, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+})();
+
 function beginSession(date, tpl, readiness, downgrade, guidance) {
   closeModal();
   if ('Notification' in window && Notification.permission === 'default') {
@@ -1256,8 +1374,8 @@ function vSession() {
       ${stepper('reps', cap(repsLabel) + (ex.perSide ? ' / side' : ''), t.reps, 1)}
       ${ex.mode === 'time' ? `<button class="btn big holdbtn" id="holdbtn" onclick="startHold()">▶ Start ${t.reps}s hold timer${ex.perSide ? ' (run it once per side)' : ''}</button><div class="holdval" id="holdval"></div>` : ''}
       ${ex.rpe !== null ? rpePicker(t.rpe) : ''}
-      <input id="setnote" class="notefield" placeholder="Notes — niggles, form cues (optional)" value="${esc(t.note)}">
       <button class="btn primary big" onclick="logSet()">✓ Log set — rest ${fmtSecs(ex.rest)}</button>
+      <input id="setnote" class="notefield" placeholder="Notes — niggles, form cues (optional)" value="${esc(t.note)}">
       <button class="linkbtn" onclick="failSet()">mark set failed</button>
     </div>`;
 
@@ -1276,6 +1394,13 @@ function vSession() {
         <div class="ex-reason dim">${esc(e.prescReason || '')}</div>
         ${e.prescWarn ? `<div class="ex-warn">⚠️ ${esc(e.prescWarn)}</div>` : ''}
         ${rampBlock(e, ex)}
+      </div>
+      ${curPanel}
+      <!-- Everything below is reference you read once per exercise: what you did
+           last time, the form cue, why it's in the plan, the swap, and the sets
+           still to come. It used to sit ABOVE the panel, which pushed the Log
+           button ~312px below the fold on every single set. -->
+      <div class="ex-ref">
         <div class="ex-last">${lastStr}</div>
         <div class="ex-cue">${esc(ex.cue || '')}</div>
         ${ex.why ? `<div class="ex-why ${whyOpen ? 'open' : ''}" onclick="whyOpen=!whyOpen;render()">
@@ -1285,7 +1410,6 @@ function vSession() {
         ${ex.swaps.length ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
       </div>
       <div class="sets">${setRows}</div>
-      ${curPanel}
       <div class="ex-nav">
         <button class="btn" ${s.curIdx === 0 ? 'disabled' : ''} onclick="moveEx(-1)">‹ Prev</button>
         ${s.curIdx < s.exercises.length - 1
@@ -1294,7 +1418,7 @@ function vSession() {
       </div>
       ${s.curIdx < s.exercises.length - 1 ? `<button class="linkbtn" onclick="finishSession()">finish workout early</button>` : ''}
     </main>
-    <div id="restbar" class="restbar" onclick="skipRest()"><div id="restbar-fill" class="restbar-fill"></div><div class="restbar-txt"><span id="restbar-label"></span><b id="restbar-time"></b><span class="dim">tap to skip</span></div></div>`;
+    <div id="restbar" class="restbar" role="timer" aria-label="Rest timer" onclick="addRest(30)"><div id="restbar-fill" class="restbar-fill"></div><div class="restbar-txt"><span id="restbar-label"></span><b id="restbar-time"></b><span class="dim">tap bar +30s</span><button class="mini restskip" onclick="event.stopPropagation();skipRest()">Skip</button></div></div>`;
 }
 
 /* ---- in-workout exercise header ----
@@ -1382,20 +1506,24 @@ function setStr(ex, t) {
 }
 
 function stepper(id, label, val, step) {
+  // A first-ever lift has no prescription, so weight seeds at 0. Stepping from
+  // 0 to a real working weight is ~40 taps, so when it's unset the field says
+  // so and sends you to the keyboard instead of the + button.
+  const unset = id === 'weight' && !val;
   return `<div class="stepper">
     <div class="stepper-lbl">${label} <span class="dim" style="font-weight:400">· tap number to type</span></div>
     <div class="stepper-row">
-      <button class="stepbtn" onclick="step_('${id}',-${step})">−</button>
-      <div class="stepval" id="v-${id}" onclick="typeSetVal('${id}')">${val}</div>
-      <button class="stepbtn" onclick="step_('${id}',${step})">+</button>
+      <button class="stepbtn" aria-label="Decrease ${esc(label)}" onclick="step_('${id}',-${step})">−</button>
+      <div class="stepval ${unset ? 'unset' : ''}" id="v-${id}" role="button" tabindex="0" aria-label="${esc(label)}: ${unset ? 'not set' : val}. Tap to type a value" onclick="typeSetVal('${id}')">${unset ? 'tap to set' : val}</div>
+      <button class="stepbtn" aria-label="Increase ${esc(label)}" onclick="step_('${id}',${step})">+</button>
     </div></div>`;
 }
 /* tap-to-type: swap the value for a numeric input, commit on blur/enter */
 window.typeSetVal = function (id) {
   const el = document.getElementById('v-' + id);
   if (!el || el.tagName === 'INPUT') return;
-  const cur = el.textContent;
-  el.outerHTML = `<input class="stepval typeval" id="v-${id}" type="number" inputmode="decimal" step="any" value="${cur}">`;
+  const cur = parseFloat(el.textContent);   // "tap to set" → empty field, ready to type
+  el.outerHTML = `<input class="stepval typeval" id="v-${id}" type="number" inputmode="decimal" step="any" value="${isNaN(cur) ? '' : cur}">`;
   const inp = document.getElementById('v-' + id);
   inp.focus(); inp.select();
   const commit = () => {
@@ -1420,7 +1548,9 @@ window.step_ = function (id, d) {
   const t = e.sets[cur];
   if (id === 'weight') t.weight = Math.max(0, Math.round((t.weight + d) * 100) / 100);
   else t.reps = Math.max(0, t.reps + d);
-  $('#v-' + id).textContent = id === 'weight' ? t.weight : t.reps;
+  const el = $('#v-' + id);
+  el.textContent = id === 'weight' ? t.weight : t.reps;
+  el.classList.remove('unset');   // it has a real value now, drop the placeholder look
   save();
 };
 
@@ -2682,6 +2812,23 @@ if (ST.activeSessionId && ST.sessions[ST.activeSessionId] && ST.sessions[ST.acti
   view = { name: 'session' };
   acquireWakeLock();
 }
+/* ---- hardware / browser Back ----
+   Seed a state for the view we boot into, then let Back walk the stack. Leaving
+   an active workout asks first: the sets are saved either way, but the app
+   disappearing mid-set reads as data loss even when it isn't. */
+try { history.replaceState({ view }, ''); } catch (e) {}
+window.addEventListener('popstate', ev => {
+  const target = (ev.state && ev.state.view) || { name: 'home' };
+  if (view.name === 'session' && ST.activeSessionId && target.name !== 'session') {
+    if (!confirm('Leave the workout? Your sets are saved — you can resume from Today.')) {
+      try { history.pushState({ view }, ''); } catch (e) {}   // re-arm, stay put
+      return;
+    }
+  }
+  view = target;
+  render();
+  window.scrollTo(0, 0);
+});
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});  // free eviction insurance
 // tapping the dimmed backdrop dismisses any prompt sheet (it re-offers next open)
 $('#modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
