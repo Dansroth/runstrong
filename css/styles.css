@@ -372,3 +372,22 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 /* "why this helps" disclosure on the warm-up / stretch screen */
 .rt-why { margin-top: 10px; }
 .rt-why-txt { font-size: .84rem; line-height: 1.5; color: var(--dim); max-width: 34ch; margin: 6px auto 0; text-align: center; }
+
+/* ---- plate calculator ---- */
+.plates { margin-top: 8px; font-size: .92rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---- streak / consistency heatmap ---- */
+.card.streak { border-color: var(--warn); }
+.card.streak .card-kicker { color: var(--warn); }
+.heatmap { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+.heat-cell { width: 16px; height: 16px; border-radius: 4px; background: var(--bg3); border: 1px solid #2b3648; }
+.heat-cell.on { background: var(--acc-d); border-color: var(--acc); }
+.heat-cell.istoday { box-shadow: 0 0 0 2px var(--warn); }
+
+/* ---- in-session "how to" steps (mirrors .ex-why disclosure styling) ---- */
+.ex-steps { margin: 6px 0 0 1.2em; font-size: .9rem; line-height: 1.55; color: var(--fg); }
+.ex-steps li { margin-bottom: 4px; }
+
+/* ---- equipment-aware swap suggestions ---- */
+.swapopt.unavail { opacity: .6; }
+.swap-note { display: block; font-size: .72rem; font-weight: 500; color: var(--warn); margin-top: 3px; }

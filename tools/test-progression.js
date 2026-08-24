@@ -9,7 +9,7 @@
 'use strict';
 
 const P = require('../js/program.js');
-const { nextPrescription, targetRPEForPhase, phaseKeyFromLabel, PHASE_POLICY, TEMPLATES, EXERCISES, WEIGHT_STEP_DEFAULT, buildProgram, STRETCH_SETUP_SECS } = P;
+const { nextPrescription, targetRPEForPhase, phaseKeyFromLabel, PHASE_POLICY, TEMPLATES, EXERCISES, WEIGHT_STEP_DEFAULT, buildProgram, STRETCH_SETUP_SECS, platesPerSide, PLATE_SET } = P;
 
 const STEP = WEIGHT_STEP_DEFAULT;   // 1 kg
 let pass = 0, fail = 0;
@@ -248,6 +248,38 @@ group('rep schemes stay runner-appropriate (heavy, low-rep + plyometrics)');
 group('stretch routine setup gap');
 {
   eq('setup gap is 10 seconds', STRETCH_SETUP_SECS, 10);
+}
+
+group('plate calculator (platesPerSide)');
+{
+  const j = r => JSON.stringify(r);
+  let r = platesPerSide(100, 20, PLATE_SET);   // 80kg over bar → 40/side
+  eq('100kg on a 20kg bar: exact', r.exact, true);
+  eq('100kg on a 20kg bar: per side', r.perSide, 40);
+  eq('100kg on a 20kg bar: plates', j(r.plates), j([25, 15]));
+
+  r = platesPerSide(65, 20, PLATE_SET);   // 45kg over bar → 22.5/side
+  eq('65kg on a 20kg bar: plates', j(r.plates), j([20, 2.5]));
+  eq('65kg on a 20kg bar: exact', r.exact, true);
+
+  r = platesPerSide(20, 20, PLATE_SET);   // just the bar
+  eq('bar-only weight: no plates', r.plates.length, 0);
+  eq('bar-only weight: per side is 0', r.perSide, 0);
+
+  r = platesPerSide(15, 20, PLATE_SET);   // under the bar — never negative
+  eq('under-bar weight: per side clamped to 0', r.perSide, 0);
+  eq('under-bar weight: no plates', r.plates.length, 0);
+
+  r = platesPerSide(101, 20, PLATE_SET);   // 40.5/side — not hittable with a 1.25 floor
+  ok('101kg on a 20kg bar: not exact', !r.exact, j(r));
+  ok('101kg on a 20kg bar: remainder is the honest leftover', r.remainder > 0 && r.remainder < 1.25, `remainder=${r.remainder}`);
+
+  r = platesPerSide(140, 15, PLATE_SET);   // 62.5/side, different bar weight
+  eq('140kg on a 15kg bar: exact', r.exact, true);
+  eq('140kg on a 15kg bar: per side', r.perSide, 62.5);
+
+  ok('plates are always returned heaviest-first', r.plates.every((p, i) => i === 0 || p <= r.plates[i - 1]));
+  ok('every returned plate is a real plate from the set', platesPerSide(237, 20, PLATE_SET).plates.every(p => PLATE_SET.includes(p)));
 }
 
 /* =================================================================== */

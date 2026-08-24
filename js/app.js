@@ -3,12 +3,19 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
+/* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
+   Settings toggles default every one of these ON, so a fresh install and every
+   existing user see identical swap suggestions until they actually mark
+   something unavailable. */
+const EQUIP_KEYS = ['barbell', 'dumbbell', 'bench', 'machine', 'cable', 'band', 'box'];
+const EQUIP_LABEL = { barbell: 'Barbell', dumbbell: 'Dumbbells', bench: 'Bench', machine: 'Machines', cable: 'Cable stack', band: 'Resistance bands', box: 'Plyo box / step' };
+function defaultEquip() { const e = {}; for (const k of EQUIP_KEYS) e[k] = true; return e; }
 
 function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { step: WEIGHT_STEP_DEFAULT, sound: true, vibrate: true, seenInstall: false, seenWhy: false, disclaimerSeen: false },
+    settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, seenWhy: false, disclaimerSeen: false },
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
@@ -68,6 +75,15 @@ const MIGRATIONS = {
     s.routines = s.routines || {};
     s.schemaVersion = 9; return s;
   },
+  // 9 → 10: plate calculator (bar weight) + equipment-aware swap suggestions.
+  // Additive settings only: barWeight defaults to a standard 20 kg Olympic bar,
+  // equip defaults every tag ON so existing users see no change in swap
+  // ordering until they actually mark something unavailable. History untouched.
+  9: (s) => {
+    if (s.settings.barWeight == null) s.settings.barWeight = 20;
+    s.settings.equip = Object.assign(defaultEquip(), s.settings.equip || {});
+    s.schemaVersion = 10; return s;
+  },
 };
 
 function migrate(s) {
@@ -105,13 +121,23 @@ function save() {
   // Every mutation funnels through here, which makes it the honest place to drop
   // the derived caches — they are rebuilt lazily on the next read.
   invalidateExHistory(); invalidateMergedRuns(); invalidateActivityIndex();
-  localStorage.setItem(DB_KEY, JSON.stringify(ST));
+  // Unlike loadState(), this used to have no guard at all: a quota-exceeded
+  // device or a private-browsing storage restriction would throw straight out
+  // of whatever handler called save() — nearly every mutating handler in the
+  // app — losing the set you just logged with no feedback that anything went
+  // wrong. toast() only (never alert()) because save() can fire mid-set.
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify(ST));
+  } catch (e) {
+    console.error('save failed', e);
+    if (typeof toast === 'function') toast('⚠️ Could not save — device storage may be full. Export a backup and free up space.', 5000);
+  }
 }
 save(); // persist immediately so migrations and first-visit program generation stick
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v25';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v26';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -393,18 +419,27 @@ function buildSession(date, tplId, downgrade) {
   return { id: date, date, tpl: tplId, title: tpl.title, status: 'active', downgraded: downgrade || false, phase: ctx.phase, readiness: null, guidance: null, stretch: null, exercises, curIdx: 0, startedTs: Date.now(), finishedTs: null };
 }
 
+/* Swapping exercise mid-session used to reassign e.exId unconditionally: any
+   sets already logged against the OLD variant stayed in e.sets and were
+   silently reattributed to the NEW variant the moment exId changed — quietly
+   corrupting the per-variant history the whole progression engine reads from.
+   Refusing to swap once a set is logged is the fix — see the matching guard
+   on the swap button itself in vSession(), which is what stops this from
+   ever being called in that state through normal use. This check stays as
+   the real guarantee; the UI guard is the cheap belt.
+   Returns true on success, false if refused. */
 function swapExercise(sess, idx, newExId) {
   const e = sess.exercises[idx];
-  const done = e.sets.filter(s => s.done);
+  if (e.sets.some(s => s.done)) return false;
   const presc = nextPrescription(newExId, exHistory(newExId, sess.date), ST.settings.step, e.tplReps, progressionCtx(sess.date, sess.downgraded));
   e.exId = newExId;
   e.prescWeight = presc.weight;
   e.prescReason = presc.reason;
   e.prescPhase = presc.phase;
   e.prescWarn = presc.warn;
-  // keep completed sets (they belong to the old variant via their exId snapshot… simplest: sets logged before swap stay attributed to new variant only if none done)
-  if (!done.length) e.sets.forEach(s => { s.weight = null; s.reps = null; s.rpe = null; });
+  e.sets.forEach(s => { s.weight = null; s.reps = null; s.rpe = null; });
   save();
+  return true;
 }
 
 /* ================= deload radar =================
@@ -450,6 +485,7 @@ function deloadRadar() {
 const APP = $('#app');
 let view = { name: 'home' };
 let whyOpen = false;   // in-session "why this helps" expander (transient, resets per exercise)
+let howtoOpen = false; // in-session "how to" step list expander (transient, resets per exercise)
 
 /* progression policy key a session was built under (older sessions predate the field) */
 function sessionPhase(s) {
@@ -572,6 +608,43 @@ function raceExtraCards() {
   return out;
 }
 
+/* ---------- streak / consistency ----------
+   "Any day with a lift or a run" rather than "every prescribed day hit" —
+   the plan already has built-in rest and taper days, so a streak tied to the
+   schedule would break by design every single week. This tracks showing up,
+   not adherence to a specific plan slot. */
+function activityDates() {
+  const set = new Set();
+  for (const id in ST.sessions) if (ST.sessions[id].status === 'done') set.add(ST.sessions[id].date);
+  for (const d in mergedRunsAll()) set.add(d);
+  return set;
+}
+function currentStreak() {
+  const dates = activityDates();
+  let d = today();
+  // Today not logged yet doesn't break the streak — the day isn't over.
+  if (!dates.has(d)) d = dadd(d, -1);
+  let n = 0;
+  while (dates.has(d)) { n++; d = dadd(d, -1); }
+  return n;
+}
+const STREAK_DAYS = 35;
+function streakHeatmap() {
+  const dates = activityDates();
+  const streak = currentStreak();
+  let cells = '';
+  for (let i = STREAK_DAYS - 1; i >= 0; i--) {
+    const d = dadd(today(), -i);
+    const on = dates.has(d);
+    cells += `<div class="heat-cell ${on ? 'on' : ''} ${d === today() ? 'istoday' : ''}" title="${esc(fmtDate(d))}${on ? ' — trained' : ''}"></div>`;
+  }
+  return `<div class="card streak">
+    <div class="card-kicker">🔥 ${streak > 0 ? `${streak}-day streak` : 'Start a streak'}</div>
+    <div class="card-sub">${streak > 0 ? 'A lift or a run, any day, keeps it alive.' : 'Log a lift or a run today to start one.'}</div>
+    <div class="heatmap">${cells}</div>
+  </div>`;
+}
+
 /* ---------- Home / Today ---------- */
 function vHome() {
   const t = today();
@@ -584,7 +657,7 @@ function vHome() {
     const backupDue2 = hasData2 && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
     const backupCard2 = backupDue2 ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
     return `<header class="top"><div class="phase">${esc(phase)}</div></header>
-      <main>${maintenanceCard()}${backupCard2}</main>${navBar()}${installBanner()}`;
+      <main>${maintenanceCard()}${streakHeatmap()}${backupCard2}</main>${navBar()}${installBanner()}`;
   }
   if (active && active.status === 'active') {
     card = `<div class="card action" onclick="go('session')">
@@ -642,7 +715,7 @@ function vHome() {
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this plan?</button>`;
   return `<header class="top"><div class="phase">${esc(phase)}</div>${raceCountdowns()}</header>
-    <main>${raceExtraCards()}${radarCard}${card}${upNext(t)}${backlogCard}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
+    <main>${raceExtraCards()}${radarCard}${card}${streakHeatmap()}${upNext(t)}${backlogCard}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
 
 /* ---------- run logging ---------- */
@@ -1509,11 +1582,15 @@ function vSession() {
       <div class="ex-ref">
         <div class="ex-last">${lastStr}</div>
         <div class="ex-cue">${esc(ex.cue || '')}</div>
+        ${ex.steps ? `<div class="ex-why ${howtoOpen ? 'open' : ''}" onclick="howtoOpen=!howtoOpen;render()">
+          <span class="ex-why-t">📋 How to ${howtoOpen ? '▾' : '▸'}</span>
+          ${howtoOpen ? `<div class="ex-why-body"><ol class="ex-steps">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
+        </div>` : ''}
         ${ex.why ? `<div class="ex-why ${whyOpen ? 'open' : ''}" onclick="whyOpen=!whyOpen;render()">
           <span class="ex-why-t">🎯 Why this helps your half ${whyOpen ? '▾' : '▸'}</span>
           ${whyOpen ? `<div class="ex-why-body">${isTaperPhase(s.date) ? esc(ex.taperWhy || TAPER_WHY) + '<br><span class="dim">' + esc(ex.why) + '</span>' : esc(ex.why)}</div>` : ''}
         </div>` : ''}
-        ${ex.swaps.length ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
+        ${ex.swaps.length && !e.sets.some(t => t.done) ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
       </div>
       <div class="sets">${setRows}</div>
       <div class="ex-nav">
@@ -1564,7 +1641,22 @@ function heroBlock(e, ex, last) {
       <div class="hero-num">${num}</div>
       <div class="hero-suffix">${suffix}</div>
       ${chip}
+      ${ex.wu === 'bar' && !bw && !timeLike ? platesLine(num) : ''}
     </div>`;
+}
+/* Plate breakdown for a barbell working weight — the friction this removes is
+   doing bar-minus-weight-over-two math mid-set, under fatigue. Only shown for
+   ex.wu === 'bar' lifts: machines and dumbbells don't load in bar plates. */
+function platesLine(weight) {
+  if (weight == null) return '';
+  const bar = ST.settings.barWeight || 20;
+  if (weight <= bar) return `<div class="plates dim">Just the ${bar}kg bar</div>`;
+  const r = platesPerSide(weight, bar, PLATE_SET);
+  if (!r.plates.length) return '';
+  const grouped = [];
+  let i = 0;
+  while (i < r.plates.length) { let j = i; while (j < r.plates.length && r.plates[j] === r.plates[i]) j++; grouped.push(`${j - i}×${r.plates[i]}`); i = j; }
+  return `<div class="plates">🏋️ ${bar}kg bar + ${grouped.join(' + ')} kg /side${!r.exact ? ` <span class="dim">(+${r.remainder}kg not exact with standard plates)</span>` : ''}</div>`;
 }
 /* Ramp pills. Tapping one strikes it through — optional, never required before a
    working set. State is transient: the ramp only shows before the first logged set. */
@@ -1696,7 +1788,7 @@ window.logSet = function (failed) {
   if (!(wasLast && s.curIdx === s.exercises.length - 1)) startRest(ex.rest, esc(ex.name));
   if (wasLast && s.curIdx < s.exercises.length - 1) {
     s.curIdx++;
-    whyOpen = false; rampDone = new Set();
+    whyOpen = false; howtoOpen = false; rampDone = new Set();
     save(); render();
     showNextExercise(ex, s);          // unmissable hand-off between exercises
     return;
@@ -1728,23 +1820,33 @@ window.undoSet = function (i) {
 window.moveEx = function (d) {
   const s = ST.sessions[ST.activeSessionId];
   s.curIdx = Math.max(0, Math.min(s.exercises.length - 1, s.curIdx + d));
-  whyOpen = false; rampDone = new Set();
+  whyOpen = false; howtoOpen = false; rampDone = new Set();
   save(); render();
 };
 
+/* Equipment a variant needs but Settings has marked unavailable. Empty equip
+   (or every tag still ON) = fully compatible, always ranked first. This never
+   hides an option — a "not available" tag can be wrong, and the user knows
+   their gym better than a fixed list does — it only sorts and labels. */
+function missingEquip(id) {
+  const eq = ST.settings.equip || {};
+  return (EXERCISES[id].equip || []).filter(tag => eq[tag] === false);
+}
 window.openSwap = function () {
   const s = ST.sessions[ST.activeSessionId]; const e = s.exercises[s.curIdx];
   const base = EXERCISES[e.origExId];
   const opts = [e.origExId, ...base.swaps].filter(id => id !== e.exId);
+  const ranked = opts.map(id => ({ id, missing: missingEquip(id) }))
+    .sort((a, b) => (a.missing.length > 0) - (b.missing.length > 0));
   const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><h2>Swap exercise</h2><div class="dim" style="margin-bottom:12px">Equipment taken? Each variant keeps its own weight history.</div>` +
-    opts.map(id => `<button class="btn big swapopt" onclick="doSwap('${id}')">${esc(EXERCISES[id].name)}</button>`).join('') +
+  m.innerHTML = `<div class="sheet"><h2>Swap exercise</h2><div class="dim" style="margin-bottom:12px">Equipment taken? Each variant keeps its own weight history. Sorted by what you've marked available in Settings.</div>` +
+    ranked.map(({ id, missing }) => `<button class="btn big swapopt ${missing.length ? 'unavail' : ''}" onclick="doSwap('${id}')">${esc(EXERCISES[id].name)}${missing.length ? `<span class="swap-note">needs ${missing.map(t => EQUIP_LABEL[t] || t).join(', ')} — marked unavailable</span>` : ''}</button>`).join('') +
     `<button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
   m.classList.add('open');
 };
 window.doSwap = function (id) {
   const s = ST.sessions[ST.activeSessionId];
-  swapExercise(s, s.curIdx, id);
+  if (!swapExercise(s, s.curIdx, id)) { toast('Already logged a set here — finish this exercise or move on instead.'); closeModal(); return; }
   rampDone = new Set();   // different lift, different ramp
   closeModal(); render();
 };
@@ -2291,6 +2393,8 @@ function vExDetail() {
   const backTab = view.back === 'insights' || view.back === 'trends' ? 'insights' : 'log';
   return `<header class="top slim"><button class="backbtn" aria-label="Back to Progress" onclick="setProgressTab('${backTab}')">‹</button><div class="phase">${esc(ex.name)}</div></header>
   <main>
+    ${ex.steps ? `<div class="card"><div class="card-kicker">📋 How to</div>
+      <ol class="ex-steps" style="color:var(--fg)">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
     ${ex.why ? `<div class="card"><div class="card-kicker">🎯 Why this helps your half</div>
       <div class="card-sub" style="color:var(--fg)">${esc(ex.why)}</div>
       ${ex.deep ? `<div class="card-sub" style="margin-top:8px">${esc(ex.deep)}</div>` : ''}</div>` : ''}
@@ -2845,8 +2949,16 @@ function vSettings() {
       <select onchange="ST.settings.step=+this.value;save()">
         ${WEIGHT_STEP_CHOICES.map(v => `<option value="${v}" ${ST.settings.step === v ? 'selected' : ''}>${v} kg</option>`).join('')}
       </select></div>
+    <div class="set-row"><span>Barbell weight</span>
+      <select onchange="ST.settings.barWeight=+this.value;save();render()">
+        ${[20, 15, 10].map(v => `<option value="${v}" ${ST.settings.barWeight === v ? 'selected' : ''}>${v} kg</option>`).join('')}
+      </select></div>
+    <div class="dim small" style="margin-bottom:8px">Used by the plate calculator on barbell lifts — standard plates (25/20/15/10/5/2.5/1.25 kg) assumed per side.</div>
     <div class="set-row"><span>Rest chime</span><button class="toggle ${ST.settings.sound ? 'on' : ''}" onclick="ST.settings.sound=!ST.settings.sound;save();render()">${ST.settings.sound ? 'ON' : 'OFF'}</button></div>
     <div class="set-row"><span>Vibration</span><button class="toggle ${ST.settings.vibrate ? 'on' : ''}" onclick="ST.settings.vibrate=!ST.settings.vibrate;save();render()">${ST.settings.vibrate ? 'ON' : 'OFF'}</button></div>
+    <div class="section-label">Equipment on hand</div>
+    <div class="dim small" style="margin-bottom:8px">Turn off anything you don't have — the ⇄ swap-exercise list in a workout ranks compatible variants first.</div>
+    ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span><button class="toggle ${ST.settings.equip[k] ? 'on' : ''}" onclick="ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()">${ST.settings.equip[k] ? 'ON' : 'OFF'}</button></div>`).join('')}
     <div class="section-label">Mode</div>
     ${ST.maintenance.active
       ? `<div class="dim small" style="margin-bottom:8px">Maintenance mode is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: 3 flexible gym workouts a week, no race clock.</div>

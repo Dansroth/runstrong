@@ -23,67 +23,71 @@ const WEIGHT_STEP_CHOICES = [0.5, 1, 2.5, 5];
  mode: 'reps' (weight x reps), 'time' (seconds per side/set), 'carry' (weight x metres), 'bw' (bodyweight reps)
  group: 'lower' | 'upper'  → progression aggressiveness
  perSide: logged per leg/side (informational)
+ equip: gear this variant needs, drawn from ST.settings.equip's keys (barbell,
+   dumbbell, bench, machine, cable, band, box). Missing/empty = needs nothing
+   beyond floor space — used by openSwap() to rank suggestions against what the
+   user has marked available in Settings, never to hide an option outright.
 */
 const EXERCISES = {
   // ---- Lower A ----
-  boxjump:   { name: 'Low Box Jump', group: 'lower', mode: 'bw', rest: 60, rpe: null, swaps: ['broadjump', 'depthdrop'], cue: 'Stick the landing quietly. Step down, never jump down.' },
-  bss:       { name: 'Bulgarian Split Squat', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [7, 8], swaps: ['revlunge', 'stepup'], cue: 'Front shin vertical, drive through mid-foot.' },
-  slrdl:     { name: 'Single-Leg RDL', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [7, 7], swaps: ['bstance', 'cableslrdl'], cue: 'Square hips, soft knee, long spine.' },
-  calfstand: { name: 'Standing Calf Raise', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['slcalf', 'lpcalf'], cue: 'Straight knee (gastroc). Full stretch at bottom, pause at top.' },
-  copen:     { name: 'Copenhagen Plank', group: 'lower', mode: 'time', perSide: true, rest: 45, rpe: null, swaps: ['sideplank', 'adductor'], cue: 'Top leg on bench, body in one line. Seconds per side.' },
+  boxjump:   { name: 'Low Box Jump', group: 'lower', mode: 'bw', rest: 60, rpe: null, swaps: ['broadjump', 'depthdrop'], equip: ['box'], cue: 'Stick the landing quietly. Step down, never jump down.' },
+  bss:       { name: 'Bulgarian Split Squat', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [7, 8], swaps: ['revlunge', 'stepup'], equip: ['dumbbell', 'bench'], cue: 'Front shin vertical, drive through mid-foot.' },
+  slrdl:     { name: 'Single-Leg RDL', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [7, 7], swaps: ['bstance', 'cableslrdl'], equip: ['dumbbell'], cue: 'Square hips, soft knee, long spine.' },
+  calfstand: { name: 'Standing Calf Raise', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['slcalf', 'lpcalf'], equip: [], cue: 'Straight knee (gastroc). Full stretch at bottom, pause at top.' },
+  copen:     { name: 'Copenhagen Plank', group: 'lower', mode: 'time', perSide: true, rest: 45, rpe: null, swaps: ['sideplank', 'adductor'], equip: ['bench'], cue: 'Top leg on bench, body in one line. Seconds per side.' },
   // ---- Lower B ----
-  squat:     { name: 'Back Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: ['frontsquat', 'hacksquat', 'legpress'], cue: 'Heavy but crisp — no grinding reps.' },
-  rdl:       { name: 'Romanian Deadlift', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['trapbar', 'goodmorning'], cue: 'Hinge back, bar close, stretch the hamstrings.' },
-  hipthrust: { name: 'Hip Thrust', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: ['slhipthrust', 'glutebridge'], cue: 'Full lockout, ribs down, 1s squeeze.' },
-  calfseat:  { name: 'Seated Calf Raise', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: ['bkcalfpress'], cue: 'Bent knee (soleus) — the engine of running. Slow tempo.' },
+  squat:     { name: 'Back Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: ['frontsquat', 'hacksquat', 'legpress'], equip: ['barbell'], cue: 'Heavy but crisp — no grinding reps.' },
+  rdl:       { name: 'Romanian Deadlift', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['trapbar', 'goodmorning'], equip: ['barbell'], cue: 'Hinge back, bar close, stretch the hamstrings.' },
+  hipthrust: { name: 'Hip Thrust', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: ['slhipthrust', 'glutebridge'], equip: ['barbell', 'bench'], cue: 'Full lockout, ribs down, 1s squeeze.' },
+  calfseat:  { name: 'Seated Calf Raise', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: ['bkcalfpress'], equip: ['machine'], cue: 'Bent knee (soleus) — the engine of running. Slow tempo.' },
   // ---- Upper A ----
-  bench:     { name: 'Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['dbbench', 'machpress'], cue: 'Feet planted, controlled descent.' },
-  pullup:    { name: 'Weighted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bw', swaps: ['latpull', 'assistpull'], cue: 'Full hang to chin over. Weight = added load (0 = bodyweight).' },
-  dbrow:     { name: 'DB Row', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 8], swaps: ['csrow', 'cablerow'], cue: 'Pull to hip, no torso twist.' },
-  pallof:    { name: 'Pallof Press', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: ['cablechop', 'bandpallof'], cue: 'Anti-rotation: press out, resist the pull, slow.' },
-  carry:     { name: 'Suitcase Carry', group: 'upper', mode: 'carry', perSide: true, rest: 60, rpe: null, swaps: ['safarmer', 'sideplank'], cue: 'Heavy DB one hand, walk tall, level hips. Metres per side.' },
+  bench:     { name: 'Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['dbbench', 'machpress'], equip: ['barbell', 'bench'], cue: 'Feet planted, controlled descent.' },
+  pullup:    { name: 'Weighted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bw', swaps: ['latpull', 'assistpull'], equip: [], cue: 'Full hang to chin over. Weight = added load (0 = bodyweight).' },
+  dbrow:     { name: 'DB Row', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 8], swaps: ['csrow', 'cablerow'], equip: ['dumbbell'], cue: 'Pull to hip, no torso twist.' },
+  pallof:    { name: 'Pallof Press', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: ['cablechop', 'bandpallof'], equip: ['cable'], cue: 'Anti-rotation: press out, resist the pull, slow.' },
+  carry:     { name: 'Suitcase Carry', group: 'upper', mode: 'carry', perSide: true, rest: 60, rpe: null, swaps: ['safarmer', 'sideplank'], equip: ['dumbbell'], cue: 'Heavy DB one hand, walk tall, level hips. Metres per side.' },
   // ---- Upper B ----
-  ohp:       { name: 'Overhead Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['landmine', 'dbshoulder'], cue: 'Glutes tight, ribs down, full lockout.' },
-  csrow:     { name: 'Chest-Supported Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['sealrow', 'cablerow'], cue: 'Chest glued to pad, squeeze shoulder blades.' },
-  incline:   { name: 'Incline DB Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['incmach', 'pushup'], cue: '30–45° bench, elbows ~45°.' },
-  facepull:  { name: 'Face Pull', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: ['revpec', 'bandpull'], cue: 'Rope to eyebrows, thumbs back, pause.' },
-  abwheel:   { name: 'Ab Wheel', group: 'upper', mode: 'bw', rest: 60, rpe: null, swaps: ['hangraise', 'cablecrunch'], cue: 'Hips locked — no sag. Shorten range if lower back talks.' },
+  ohp:       { name: 'Overhead Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['landmine', 'dbshoulder'], equip: ['barbell'], cue: 'Glutes tight, ribs down, full lockout.' },
+  csrow:     { name: 'Chest-Supported Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['sealrow', 'cablerow'], equip: ['machine'], cue: 'Chest glued to pad, squeeze shoulder blades.' },
+  incline:   { name: 'Incline DB Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['incmach', 'pushup'], equip: ['dumbbell', 'bench'], cue: '30–45° bench, elbows ~45°.' },
+  facepull:  { name: 'Face Pull', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: ['revpec', 'bandpull'], equip: ['cable'], cue: 'Rope to eyebrows, thumbs back, pause.' },
+  abwheel:   { name: 'Ab Wheel', group: 'upper', mode: 'bw', rest: 60, rpe: null, swaps: ['hangraise', 'cablecrunch'], equip: [], cue: 'Hips locked — no sag. Shorten range if lower back talks.' },
   // ---- Swap variants (own history each) ----
-  broadjump:  { name: 'Broad Jump', group: 'lower', mode: 'bw', rest: 60, rpe: null, swaps: [], cue: 'Max intent, soft landing.' },
-  depthdrop:  { name: 'Depth Drop', group: 'lower', mode: 'bw', rest: 60, rpe: null, swaps: [], cue: 'Low box, absorb quietly.' },
-  revlunge:   { name: 'Reverse Lunge', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [7, 8], swaps: [], cue: 'Long step back, vertical torso.' },
-  stepup:     { name: 'Step-Up', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [7, 8], swaps: [], cue: 'Knee-height box, no push-off from back leg.' },
-  bstance:    { name: 'B-Stance RDL', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [7, 7], swaps: [], cue: 'Back foot = kickstand only.' },
-  cableslrdl: { name: 'Cable Single-Leg RDL', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [7, 7], swaps: [], cue: 'Cable gives balance assist.' },
-  slcalf:     { name: 'Single-Leg Calf Raise', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [8, 8], swaps: [], cue: 'DB in hand, full range.' },
-  lpcalf:     { name: 'Leg Press Calf Raise', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], cue: 'Straight knee, deep stretch.' },
-  sideplank:  { name: 'Side Plank + Abduction', group: 'lower', mode: 'time', perSide: true, rest: 45, rpe: null, swaps: [], cue: 'Lift top leg, hold. Seconds per side.' },
-  adductor:   { name: 'Adductor Machine', group: 'lower', mode: 'reps', rest: 45, rpe: [8, 8], swaps: [], cue: 'Slow negatives.' },
-  frontsquat: { name: 'Front Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: [], cue: 'Elbows high, upright torso.' },
-  hacksquat:  { name: 'Hack Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'machine', swaps: [], cue: 'Full depth, controlled.' },
-  legpress:   { name: 'Leg Press', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'machine', swaps: [], cue: 'Deep, knees track over toes.' },
-  trapbar:    { name: 'Trap-Bar RDL', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: [], cue: 'Hinge, neutral grip.' },
-  goodmorning:{ name: 'Good Morning', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: [], cue: 'Light bar, big hamstring stretch.' },
-  slhipthrust:{ name: 'Single-Leg Hip Thrust', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [8, 8], swaps: [], cue: 'Hips level throughout.' },
-  glutebridge:{ name: 'Barbell Glute Bridge', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: [], cue: 'From floor, hard squeeze.' },
-  bkcalfpress:{ name: 'Bent-Knee Calf Press', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: [], cue: 'Leg press, knees bent ~30°.' },
-  dbbench:    { name: 'DB Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Weight = per dumbbell.' },
-  machpress:  { name: 'Machine Chest Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Full range, controlled.' },
-  latpull:    { name: 'Lat Pulldown', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'To upper chest, no lean-back heave.' },
-  assistpull: { name: 'Assisted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], cue: 'Weight = assistance (less = harder).' },
-  cablerow:   { name: 'Seated Cable Row', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], cue: 'Chest up, elbows to hips.' },
-  cablechop:  { name: 'Cable Chop', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: [], cue: 'Rotate through hips, arms straight.' },
-  bandpallof: { name: 'Band Pallof Press', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: [], cue: 'Weight = band tension guess.' },
-  safarmer:   { name: 'Single-Arm Farmer Hold', group: 'upper', mode: 'time', perSide: true, rest: 60, rpe: null, swaps: [], cue: 'Stand tall, seconds per side.' },
-  landmine:   { name: 'Landmine Press', group: 'upper', mode: 'reps', perSide: true, rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Slight lean-in, press up and away.' },
-  dbshoulder: { name: 'DB Shoulder Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], cue: 'Weight = per dumbbell.' },
-  sealrow:    { name: 'Seal Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: [], cue: 'Dead stop each rep.' },
-  incmach:    { name: 'Incline Machine Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], cue: 'Controlled negatives.' },
-  pushup:     { name: 'Deficit Push-Up', group: 'upper', mode: 'bw', rest: 75, rpe: [8, 8], swaps: [], cue: 'Hands on DBs, chest below hands.' },
-  revpec:     { name: 'Reverse Pec-Deck', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: [], cue: 'Squeeze rear delts, pause.' },
-  bandpull:   { name: 'Band Pull-Apart', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: [], cue: 'To chest, control return.' },
-  hangraise:  { name: 'Hanging Leg Raise', group: 'upper', mode: 'bw', rest: 60, rpe: null, swaps: [], cue: 'No swing, curl pelvis up.' },
-  cablecrunch:{ name: 'Cable Crunch', group: 'upper', mode: 'reps', rest: 60, rpe: null, swaps: [], cue: 'Flex spine, hips still.' },
+  broadjump:  { name: 'Broad Jump', group: 'lower', mode: 'bw', rest: 60, rpe: null, swaps: [], equip: [], cue: 'Max intent, soft landing.' },
+  depthdrop:  { name: 'Depth Drop', group: 'lower', mode: 'bw', rest: 60, rpe: null, swaps: [], equip: ['box'], cue: 'Low box, absorb quietly.' },
+  revlunge:   { name: 'Reverse Lunge', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [7, 8], swaps: [], equip: ['dumbbell'], cue: 'Long step back, vertical torso.' },
+  stepup:     { name: 'Step-Up', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [7, 8], swaps: [], equip: ['box', 'dumbbell'], cue: 'Knee-height box, no push-off from back leg.' },
+  bstance:    { name: 'B-Stance RDL', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [7, 7], swaps: [], equip: ['dumbbell'], cue: 'Back foot = kickstand only.' },
+  cableslrdl: { name: 'Cable Single-Leg RDL', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [7, 7], swaps: [], equip: ['cable'], cue: 'Cable gives balance assist.' },
+  slcalf:     { name: 'Single-Leg Calf Raise', group: 'lower', mode: 'reps', perSide: true, rest: 75, rpe: [8, 8], swaps: [], equip: ['dumbbell'], cue: 'DB in hand, full range.' },
+  lpcalf:     { name: 'Leg Press Calf Raise', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], equip: ['machine'], cue: 'Straight knee, deep stretch.' },
+  sideplank:  { name: 'Side Plank + Abduction', group: 'lower', mode: 'time', perSide: true, rest: 45, rpe: null, swaps: [], equip: [], cue: 'Lift top leg, hold. Seconds per side.' },
+  adductor:   { name: 'Adductor Machine', group: 'lower', mode: 'reps', rest: 45, rpe: [8, 8], swaps: [], equip: ['machine'], cue: 'Slow negatives.' },
+  frontsquat: { name: 'Front Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: [], equip: ['barbell'], cue: 'Elbows high, upright torso.' },
+  hacksquat:  { name: 'Hack Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'machine', swaps: [], equip: ['machine'], cue: 'Full depth, controlled.' },
+  legpress:   { name: 'Leg Press', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'machine', swaps: [], equip: ['machine'], cue: 'Deep, knees track over toes.' },
+  trapbar:    { name: 'Trap-Bar RDL', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: [], equip: ['barbell'], cue: 'Hinge, neutral grip.' },
+  goodmorning:{ name: 'Good Morning', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: [], equip: ['barbell'], cue: 'Light bar, big hamstring stretch.' },
+  slhipthrust:{ name: 'Single-Leg Hip Thrust', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [8, 8], swaps: [], equip: [], cue: 'Hips level throughout.' },
+  glutebridge:{ name: 'Barbell Glute Bridge', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: [], equip: ['barbell'], cue: 'From floor, hard squeeze.' },
+  bkcalfpress:{ name: 'Bent-Knee Calf Press', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: [], equip: ['machine'], cue: 'Leg press, knees bent ~30°.' },
+  dbbench:    { name: 'DB Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['dumbbell', 'bench'], cue: 'Weight = per dumbbell.' },
+  machpress:  { name: 'Machine Chest Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['machine'], cue: 'Full range, controlled.' },
+  latpull:    { name: 'Lat Pulldown', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['machine'], cue: 'To upper chest, no lean-back heave.' },
+  assistpull: { name: 'Assisted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], swaps: [], equip: ['machine'], cue: 'Weight = assistance (less = harder).' },
+  cablerow:   { name: 'Seated Cable Row', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], equip: ['cable'], cue: 'Chest up, elbows to hips.' },
+  cablechop:  { name: 'Cable Chop', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: [], equip: ['cable'], cue: 'Rotate through hips, arms straight.' },
+  bandpallof: { name: 'Band Pallof Press', group: 'upper', mode: 'reps', perSide: true, rest: 45, rpe: null, swaps: [], equip: ['band'], cue: 'Weight = band tension guess.' },
+  safarmer:   { name: 'Single-Arm Farmer Hold', group: 'upper', mode: 'time', perSide: true, rest: 60, rpe: null, swaps: [], equip: ['dumbbell'], cue: 'Stand tall, seconds per side.' },
+  landmine:   { name: 'Landmine Press', group: 'upper', mode: 'reps', perSide: true, rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['barbell'], cue: 'Slight lean-in, press up and away.' },
+  dbshoulder: { name: 'DB Shoulder Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['dumbbell'], cue: 'Weight = per dumbbell.' },
+  sealrow:    { name: 'Seal Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: [], equip: ['dumbbell', 'bench'], cue: 'Dead stop each rep.' },
+  incmach:    { name: 'Incline Machine Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: [], equip: ['machine'], cue: 'Controlled negatives.' },
+  pushup:     { name: 'Deficit Push-Up', group: 'upper', mode: 'bw', rest: 75, rpe: [8, 8], swaps: [], equip: ['dumbbell'], cue: 'Hands on DBs, chest below hands.' },
+  revpec:     { name: 'Reverse Pec-Deck', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: [], equip: ['machine'], cue: 'Squeeze rear delts, pause.' },
+  bandpull:   { name: 'Band Pull-Apart', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: [], equip: ['band'], cue: 'To chest, control return.' },
+  hangraise:  { name: 'Hanging Leg Raise', group: 'upper', mode: 'bw', rest: 60, rpe: null, swaps: [], equip: [], cue: 'No swing, curl pelvis up.' },
+  cablecrunch:{ name: 'Cable Crunch', group: 'upper', mode: 'reps', rest: 60, rpe: null, swaps: [], equip: ['cable'], cue: 'Flex spine, hips still.' },
 };
 
 /* =====================================================================
@@ -153,6 +157,42 @@ const INSIGHTS = {
 for (const id in INSIGHTS) if (EXERCISES[id]) Object.assign(EXERCISES[id], INSIGHTS[id]);
 /* generic taper-phase line (exercise-specific taperWhy overrides if present) */
 const TAPER_WHY = 'Taper mode: today is about keeping this pattern sharp, not building it — light, crisp, done. Race legs are the priority.';
+
+/* =====================================================================
+   HOWTO — step-by-step setup/execution, one level deeper than `cue`.
+   `cue` stays a single reminder for mid-set glancing; `steps` is for the
+   first time you meet a movement or a variant, read once before you start.
+   Scoped to the exercises TEMPLATES actually prescribes (every session in
+   buildProgram() draws from this list) rather than the full 54-entry
+   library — swap-only variants keep their `cue` alone. Same voice as
+   PREPS/STRETCHES: short, plain, second person.
+   ===================================================================== */
+const HOWTO = {
+  boxjump:    { steps: ['Stand close to the box, feet hip-width.', 'Swing your arms back, then drive them forward as you jump.', 'Land soft and quiet with both feet, knees slightly bent.', 'Step back down — never jump down, that\'s free eccentric load you don\'t need.'] },
+  bss:        { steps: ['Rear foot up on a bench behind you, laces down.', 'Front foot far enough forward that your knee stays over your ankle at the bottom.', 'Drop straight down, back knee grazing the floor.', 'Drive up through the front heel — don\'t push off the back foot.'] },
+  slrdl:      { steps: ['Stand on one leg, soft knee, dumbbell in the opposite hand.', 'Hinge forward at the hip, letting the back leg rise as a counterbalance.', 'Keep your hips square — don\'t let them open up.', 'Go as low as your hamstring flexibility allows, then squeeze the glute back to standing.'] },
+  calfstand:  { steps: ['Stand tall, balls of your feet on a step or plate if you have one.', 'Rise onto your toes as high as you can, pause a beat at the top.', 'Lower slow, all the way down until you feel a real stretch.', 'Keep the knee straight throughout — bending it turns this into the seated version.'] },
+  copen:      { steps: ['Lie on your side, propped on the bottom elbow, directly under your shoulder.', 'Top leg goes on a bench, bottom leg stays underneath.', 'Lift your hips until your body is one straight line from shoulder to ankle.', 'Hold — no sagging at the hips, no rotating forward or back.'] },
+  squat:      { steps: ['Bar on your upper back, feet shoulder-width, toes slightly out.', 'Brace your core, unrack, and step back before you start.', 'Sit down and back, knees tracking over your toes, chest tall.', 'Go to at least parallel, then drive up through the whole foot.'] },
+  rdl:        { steps: ['Bar in hand at hip height, soft knees.', 'Push your hips straight back, chest staying proud, bar tracking close down your thighs.', 'Stop when you feel a real hamstring stretch — usually mid-shin, not the floor.', 'Drive your hips forward to stand, squeezing the glutes at the top.'] },
+  hipthrust:  { steps: ['Upper back braced against a bench, bar rolled over your hips.', 'Feet flat, roughly shin-vertical at the top of the rep.', 'Drive through your heels, pushing your hips to full extension.', 'Squeeze glutes hard for a full second at the top before lowering under control.'] },
+  slhipthrust: { steps: ['Upper back against a bench, one foot planted, the other leg held up off the floor.', 'Shin roughly vertical under the working knee at the top.', 'Drive through the planted heel to full hip extension, keeping both hips level.', 'The lifted leg is there to make you honest — if your hips twist to help, the weight is too heavy.'] },
+  calfseat:   { steps: ['Sit at the machine, knees bent under the pads, balls of your feet on the platform.', 'Lower your heels for a full stretch.', 'Rise onto your toes as high as you can, slow tempo throughout.', 'The bent knee takes the gastrocnemius out of it — this is soleus work, so it can take higher reps than it feels like it should.'] },
+  bench:      { steps: ['Lie back, eyes roughly under the bar, feet planted flat.', 'Grip just outside shoulder width, shoulder blades pulled together and down.', 'Lower the bar to your chest under control, elbows at a moderate angle (not flared to 90°).', 'Drive it back up in a straight line — don\'t let it drift toward your face.'] },
+  pullup:     { steps: ['Hang from the bar, hands just outside shoulder width.', 'Pull your shoulder blades down first, then bend the elbows to bring your chin over the bar.', 'Lower all the way to a full hang each rep — that\'s the range that counts.', 'Add weight via a belt or held dumbbell once bodyweight reps stop being hard.'] },
+  dbrow:      { steps: ['One knee and hand on a bench, back flat, opposite foot on the floor.', 'Let the dumbbell hang straight down from a relaxed shoulder.', 'Pull it to your hip, leading with the elbow, not the hand.', 'No torso twist — if you need to rotate to finish the rep, the weight is too heavy.'] },
+  pallof:     { steps: ['Stand side-on to the cable, handle at chest height.', 'Press the handle straight out from your chest until your arms are fully extended.', 'Hold — the cable is trying to rotate you toward it, and your only job is to resist.', 'Bring it back to your chest under control and repeat.'] },
+  carry:      { steps: ['Pick up one heavy dumbbell in one hand, the other hand free.', 'Stand tall — resist leaning away from the weight.', 'Walk with even, level steps, hips staying square.', 'Set it down under control at the target distance, then switch hands next set.'] },
+  ohp:        { steps: ['Bar at collarbone height, grip just outside shoulder width.', 'Brace your glutes and core hard — this is a full-body lift, not just shoulders.', 'Press straight up, tucking your head through once the bar clears your face.', 'Lock out fully overhead, bar stacked over mid-foot.'] },
+  csrow:      { steps: ['Chest flat against the pad, feet braced.', 'Start with arms fully extended, shoulder blades allowed to spread.', 'Pull your elbows back past your ribs, squeezing your shoulder blades together.', 'Control the weight back out — don\'t let it yank your arms straight.'] },
+  incline:    { steps: ['Set the bench to 30–45°, dumbbells resting on your thighs.', 'Kick them up to your shoulders as you lie back.', 'Press up and slightly in, stopping just short of locking your elbows.', 'Lower under control to a stretch at the bottom, elbows around 45° from your torso.'] },
+  facepull:   { steps: ['Rope attachment at roughly eye height on the cable.', 'Pull toward your face, leading with your elbows high and wide.', 'Aim the ends of the rope toward your eyebrows, thumbs pointing back.', 'Pause and squeeze your shoulder blades together before returning slowly.'] },
+  abwheel:    { steps: ['Kneel, wheel in both hands, directly under your shoulders.', 'Roll forward slowly, keeping your hips tucked under — no arch in the lower back.', 'Go only as far as you can control while keeping that flat-back position.', 'Pull back to start using your abs, not your hip flexors.'] },
+  glutebridge: { steps: ['Lie on your back, bar over your hips, knees bent, feet flat.', 'Feet a little closer to your hips than a hip thrust — shins near-vertical at lockout.', 'Drive your hips up to full extension, squeezing hard at the top.', 'Lower with control back to the floor between reps.'] },
+  pushup:     { steps: ['Hands on two dumbbells (or blocks), set slightly wider than shoulder width.', 'Body in one straight line from head to heels.', 'Lower your chest below the level of your hands — the deficit is the point.', 'Press back up without letting your hips sag or pike.'] },
+  bandpull:   { steps: ['Hold the band at chest height, arms straight out in front, shoulder-width grip.', 'Pull the band apart by driving your shoulder blades together.', 'Keep your arms straight throughout — the movement comes from the shoulder blades, not the elbows.', 'Control the return; don\'t let the band snap your hands back in.'] },
+};
+for (const id in HOWTO) if (EXERCISES[id]) Object.assign(EXERCISES[id], HOWTO[id]);
 
 /* =====================================================================
    STRETCH LIBRARY + MUSCLE MAP (post-session routine)
@@ -934,6 +974,28 @@ function warmupPlan(exId, workWeight, step) {
   return { steps, note: null };
 }
 
+/* Standard Australian/metric plate set found at almost any commercial gym.
+   Bar weight is a setting (ST.settings.barWeight) since 20 kg men's, 15 kg
+   women's/technique and 10 kg training bars are all common — plates aren't. */
+const PLATE_SET = [25, 20, 15, 10, 5, 2.5, 1.25];
+
+/* Greedy per-side plate breakdown for a barbell working weight.
+   Returns { perSide, plates, remainder, exact }: `plates` is the descending
+   list of plates for ONE side, `remainder` is whatever's left over if the
+   available set can't hit the target exactly (rounding elsewhere already
+   keeps this rare, but a custom step or a thin plate set can still miss).
+   Pure — no app state — so tools/test-progression.js can drive it directly. */
+function platesPerSide(weight, bar, available) {
+  const set = (available && available.length ? available : PLATE_SET).slice().sort((a, b) => b - a);
+  const perSide = Math.max(0, (weight - bar) / 2);
+  const plates = [];
+  let remaining = Math.round(perSide * 100) / 100;
+  for (const p of set) {
+    while (remaining + 1e-6 >= p) { plates.push(p); remaining = Math.round((remaining - p) * 100) / 100; }
+  }
+  return { perSide, plates, remainder: Math.max(0, remaining), exact: remaining < 0.01 };
+}
+
 function e1rm(weight, reps, rpe) {
   if (!weight || !reps) return 0;
   const rir = rpe != null ? Math.max(0, 10 - rpe) : 0;
@@ -950,7 +1012,7 @@ if (typeof module !== 'undefined' && module.exports) {
     WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
-    warmupPlan, e1rm, buildProgram,
+    warmupPlan, e1rm, buildProgram, PLATE_SET, platesPerSide,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
   };
