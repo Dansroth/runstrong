@@ -88,6 +88,19 @@ const EXERCISES = {
   bandpull:   { name: 'Band Pull-Apart', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: [], equip: ['band'], cue: 'To chest, control return.' },
   hangraise:  { name: 'Hanging Leg Raise', group: 'upper', mode: 'bw', rest: 60, rpe: null, swaps: [], equip: [], cue: 'No swing, curl pelvis up.' },
   cablecrunch:{ name: 'Cable Crunch', group: 'upper', mode: 'reps', rest: 60, rpe: null, swaps: [], equip: ['cable'], cue: 'Flex spine, hips still.' },
+  // ---- Hypertrophy phase — chest & arms (post-Melbourne) ----
+  // rpe: [8,9] rather than this file's usual [7,8]/[8,8] on these — deliberately
+  // closer to failure than the running-support lifts above target, matching the
+  // phase's own "rep range barely matters if sets are taken close to failure"
+  // rationale (see HYPER_POOLS header below for the full citation).
+  dbflye:       { name: 'DB Flye', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['dip', 'incline'], equip: ['dumbbell', 'bench'], cue: 'Slight elbow bend held constant, arc to a stretch, squeeze at the top.' },
+  dip:          { name: 'Chest Dip', group: 'upper', mode: 'bw', rest: 90, rpe: [8, 8], swaps: ['dbflye', 'incline'], equip: [], cue: 'Lean forward, elbows flare slightly, real stretch at the bottom.' },
+  bbcurl:       { name: 'Barbell Curl', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['hammercurl', 'inclinecurl'], equip: ['barbell'], cue: 'Elbows pinned to your sides — no swing, no leg drive.' },
+  hammercurl:   { name: 'Hammer Curl', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 9], swaps: ['bbcurl', 'inclinecurl'], equip: ['dumbbell'], cue: 'Neutral grip, thumbs up, elbows still.' },
+  inclinecurl:  { name: 'Incline DB Curl', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 9], swaps: ['bbcurl', 'hammercurl'], equip: ['dumbbell', 'bench'], cue: 'Arms hang behind your torso — deep stretch at the bottom, don\'t let them drift forward.' },
+  pushdown:     { name: 'Triceps Pushdown', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['overheadext', 'skullcrusher'], equip: ['cable'], cue: 'Elbows pinned to your ribs, full lockout, control the return.' },
+  overheadext:  { name: 'Overhead Triceps Extension', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['pushdown', 'skullcrusher'], equip: ['dumbbell'], cue: 'Elbows pointed forward and still, deep stretch behind your head.' },
+  skullcrusher: { name: 'Lying Triceps Extension', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['pushdown', 'overheadext'], equip: ['barbell', 'bench'], cue: 'Elbows stay stacked over your shoulders — lower to your forehead, not your chest.' },
 };
 
 /* =====================================================================
@@ -153,6 +166,18 @@ const INSIGHTS = {
   abwheel:   { why: 'Anti-extension strength keeps your ribs down and stride tall when fatigue pulls you into an arch.', deep: 'Late-race fatigue drags runners into an arched, ribs-flared position that wastes energy and stresses the lower back. The ab wheel trains the anterior core to resist exactly that extension under a moving load. Short range done strictly beats long range done saggy.' },
   hangraise: { why: 'Hip flexors and abs together — the muscles that lift your knee every single stride.', deep: 'The hanging raise trains hip flexion strength (your knee lift) alongside anterior core control. Under-trained hip flexors are a hidden stride-length limiter late in races; curling the pelvis at the top keeps the abs honest.' },
   cablecrunch:{ why: 'Loaded trunk flexion — direct ab strength to anchor your ribcage over 21.1km.', deep: 'The cable crunch isolates spinal flexion with adjustable load, building the raw abdominal strength that the anti-extension and anti-rotation work leans on. Hips still, spine curls — the cable does not go for a ride.' },
+  /* ---- Hypertrophy phase — honestly framed, not stretched to fit "helps your
+     half." This phase's actual goal is chest/arm growth, so its rationale is
+     the training-science case for that, not a running-transfer story that
+     wouldn't be true for a curl. */
+  dbflye:      { why: 'Chest volume the pressing lifts don\'t fully cover — a stretch-focused exercise adds range a press can\'t reach.', deep: 'Pressing and flye work overlap but aren\'t redundant: a flye loads the chest through a longer stretch under tension than a press does, and that stretched-position loading is part of what current hypertrophy research points to for growth. This is volume for its own sake, not for your stride — that\'s the honest reason it\'s here this phase.' },
+  dip:         { why: 'Bodyweight-loadable chest and triceps volume, deep stretch at the bottom that a press alone won\'t give you.', deep: 'The forward-leaning dip biases chest over triceps and takes the shoulder through a deep stretched position under load. It scales by adding weight once bodyweight gets easy, same principle as the pull-up already in this app.' },
+  bbcurl:      { why: 'Biceps get almost no direct work anywhere else in this app — a straight bar, heavy as you can handle with strict elbows.', deep: 'Every pulling exercise in the base program trains biceps incidentally, never as the target. Direct curls close that gap. This is the anchor lift for tracking biceps progress across the phase — the accessory curl slot rotates, this one doesn\'t, so there\'s always one number going up over time.' },
+  hammercurl:  { why: 'Neutral-grip curl — hits the brachialis and forearm, the part a regular curl leaves out.', deep: 'Turning the palms to face each other shifts emphasis toward the brachialis, a muscle that sits under the biceps and adds width and elbow-flexion strength a supinated curl undertrains. Grip variety is genuinely different stimulus here, not just a change of scenery.' },
+  inclinecurl: { why: 'Arms trail behind your torso, so the biceps start from a real stretch every rep — no cheating the bottom.', deep: 'The incline bench pins your shoulders back, taking away the swing and hip-drive that sneak into a standing curl once it gets heavy. Stretched-position tension is one of the more consistent findings in recent hypertrophy research, and this is the version of a curl that guarantees it.' },
+  pushdown:    { why: 'Triceps make up most of your upper arm — this is the anchor lift for tracking that muscle across the phase.', deep: 'The triceps are roughly two-thirds of upper-arm size, yet nothing in the base program trains them directly. Constant cable tension through the full lockout makes this a reliable, easy-to-load anchor — the accessory triceps slot rotates every block, this one stays put so there\'s a number worth tracking.' },
+  overheadext: { why: 'Overhead position stretches the long head of the triceps — the part a pushdown barely touches.', deep: 'The triceps\' long head crosses the shoulder as well as the elbow, so it only gets a real stretch when the arm is overhead. A pushdown alone will grow triceps but will undertrain this specific head — this fills that gap.' },
+  skullcrusher:{ why: 'A barbell through the same overhead-stretch range, loaded heavier than a dumbbell extension allows.', deep: 'Same long-head-stretch logic as the overhead extension, but a bar (or EZ-bar) lets you load it more heavily than a single dumbbell — useful once bodyweight-adjacent triceps work stops being the limiting factor.' },
 };
 for (const id in INSIGHTS) if (EXERCISES[id]) Object.assign(EXERCISES[id], INSIGHTS[id]);
 /* generic taper-phase line (exercise-specific taperWhy overrides if present) */
@@ -191,6 +216,14 @@ const HOWTO = {
   glutebridge: { steps: ['Lie on your back, bar over your hips, knees bent, feet flat.', 'Feet a little closer to your hips than a hip thrust — shins near-vertical at lockout.', 'Drive your hips up to full extension, squeezing hard at the top.', 'Lower with control back to the floor between reps.'] },
   pushup:     { steps: ['Hands on two dumbbells (or blocks), set slightly wider than shoulder width.', 'Body in one straight line from head to heels.', 'Lower your chest below the level of your hands — the deficit is the point.', 'Press back up without letting your hips sag or pike.'] },
   bandpull:   { steps: ['Hold the band at chest height, arms straight out in front, shoulder-width grip.', 'Pull the band apart by driving your shoulder blades together.', 'Keep your arms straight throughout — the movement comes from the shoulder blades, not the elbows.', 'Control the return; don\'t let the band snap your hands back in.'] },
+  dbflye:      { steps: ['Lie on a flat or slightly inclined bench, a dumbbell in each hand above your chest.', 'Set a slight, fixed bend in your elbows and keep it there the whole set.', 'Lower your arms out to the sides in an arc until you feel a real stretch across your chest.', 'Bring the dumbbells back together over your chest in the same arc, squeezing at the top.'] },
+  dip:         { steps: ['Support yourself on parallel bars, arms locked.', 'Lean your torso forward and lower under control, elbows flaring slightly out.', 'Go down until you feel a real stretch across your chest.', 'Press back up without letting your shoulders shrug toward your ears.'] },
+  bbcurl:      { steps: ['Stand tall, bar in an underhand grip, roughly shoulder width.', 'Elbows pinned to your sides for the whole set.', 'Curl the bar up without letting your elbows drift forward or your hips swing.', 'Lower under control all the way to a straight arm.'] },
+  hammercurl:  { steps: ['Stand tall, a dumbbell in each hand, palms facing your body.', 'Curl one or both dumbbells up keeping your thumbs pointed up throughout.', 'Elbows stay pinned to your sides — no swing.', 'Lower under control to a straight arm.'] },
+  inclinecurl: { steps: ['Sit back on an incline bench, arms hanging straight down behind your torso.', 'Curl the dumbbells up without letting your elbows drift forward.', 'Squeeze at the top.', 'Lower slowly all the way down — this is where the stretch happens, don\'t rush it.'] },
+  pushdown:    { steps: ['Stand at the cable stack, bar or rope attachment at chest height.', 'Elbows pinned to your ribs for the whole set.', 'Press down to a full lockout, squeezing the triceps.', 'Let the weight travel back up under control, elbows never leaving your sides.'] },
+  overheadext: { steps: ['Sit or stand tall, one or two dumbbells held overhead, arms straight.', 'Elbows pointed forward and kept still.', 'Lower the weight behind your head until you feel a real stretch.', 'Press back up to straight arms without letting the elbows flare out.'] },
+  skullcrusher:{ steps: ['Lie on a bench, bar held straight above your shoulders.', 'Keeping your upper arms still and vertical, bend only at the elbow.', 'Lower the bar toward your forehead, not your chest.', 'Extend back to straight arms, elbows staying stacked over your shoulders throughout.'] },
 };
 for (const id in HOWTO) if (EXERCISES[id]) Object.assign(EXERCISES[id], HOWTO[id]);
 
@@ -218,6 +251,10 @@ const MUSCLE_MAP = {
   pallof:['core'], cablechop:['core'], bandpallof:['core'],
   carry:['core','back'], safarmer:['core','back'],
   abwheel:['core','hipflex'], hangraise:['core','hipflex'], cablecrunch:['core'],
+  // ---- Hypertrophy phase — introduces the biceps/triceps tags ----
+  dbflye:['chest'], dip:['chest','triceps'],
+  bbcurl:['biceps'], hammercurl:['biceps'], inclinecurl:['biceps'],
+  pushdown:['triceps'], overheadext:['triceps'], skullcrusher:['triceps'],
 };
 /* "Get ready" gap before every hold: the next stretch is shown while this counts
    down, so you have time to get on the floor and into position before the hold
@@ -256,6 +293,12 @@ const STRETCHES = [
   { id:'st-quad-side', name:'Side-lying quad stretch', muscles:['quads'], perSide:true, hold:35, instr:'Lie on your side. Grab the top ankle and draw your heel toward your backside. Knees stacked, hips pushed forward.' },
   { id:'st-sidelunge', name:'Side lunge groin stretch', muscles:['adductors'], perSide:true, hold:35, instr:'Stand wide. Bend one knee and sink your weight onto it, the other leg straight. Feel the inside of the straight leg.' },
   { id:'st-ham-seated', name:'Seated forward fold', muscles:['hams','back'], perSide:false, hold:40, instr:'Sit with your legs out in front. Hinge from the hips and reach toward your feet. Long back, soft knees if you need them.' },
+  /* Added for the hypertrophy phase — biceps/triceps had no stretch anywhere in
+     the library, so an arm-heavy session could never get one. */
+  { id:'st-bicep-wall', name:'Bicep wall stretch', muscles:['biceps'], perSide:true, hold:30, instr:'Stand side-on to a wall. Place your palm flat against it behind you, arm straight, thumb pointing down. Turn your body slowly away from the wall.' },
+  { id:'st-bicep-doorway', name:'Doorway bicep stretch', muscles:['biceps'], perSide:true, hold:30, instr:'Stand in a doorway. Place one straight arm along the frame behind you, roughly shoulder height. Lean your body forward and away from that arm.' },
+  { id:'st-tricep-overhead', name:'Overhead triceps stretch', muscles:['triceps'], perSide:true, hold:30, instr:'Reach one arm overhead, then bend the elbow so your hand drops behind your head. Use the other hand to gently press the elbow back and down.' },
+  { id:'st-tricep-doorway', name:'Doorway triceps stretch', muscles:['triceps'], perSide:true, hold:30, instr:'Bend one elbow overhead, hand dropping behind your head. Gently press that elbow into a wall or door frame for a deeper stretch than your hand alone gives.' },
 ];
 
 /* =====================================================================
@@ -402,6 +445,7 @@ const PREPS = [
   { id:'wu-revlunge-dyn',name:'Reverse lunges',         muscles:['quads','hipflex'],     tier:'mobilise', perSide:true,  work:30, instr:'Step back into a lunge, back knee toward the floor, then drive up. Tall chest. About 8 each side.' },
   { id:'wu-inchworm',    name:'Inchworm walkouts',      muscles:['hams','core','shoulders'], tier:'mobilise', perSide:false, work:35, instr:'Bend and put your hands down. Walk them out to a plank, hold a beat, walk them back and stand up.' },
   { id:'wu-cossack',     name:'Side lunges',            muscles:['adductors','quads'],   tier:'mobilise', perSide:true,  work:30, instr:'Stand wide. Sink your weight onto one bent leg, the other stays straight. Push across to the other side.' },
+  { id:'wu-elbowswing',  name:'Elbow swings',           muscles:['biceps','triceps'],    tier:'mobilise', perSide:true,  work:30, instr:'Stand tall, arm relaxed at your side. Swing your forearm up toward your shoulder and back down, loose and rhythmic. About 15 each side.' },
 
   // ---- activate ----
   { id:'wu-glutebridge', name:'Glute bridges',          muscles:['glutes'],              tier:'activate', perSide:false, work:30, instr:'On your back, knees bent. Drive your hips up, squeeze hard at the top for a beat, lower. About 15.' },
@@ -416,6 +460,9 @@ const PREPS = [
   { id:'wu-scappush',    name:'Scap push-ups',          muscles:['chest','shoulders'],   tier:'activate', perSide:false, work:30, instr:'In a plank or against a wall, arms straight. Let your chest sink between your shoulder blades, then push it away. Elbows stay locked.' },
   { id:'wu-planktap',    name:'Plank shoulder taps',    muscles:['core','shoulders'],    tier:'activate', perSide:false, work:30, instr:'High plank, feet wide. Tap one hand to the opposite shoulder, then swap. Stop your hips rocking.' },
   { id:'wu-hamcurl-sl',  name:'Standing hamstring curls', muscles:['hams'],              tier:'activate', perSide:true,  work:30, instr:'Stand tall, hold something. Curl one heel up toward your backside and lower it slow. About 12 each side.' },
+  /* Added for the hypertrophy phase — biceps/triceps had no warm-up item either. */
+  { id:'wu-armpump',     name:'Light arm pumps',          muscles:['biceps'],              tier:'activate', perSide:false, work:30, instr:'Empty bar or light dumbbells, easy curls — nowhere near working weight. About 12, just getting blood into the muscle.' },
+  { id:'wu-benchdip',    name:'Bench dips',               muscles:['triceps'],             tier:'activate', perSide:false, work:30, instr:'Hands on a bench behind you, feet out in front. Bend your elbows and lower a little, then press back up. About 12, easy range.' },
 ];
 
 /* =====================================================================
@@ -440,6 +487,7 @@ const PREP_INSIGHTS = {
   'wu-revlunge-dyn': { why: 'Splits your stance the way running does — one leg at a time — and opens the hip flexor of the leg behind you.', deep: 'Every stride is a split stance, yet most warm-ups stay square. Stepping back loads the front leg\'s quad and glute while lengthening the rear hip flexor through movement rather than a held stretch. The reverse direction keeps the shin more vertical than a forward lunge, which is kinder to the knee while the legs are still cold.' },
   'wu-inchworm': { why: 'Walks you through hamstring length, a plank and a shoulder position in one movement — a whole-body wake-up in half a minute.', deep: 'The walkout lengthens the hamstrings dynamically on the way out, asks the trunk to hold a plank at the far end, then reverses it. Because it is continuous rather than held, it raises temperature while restoring range — the distinction that matters before a session rather than after one. It is also a fair self-test: wherever the walkout feels worst today is what needs your attention.' },
   'wu-cossack': { why: 'Loads the inside of your thigh through range — the direction running never trains and cambered roads keep demanding.', deep: 'Side lunges take the adductors into length while the opposite quad and glute work, covering the frontal plane that a running-and-lifting week almost entirely ignores. Groin strains tend to happen at the end of available range under load, so visiting that range deliberately, unloaded and warm, is sensible before a session rather than after it.' },
+  'wu-elbowswing': { why: 'Takes the elbow through its full range before you load either side of it — flexion and extension, biceps and triceps in one movement.', deep: 'A swinging, unloaded rep through full elbow flexion and extension raises temperature and rehearses the range both an arm curl and an arm extension are about to use, without spending anything on either muscle before the working sets do.' },
   'wu-glutebridge': { why: 'Gets the glutes firing before you train, so they lead hip extension instead of leaving your hamstrings to cover for them.', deep: 'Hip extension can be produced by the glutes or, less efficiently, largely by the hamstrings. After hours of sitting the glutes are often slow to switch on and the hamstrings — already the tissue most at risk in a runner — take a bigger share than they should. A short set of bridges with a genuine squeeze at the top raises glute activation before the work starts. This is the "activate" half of a warm-up doing its job.' },
   'wu-monster': { why: 'Switches on the side-hip muscles that stop your knee collapsing inward every time you land.', deep: 'Glute medius controls the pelvis in single-leg stance. When it is underactive the pelvis drops and the knee tracks inward on landing — a pattern associated with knee and ITB irritation in runners. Stepping sideways against resistance targets it directly and takes under a minute. No band is needed to get most of the benefit; slow, deliberate, wide steps will do.' },
   'wu-calfraise': { why: 'Your calves absorb several times bodyweight on every stride. Fifteen easy reps first is a small courtesy.', deep: 'The gastrocnemius crosses the knee and powers toe-off. Loading it gently through full range beforehand raises tissue temperature and rehearses the exact contraction it is about to repeat thousands of times. Calf and Achilles complaints are among the most common running injuries, and the tissue measurably tolerates load better warm than cold.' },
@@ -452,6 +500,8 @@ const PREP_INSIGHTS = {
   'wu-scappush': { why: 'Wakes up the muscle that holds your shoulder blade flat against your ribs — the foundation every press is built on.', deep: 'Serratus anterior keeps the shoulder blade flat and rotating properly as the arm moves. Scap push-ups isolate it by removing the elbow from the equation entirely: arms locked, only the shoulder blades travel. It is a small movement most people have never trained deliberately, and pressing feels noticeably more stable once it is switched on.' },
   'wu-planktap': { why: 'Anti-rotation with your bodyweight on one arm — the trunk demand of running, made obvious.', deep: 'Lifting one hand in a plank creates a rotational force the trunk has to cancel, the same job it does each time an arm swings while the opposite leg drives. Widening the feet makes it easier and narrowing them harder, so the difficulty is yours to set. Success is measured by the hips not rocking, never by the number of taps.' },
   'wu-hamcurl-sl': { why: 'Wakes the hamstring through the knee-bending action it performs on every stride, before you ask it for anything hard.', deep: 'The hamstrings both extend the hip and flex the knee, and the knee-bending role is the one warm-ups usually miss entirely. Curling the heel up under control activates the muscle through range while it is still unloaded. Given hamstrings are among the tissues a runner is most likely to strain, a few controlled reps beforehand is cheap insurance.' },
+  'wu-armpump': { why: 'Blood into the biceps before you load them — a small dose, easy weight, well short of your working sets.', deep: 'Light, high-rep pumping work raises local blood flow and temperature in the muscle about to be trained, the same raise-before-load logic behind every item in this list. Kept deliberately far under working weight so it primes rather than pre-fatigues.' },
+  'wu-benchdip': { why: 'Bodyweight triceps activation through a real range before you load the joint.', deep: 'Bench dips take the elbow through flexion and extension under nothing heavier than bodyweight, waking the triceps and rehearsing the lockout you are about to load. Easy range, easy pace — this is priming, not a set.' },
 };
 for (const id in PREP_INSIGHTS) { const p = PREPS.find(x => x.id === id); if (p) Object.assign(p, PREP_INSIGHTS[id]); }
 
@@ -488,9 +538,13 @@ function runPrepMins(day) { return RUN_PREP_MINS[runType(day)]; }
 
 /* Loads a lift session is ABOUT to produce, from its template — the prep
    equivalent of the { muscle: setsCompleted } map buildStretchRoutine() derives
-   from a finished session. Prescribed sets, because nothing is done yet. */
-function plannedLoads(tplId) {
-  const tpl = TEMPLATES[tplId];
+   from a finished session. Prescribed sets, because nothing is done yet.
+   dateISO/mesoStartISO are optional and only matter for hypertrophy-phase
+   templates carrying 'ROTATE:<pool>' sentinels (see materializeTemplate) —
+   every other caller can omit them and get the exact old behaviour, since a
+   template with no sentinel resolves identically either way. */
+function plannedLoads(tplId, dateISO, mesoStartISO) {
+  const tpl = dateISO ? materializeTemplate(tplId, dateISO, mesoStartISO) : TEMPLATES[tplId];
   const loads = {};
   if (!tpl) return loads;
   for (const [exId, sets] of tpl.items) {
@@ -598,7 +652,88 @@ const TEMPLATES = {
   maintFull:     { title: 'Maintenance · Full Body', est: 42, items: [['hipthrust', 3, 8], ['incline', 3, 8], ['slrdl', 3, 8], ['dbrow', 3, 8], ['calfseat', 3, 12], ['abwheel', 3, 10]] },
   // Post-race recovery week: one very light session, movement over load
   recoverySession:{ title: 'Recovery · Move & Loosen', est: 25, items: [['glutebridge', 2, 10], ['pushup', 2, 8], ['bandpull', 2, 15], ['calfstand', 2, 10]] },
+
+  /* Hypertrophy phase (post-Melbourne, optional): 5 sessions/week, chest and
+     arms at 2x/week frequency, legs held at maintenance (reuses maintLower
+     above unchanged — see HYPER_ORDER). A 'ROTATE:<pool>' sentinel in place
+     of an exId means "resolve this from HYPER_POOLS via materializeTemplate()"
+     — see that function below for why. */
+  hyperChestTri:     { title: 'Chest & Triceps', est: 48, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['pushdown', 3, 12], ['ROTATE:tricepsAcc', 3, 12]] },
+  hyperBackBi:       { title: 'Back & Biceps', est: 48, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 8], ['bbcurl', 3, 10], ['ROTATE:bicepsAcc', 3, 12]] },
+  hyperShoulderArms: { title: 'Shoulders & Arms', est: 45, items: [['ohp', 4, 6], ['facepull', 3, 15], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:tricepsAcc', 3, 12]] },
+  hyperChestBack:    { title: 'Chest & Back', est: 38, items: [['incline', 3, 10], ['dip', 3, 10], ['ROTATE:backAcc', 3, 10]] },
 };
+
+/* =====================================================================
+   HYPERTROPHY PHASE — periodized exercise rotation
+   =====================================================================
+   Evidence base:
+   [H1] Fonseca RM, Roschel H, Tricoli V, et al. "Changes in exercises are
+        more effective than in loading schemes to improve muscle strength."
+        J Strength Cond Res 2014 — varying exercise selection outperformed
+        constant selection at matched progressive overload.
+   [H2] Rhea MR, Alderman BL. "A meta-analysis of periodized versus
+        nonperiodized strength and power training programs." Res Q Exerc
+        Sport 2004 — periodized structuring outperforms non-periodized.
+   [H3] Schoenfeld BJ, Grgic J, Krieger JW. "How many times per week should a
+        muscle be trained to maximize hypertrophy?" J Sports Sci 2019 —
+        2x/week beats 1x/week at equal volume (drives HYPER_ORDER's chest/arm
+        frequency and TEMPLATES.hyper* above).
+
+   Anchor lifts (bench, pullup, ohp, bbcurl, pushdown) are NOT in a pool and
+   never rotate — they're what the app's e1RM trajectory/PR-book track over
+   the whole phase, and rotating a tracked lift would keep resetting that
+   history for no benefit. Only the accessory slots — the ones marked
+   'ROTATE:<pool>' in TEMPLATES above — rotate, on a block boundary defined by
+   HYPER_MESO_WEEKS. [H1][H2]
+
+   HYPER_MESO_WEEKS sits inside the standard 4-6 week mesocycle range used in
+   the periodization literature [H2]; verify the exact figure against current
+   sources before treating it as more precise than "within that range." */
+const HYPER_MESO_WEEKS = 5;
+const HYPER_POOLS = {
+  chestAcc:   ['incline', 'dbflye', 'dip'],
+  backAcc:    ['csrow', 'dbrow', 'cablerow'],
+  bicepsAcc:  ['hammercurl', 'inclinecurl'],
+  tricepsAcc: ['overheadext', 'skullcrusher'],
+};
+/* Fixed weekly order — legs (reusing maintLower unchanged) sits mid-week
+   between the two heaviest days. Referenced by app.js's hypertrophy
+   maintenanceCard variant to offer the next session in sequence. */
+const HYPER_ORDER = ['hyperChestTri', 'hyperBackBi', 'maintLower', 'hyperShoulderArms', 'hyperChestBack'];
+
+/* Whole weeks elapsed between two ISO dates. Pure — both dates are inputs,
+   never read from the clock — so rotation is exactly reproducible in tests. */
+function weeksSince(startISO, todayISO) {
+  const [sy, sm, sd] = startISO.split('-').map(Number);
+  const [ty, tm, td] = todayISO.split('-').map(Number);
+  const start = new Date(sy, sm - 1, sd);
+  const t = new Date(ty, tm - 1, td);
+  return Math.max(0, Math.floor((t - start) / (7 * 86400000)));
+}
+/* Which pool member is "live" for a given date. blockWeeks defaults to
+   HYPER_MESO_WEEKS but takes a param so tests can drive it directly. */
+function hyperExId(pool, startISO, todayISO, blockWeeks) {
+  const idx = Math.floor(weeksSince(startISO, todayISO) / (blockWeeks || HYPER_MESO_WEEKS));
+  return pool[idx % pool.length];
+}
+/* Resolves a TEMPLATES entry's 'ROTATE:<pool>' sentinels into real exIds for
+   a given date, returning the same { title, est, items } shape a plain
+   TEMPLATES entry has. Templates with no ROTATE sentinel pass through
+   unchanged (mesoStartISO is simply unused), so this is safe to call for
+   every tplId, not just hypertrophy ones — see buildSession() in app.js. */
+function materializeTemplate(tplId, dateISO, mesoStartISO) {
+  const tpl = TEMPLATES[tplId];
+  if (!tpl) return null;
+  const items = tpl.items.map(([exId, sets, reps]) => {
+    if (typeof exId === 'string' && exId.startsWith('ROTATE:')) {
+      const pool = HYPER_POOLS[exId.slice(7)];
+      exId = hyperExId(pool, mesoStartISO, dateISO);
+    }
+    return [exId, sets, reps];
+  });
+  return { title: tpl.title, est: tpl.est, items };
+}
 
 /* race-week checklist defaults (editable per race in-app) */
 const RACE_CHECKLIST = [
@@ -805,6 +940,13 @@ const PHASE_POLICY = {
   deload:   { label: 'deload', rpeAdj: -1, allowUp: false, cutPct: 10, hold: 'Light day: load cut ~10% on top of the reduced volume.' },
   // Maintenance (post-block): holding strength is the goal, not adding to it. [7]
   maint:    { label: 'maintenance', rpeAdj: -0.5, allowUp: true, upMult: 0.5, maxUpPct: 4, atTargetHold: true },
+  // Hypertrophy phase (post-block, chest/arms priority): unlike maint this is not
+  // just holding on — it's an ongoing growth phase and should keep pushing at
+  // target RPE rather than parking there. rpeAdj 0 (full target band, not maint's
+  // -0.5) and atTargetHold: false (never converts an on-target hit into a hold)
+  // are what make that real; upMult sits between build's 1.0 and maint's 0.5
+  // because this phase has no fixed end date to peak toward.
+  hypertrophy: { label: 'hypertrophy phase', rpeAdj: 0, allowUp: true, upMult: 0.75, maxUpPct: 6, atTargetHold: false },
 };
 function phasePolicy(key) { return PHASE_POLICY[key] || PHASE_POLICY.build; }
 
@@ -1013,6 +1155,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
     warmupPlan, e1rm, buildProgram, PLATE_SET, platesPerSide,
+    HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
   };

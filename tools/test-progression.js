@@ -9,7 +9,8 @@
 'use strict';
 
 const P = require('../js/program.js');
-const { nextPrescription, targetRPEForPhase, phaseKeyFromLabel, PHASE_POLICY, TEMPLATES, EXERCISES, WEIGHT_STEP_DEFAULT, buildProgram, STRETCH_SETUP_SECS, platesPerSide, PLATE_SET } = P;
+const { nextPrescription, targetRPEForPhase, phaseKeyFromLabel, PHASE_POLICY, TEMPLATES, EXERCISES, WEIGHT_STEP_DEFAULT, buildProgram, STRETCH_SETUP_SECS, platesPerSide, PLATE_SET,
+        HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd } = P;
 
 const STEP = WEIGHT_STEP_DEFAULT;   // 1 kg
 let pass = 0, fail = 0;
@@ -51,6 +52,9 @@ const EXPECT = {
   raceweek: { under: 'hold',       at: 'hold',              over: 'down' },
   deload:   { under: 'down',       at: 'down',              over: 'down' },  // deload always cuts
   maint:    { under: 'up',         at: 'hold',              over: 'down' },
+  // rpeAdj 0 + atTargetHold: false — same shape as build/peak/rebuild, unlike
+  // maint's hold-at-target (see the PHASE_POLICY.hypertrophy comment).
+  hypertrophy: { under: 'up',      at: 'up',                over: 'down' },
 };
 const dir = (w, base) => (w > base ? 'up' : w < base ? 'down' : 'hold');
 
@@ -280,6 +284,57 @@ group('plate calculator (platesPerSide)');
 
   ok('plates are always returned heaviest-first', r.plates.every((p, i) => i === 0 || p <= r.plates[i - 1]));
   ok('every returned plate is a real plate from the set', platesPerSide(237, 20, PLATE_SET).plates.every(p => PLATE_SET.includes(p)));
+
+  // new hypertrophy-phase barbell isolation lifts must be equip-tagged 'barbell'
+  // or the app's plate calculator (keyed on that tag) will never show for them
+  ok('bbcurl is tagged as a barbell lift', EXERCISES.bbcurl.equip.includes('barbell'));
+  ok('skullcrusher is tagged as a barbell lift', EXERCISES.skullcrusher.equip.includes('barbell'));
+}
+
+group('hypertrophy phase — periodized exercise rotation');
+{
+  eq('week 0 (start date itself) has elapsed 0 weeks', weeksSince('2026-10-11', '2026-10-11'), 0);
+  eq('6 days later is still week 0 (not yet a full week)', weeksSince('2026-10-11', '2026-10-17'), 0);
+  eq('exactly 7 days later is week 1', weeksSince('2026-10-11', '2026-10-18'), 1);
+  eq('35 days later is week 5', weeksSince('2026-10-11', '2026-11-15'), 5);
+
+  const pool = ['a', 'b', 'c'];
+  const start = '2026-10-11';
+  eq('block 0 picks the first pool member', hyperExId(pool, start, start, 5), 'a');
+  eq('block 1 (week 5) picks the second', hyperExId(pool, start, dadd(start, 35), 5), 'b');
+  eq('block 2 (week 10) picks the third', hyperExId(pool, start, dadd(start, 70), 5), 'c');
+  eq('block 3 (week 15) wraps back to the first', hyperExId(pool, start, dadd(start, 105), 5), 'a');
+  eq('a mid-block date does not advance the pick', hyperExId(pool, start, dadd(start, 3), 5), hyperExId(pool, start, start, 5));
+
+  ok('HYPER_MESO_WEEKS sits in the standard 4-6 week mesocycle range', HYPER_MESO_WEEKS >= 4 && HYPER_MESO_WEEKS <= 6, `${HYPER_MESO_WEEKS}`);
+  ok('every day in HYPER_ORDER is a real template', HYPER_ORDER.every(tp => !!TEMPLATES[tp]));
+  eq('HYPER_ORDER runs 5 days — one per hypertrophy-phase session/week', HYPER_ORDER.length, 5);
+  eq('legs (maintLower) appears exactly once in the weekly rotation', HYPER_ORDER.filter(tp => tp === 'maintLower').length, 1);
+  for (const pool of Object.values(HYPER_POOLS)) {
+    ok(`rotation pool [${pool}] has at least 2 members (or rotation is a no-op)`, pool.length >= 2);
+    ok(`every member of [${pool}] is a real exercise`, pool.every(id => !!EXERCISES[id]));
+  }
+
+  const REF_MESO_START = '2026-10-11';
+  const REF_DATE = '2026-11-01';
+  for (const tp of ['hyperChestTri', 'hyperBackBi', 'hyperShoulderArms', 'hyperChestBack']) {
+    const mat = materializeTemplate(tp, REF_DATE, REF_MESO_START);
+    eq(`${tp}: materialized item count matches the template`, mat.items.length, TEMPLATES[tp].items.length);
+    ok(`${tp}: no ROTATE sentinel survives materialization`, mat.items.every(([id]) => !String(id).startsWith('ROTATE:')));
+    ok(`${tp}: every resolved exId is a real exercise`, mat.items.every(([id]) => !!EXERCISES[id]));
+    eq(`${tp}: title/est pass through unchanged`, mat.title + '|' + mat.est, TEMPLATES[tp].title + '|' + TEMPLATES[tp].est);
+  }
+  // anchor lifts must never be behind a ROTATE sentinel — they're what the
+  // app's e1RM trajectory tracks across the whole phase
+  const anchors = { hyperChestTri: 'bench', hyperBackBi: 'pullup', hyperShoulderArms: 'ohp' };
+  for (const [tp, anchor] of Object.entries(anchors)) {
+    ok(`${tp}: anchor lift "${anchor}" is a literal exId in the raw template, not a pool`, TEMPLATES[tp].items.some(([id]) => id === anchor));
+  }
+
+  // a template with no ROTATE sentinel must resolve identically to the raw template
+  const plain = materializeTemplate('lowerA', REF_DATE, REF_MESO_START);
+  eq('a non-hypertrophy template passes through materializeTemplate unchanged', JSON.stringify(plain.items), JSON.stringify(TEMPLATES.lowerA.items));
+  eq('an unknown template id returns null', materializeTemplate('nope', REF_DATE, REF_MESO_START), null);
 }
 
 /* =================================================================== */

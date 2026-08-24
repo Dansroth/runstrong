@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -23,7 +23,7 @@ function defaultState() {
     strava: { clientId: '', clientSecret: '', tokenUrl: '', auth: null, activities: {}, lastSync: null, includeOther: false },
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
     races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, melbourne: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
-    maintenance: { active: false, startedOn: null },
+    maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
@@ -84,6 +84,16 @@ const MIGRATIONS = {
     s.settings.equip = Object.assign(defaultEquip(), s.settings.equip || {});
     s.schemaVersion = 10; return s;
   },
+  // 10 → 11: hypertrophy phase (post-Melbourne, chest & arms priority, 5
+  // sessions/week, periodized exercise rotation). Additive: two new fields on
+  // the existing maintenance object. `program` defaults to 'balanced' so
+  // anyone already in maintenance mode sees no change; `mesoStart` is null
+  // until a hypertrophy phase actually starts (see startMaintenance()).
+  10: (s) => {
+    if (s.maintenance.program == null) s.maintenance.program = 'balanced';
+    if (s.maintenance.mesoStart === undefined) s.maintenance.mesoStart = null;
+    s.schemaVersion = 11; return s;
+  },
 };
 
 function migrate(s) {
@@ -137,7 +147,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v26';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v27';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -394,7 +404,7 @@ function computeGuidance(date, sore, fat) {
    maintenance mode. The load side of periodisation is decided by this key. */
 function progressionCtx(date, downgrade) {
   if (downgrade) return { phase: 'deload' };
-  if (ST.maintenance.active) return { phase: inRecoveryWeek() ? 'deload' : 'maint' };
+  if (ST.maintenance.active) return { phase: inRecoveryWeek() ? 'deload' : (ST.maintenance.program === 'hypertrophy' ? 'hypertrophy' : 'maint') };
   const w = weekFor(date);
   return { phase: phaseKeyFromLabel(w && w.phase) };
 }
@@ -403,7 +413,10 @@ function progressionCtx(date, downgrade) {
    The −10% load now comes from the 'deload' phase policy inside nextPrescription,
    so it is rounded to the user's increment once instead of being multiplied twice. */
 function buildSession(date, tplId, downgrade) {
-  const tpl = TEMPLATES[tplId];
+  // materializeTemplate resolves hypertrophy-phase 'ROTATE:<pool>' sentinels
+  // into real exIds for this date; every other template has no sentinel and
+  // passes through unchanged, so this is safe for every tplId.
+  const tpl = materializeTemplate(tplId, date, ST.maintenance.mesoStart);
   const ctx = progressionCtx(date, downgrade);
   const exercises = tpl.items.map(([exId, sets, reps]) => {
     const n = downgrade === 'red' ? Math.max(1, Math.round(sets * 0.6))
@@ -649,7 +662,7 @@ function streakHeatmap() {
 function vHome() {
   const t = today();
   const day = dayFor(t);
-  const phase = ST.maintenance.active ? (inRecoveryWeek() ? 'Recovery week' : 'Maintenance') : phaseLabel(t);
+  const phase = ST.maintenance.active ? (inRecoveryWeek() ? 'Recovery week' : (ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance')) : phaseLabel(t);
   let card = '';
   const active = ST.activeSessionId && ST.sessions[ST.activeSessionId];
   if (ST.maintenance.active && !(active && active.status === 'active')) {
@@ -1343,16 +1356,21 @@ window.saveRaceResult = function (key) {
 function offerRecoveryMode() {
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
-    <p class="dim" style="line-height:1.6;margin-bottom:10px">Nine weeks, two races. Next: one guided recovery week, then maintenance mode — 3 flexible workouts a week, no race clock.</p>
+    <p class="dim" style="line-height:1.6;margin-bottom:10px">Nine weeks, two races. One guided recovery week either way, then pick what's next:</p>
     ${RECOVERY_WEEK.map(l => `<div class="wksum-li">• ${esc(l)}</div>`).join('')}
-    <button class="btn primary big" onclick="startMaintenance()" style="margin-top:12px">Start recovery week → maintenance</button>
+    <button class="btn primary big" onclick="startMaintenance('balanced')" style="margin-top:12px">Start recovery week → maintenance</button>
+    <div class="dim small" style="margin:2px 0 0">3 flexible workouts a week, no race clock.</div>
+    <button class="btn big" onclick="startMaintenance('hypertrophy')" style="margin-top:10px">Start recovery week → hypertrophy phase</button>
+    <div class="dim small" style="margin:2px 0 0">5 sessions a week, chest & arms priority, legs and back stay real too.</div>
     <button class="linkbtn" onclick="closeModal()">Not yet</button></div>`;
   m.classList.add('open');
 }
-window.startMaintenance = function () {
-  ST.maintenance = { active: true, startedOn: today() };
+window.startMaintenance = function (program) {
+  ST.maintenance = { active: true, startedOn: today(), program: program || 'balanced', mesoStart: today() };
   save(); closeModal(); go('home');
-  toast('Maintenance mode on: recovery first, then 3 workouts a week, your pace.');
+  toast(ST.maintenance.program === 'hypertrophy'
+    ? 'Hypertrophy phase on: recovery first, then 5 sessions a week — chest & arms lead, legs and back stay real.'
+    : 'Maintenance mode on: recovery first, then 3 workouts a week, your pace.');
 };
 function inRecoveryWeek() {
   if (!ST.maintenance.active || !ST.maintenance.startedOn) return false;
@@ -1366,6 +1384,7 @@ function maintenanceCard() {
       <div class="card-sub">${esc(RECOVERY_WEEK[Math.min(dayN <= 2 ? 0 : dayN === 3 ? 1 : dayN === 4 ? 2 : dayN <= 6 ? 3 : 4, 4)])}</div>
       ${dayN >= 3 && !(ST.sessions[t] && ST.sessions[t].status === 'done') ? `<button class="btn big" onclick="openReadiness('${t}','recoverySession')">Optional: Recovery workout (~25 min)</button>` : ''}</div>`;
   }
+  if (ST.maintenance.program === 'hypertrophy') return maintenanceCardHyper(t);
   // regular maintenance: 3 sessions per calendar week (Mon-Sun), any order, any day
   const dow = new Date(t + 'T12:00').getDay();
   const monday = dadd(t, -( (dow + 6) % 7 ));
@@ -1381,6 +1400,30 @@ function maintenanceCard() {
       ${bigRun && options.includes('maintLower') ? `<div class="card-sub dim">🏃 Long run in the legs — Upper or Full Body is the smarter pick today.</div>` : ''}
       ${options.map(tp => `<button class="btn big ${tp === rec ? 'primary' : ''}" onclick="openReadiness('${t}','${tp}')" style="margin-top:8px">${esc(TEMPLATES[tp].title)} · ~${TEMPLATES[tp].est} min</button>`).join('')}` :
     `<div class="card-sub">All 3 workouts done this week. 🎉 Anything more is bonus.</div>`}
+  </div>`;
+}
+/* Hypertrophy-phase variant: a fixed 5-day weekly order (HYPER_ORDER) rather
+   than the balanced mode's 3-of-N round robin, since every one of the 5 is
+   meant to happen every week, not compete for a shrinking pool of slots.
+   Running gets a light, unenforced suggestion here — no scheduled days, no
+   periodization, just a visible weekly target (see HYPERTROPHY_PROMPT.md's
+   "running-maintenance" decision). */
+const HYPER_RUN_TARGET = 2;
+function maintenanceCardHyper(t) {
+  const dow = new Date(t + 'T12:00').getDay();
+  const monday = dadd(t, -((dow + 6) % 7));
+  const weekEnd = dadd(monday, 6);
+  const doneThisWeek = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= monday && s.date <= weekEnd);
+  const doneTpls = doneThisWeek.map(s => s.tpl);
+  const allDone = HYPER_ORDER.every(tp => doneTpls.includes(tp));
+  const next = HYPER_ORDER.find(tp => !doneTpls.includes(tp));
+  const doneToday = ST.sessions[t] && ST.sessions[t].status === 'done';
+  const runsThisWeek = Object.keys(mergedRunsAll()).filter(d => d >= monday && d <= weekEnd).length;
+  return `<div class="card action"><div class="card-kicker">Hypertrophy phase · ${doneThisWeek.length}/5 this week</div>
+    ${doneToday ? `<div class="card-sub">Done today ✓ — rest, or go again tomorrow.</div>`
+      : allDone ? `<div class="card-sub">All 5 done this week. 🎉 Anything more is bonus.</div>`
+      : `<button class="btn big primary" onclick="openReadiness('${t}','${next}')" style="margin-top:4px">${esc(TEMPLATES[next].title)} · ~${TEMPLATES[next].est} min</button>`}
+    <div class="card-sub dim" style="margin-top:10px">🏃 ${runsThisWeek} of ${HYPER_RUN_TARGET} easy runs logged this week — no schedule, just a target to hold your aerobic base.</div>
   </div>`;
 }
 
@@ -1641,12 +1684,18 @@ function heroBlock(e, ex, last) {
       <div class="hero-num">${num}</div>
       <div class="hero-suffix">${suffix}</div>
       ${chip}
-      ${ex.wu === 'bar' && !bw && !timeLike ? platesLine(num) : ''}
+      ${isBarbell(ex) && !bw && !timeLike ? platesLine(num) : ''}
     </div>`;
 }
+/* True for anything actually loaded with a bar and plates. Deliberately keyed
+   on the equip tag, not ex.wu === 'bar' — wu marks lifts that get a formal
+   warm-up ramp (heavy compounds), which is a different question from "is
+   this bar-loaded" now that barbell isolation lifts (bbcurl, skullcrusher)
+   exist without one. A wu:'bar' lift not equip-tagged 'barbell' would be a
+   data-entry mistake elsewhere in EXERCISES, not a case to design around. */
+function isBarbell(ex) { return !!(ex.equip && ex.equip.includes('barbell')); }
 /* Plate breakdown for a barbell working weight — the friction this removes is
-   doing bar-minus-weight-over-two math mid-set, under fatigue. Only shown for
-   ex.wu === 'bar' lifts: machines and dumbbells don't load in bar plates. */
+   doing bar-minus-weight-over-two math mid-set, under fatigue. */
 function platesLine(weight) {
   if (weight == null) return '';
   const bar = ST.settings.barWeight || 20;
@@ -1964,7 +2013,7 @@ function routineDone(date, kind) {
 function startLiftPrep(date, tpl, readiness, downgrade, guidance, mins) {
   closeModal();
   const m = mins || PREP_MINS_LIFT;
-  const r = prepRoutine(plannedLoads(tpl), m, { soreBias: !!(readiness && readiness.sore >= 4) });
+  const r = prepRoutine(plannedLoads(tpl, date, ST.maintenance.mesoStart), m, { soreBias: !!(readiness && readiness.sore >= 4) });
   startRoutine({
     list: r.list, kind: 'prep', title: '🔥 Warm-up',
     endLabel: 'skip the rest — start the workout',
@@ -2170,10 +2219,11 @@ function sessionPRs(s) {
 function adherence() {
   const t = today();
   if (ST.maintenance.active) {
-    // maintenance: 3/week since start
+    // maintenance: 3/week (balanced) or 5/week (hypertrophy) since start
+    const perWeek = ST.maintenance.program === 'hypertrophy' ? HYPER_ORDER.length : 3;
     const weeks = Math.max(1, Math.ceil((new Date(t) - new Date(ST.maintenance.startedOn || t)) / (7 * 86400000)));
     const done = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= (ST.maintenance.startedOn || t)).length;
-    return { done, planned: weeks * 3, streak: null };
+    return { done, planned: weeks * perWeek, streak: null };
   }
   const days = [];
   for (const wk of ST.program.weeks) for (const d of wk.days) if (d.kind === 'lift' && d.date <= t) days.push(d.date);
@@ -2410,7 +2460,7 @@ function buildWeeklySummary(monday) {
   const wk = ST.program.weeks.find(w => w.days[0].date === monday) || weekFor(monday);
   const inWeek = d => d >= monday && d <= sunday;
   const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && inWeek(s.date));
-  const planned = ST.maintenance.active ? 3 : wk ? wk.days.filter(d => d.kind === 'lift').length : 4;
+  const planned = ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? HYPER_ORDER.length : 3) : wk ? wk.days.filter(d => d.kind === 'lift').length : 4;
   // strength movement vs LAST week
   const prevMon = dadd(monday, -7), prevSun = dadd(monday, -1);
   const topIn = (exId, from, to) => {
@@ -2475,9 +2525,9 @@ function buildWeeklySummary(monday) {
   let note = null;
   for (const s of doneSessions) for (const e of s.exercises) for (const t of e.sets) if (t.note && (!note || t.note.length > note.length)) note = t.note;
   for (const d of Object.keys(ST.runs)) if (inWeek(d) && ST.runs[d].note && (!note || ST.runs[d].note.length > note.length)) note = ST.runs[d].note;
-  return { weekOf: monday, phase: ST.maintenance.active ? 'Maintenance' : wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
+  return { weekOf: monday, phase: ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance') : wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
     nextPhase: ST.maintenance.active ? null : nextWk ? `Week ${nextWk.num} — ${nextWk.phase}` : null,
-    nextFocus: ST.maintenance.active ? 'maintenance — 3 workouts a week, your pace' : nextFocus,
+    nextFocus: ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? 'hypertrophy phase — chest & arms priority, 5 sessions a week' : 'maintenance — 3 workouts a week, your pace') : nextFocus,
     raceWeeks: Math.max(0, Math.ceil(raceDays / 7)),
     sessionsDone: doneSessions.length, planned, improvements, prs,
     hrvPts, hrvAvg: hrvAvg != null ? Math.round(hrvAvg) : null, hrvBase: base.ready ? Math.round(base.mean) : null,
@@ -2961,10 +3011,15 @@ function vSettings() {
     ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span><button class="toggle ${ST.settings.equip[k] ? 'on' : ''}" onclick="ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()">${ST.settings.equip[k] ? 'ON' : 'OFF'}</button></div>`).join('')}
     <div class="section-label">Mode</div>
     ${ST.maintenance.active
-      ? `<div class="dim small" style="margin-bottom:8px">Maintenance mode is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: 3 flexible gym workouts a week, no race clock.</div>
-         <button class="btn big" onclick="if(confirm('Switch back to the race program view?')){ST.maintenance={active:false,startedOn:null};save();render();}">Back to program mode</button>`
-      : `<div class="dim small" style="margin-bottom:8px">After Melbourne the app offers maintenance mode automatically — or start it any time here.</div>
-         <button class="btn big" onclick="if(confirm('Start maintenance mode? The race program view is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance()">Start maintenance mode</button>`}
+      ? `<div class="dim small" style="margin-bottom:8px">${ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance mode'} is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: ${ST.maintenance.program === 'hypertrophy' ? '5 sessions a week — chest & arms priority, legs and back stay real' : '3 flexible gym workouts a week'}, no race clock.</div>
+         <div class="set-row"><span>Focus</span><select onchange="ST.maintenance.program=this.value; if(this.value==='hypertrophy' && !ST.maintenance.mesoStart) ST.maintenance.mesoStart=today(); save();render()">
+           <option value="balanced" ${ST.maintenance.program !== 'hypertrophy' ? 'selected' : ''}>Balanced</option>
+           <option value="hypertrophy" ${ST.maintenance.program === 'hypertrophy' ? 'selected' : ''}>Hypertrophy — chest & arms</option>
+         </select></div>
+         <button class="btn big" onclick="if(confirm('Switch back to the race program view?')){ST.maintenance={active:false,startedOn:null,program:'balanced',mesoStart:null};save();render();}">Back to program mode</button>`
+      : `<div class="dim small" style="margin-bottom:8px">After Melbourne the app offers this choice automatically — or start it any time here.</div>
+         <button class="btn big" onclick="if(confirm('Start maintenance mode? The race program view is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance('balanced')">Start maintenance mode</button>
+         <button class="btn big" onclick="if(confirm('Start the hypertrophy phase? The race program view is replaced by 5 sessions a week — chest & arms priority. You can switch back here any time.'))startMaintenance('hypertrophy')">Start hypertrophy phase</button>`}
     <div class="section-label">Run sync</div>
     <div class="dim small" style="margin-bottom:8px">Import your runs from <b>Garmin Connect</b> (free): on connect.garmin.com go to Activities → All Activities → Export CSV, then load the file here. Re-imports skip runs it already knows.</div>
     <button class="btn primary big" onclick="document.getElementById('garminpick').click()">📥 Import Garmin CSV</button>

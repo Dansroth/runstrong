@@ -11,7 +11,7 @@
 
 const P = require('../js/program.js');
 const { TEMPLATES, EXERCISES, MUSCLE_MAP, STRETCHES, STRETCH_ESSENTIALS, TRAINED_SHARE,
-        stretchRoutine, stretchDur, STRETCH_SETUP_SECS } = P;
+        stretchRoutine, stretchDur, STRETCH_SETUP_SECS, materializeTemplate, plannedLoads } = P;
 
 const BUDGETS = [5, 7, 10];
 let pass = 0, fail = 0; const fails = [];
@@ -20,14 +20,19 @@ const eq = (name, got, want) => ok(name, got === want, `got ${JSON.stringify(got
 const group = n => console.log('\n' + n);
 const names = list => list.map(x => x.name).join(' / ');
 
-/* loads a template produces when every set is completed */
-function loadsFor(tpl) {
-  const loads = {};
-  for (const [exId, sets] of TEMPLATES[tpl].items) for (const m of (MUSCLE_MAP[exId] || [])) loads[m] = (loads[m] || 0) + sets;
-  return loads;
-}
+/* Fixed reference dates so hypertrophy-phase 'ROTATE:<pool>' templates
+   resolve to a real, reproducible exercise list — see materializeTemplate in
+   program.js. Any date works; these just need to be fixed for the tests to
+   be deterministic. */
+const REF_MESO_START = '2026-10-11';
+const REF_DATE = '2026-11-01';
+
+/* loads a template produces when every set is completed. Goes through the
+   real plannedLoads() (not a reimplementation) so hypertrophy templates'
+   ROTATE sentinels resolve exactly the way the app resolves them. */
+function loadsFor(tpl) { return plannedLoads(tpl, REF_DATE, REF_MESO_START); }
 const LIFT_TEMPLATES = Object.keys(TEMPLATES);
-const isUpper = tpl => TEMPLATES[tpl].items.every(([id]) => EXERCISES[id].group === 'upper');
+const isUpper = tpl => materializeTemplate(tpl, REF_DATE, REF_MESO_START).items.every(([id]) => EXERCISES[id].group === 'upper');
 const LOWER_ONLY = new Set(['calves', 'hipflex', 'glutes', 'hams', 'quads', 'adductors']);
 const hits = (list, loads) => list.filter(st => st.muscles.some(m => loads[m] > 0)).length;
 
