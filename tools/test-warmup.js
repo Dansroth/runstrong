@@ -25,7 +25,7 @@
 
 const P = require('../js/program.js');
 const { TEMPLATES, EXERCISES, MUSCLE_MAP, STRETCHES, STRETCH_ESSENTIALS, TRAINED_SHARE,
-        PREPS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
+        PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
         prepRoutine, plannedLoads, runLoads, runType, runPrepMins, stretchDur } = P;
 
 const BUDGETS = [4, 6, 8];
@@ -53,7 +53,18 @@ group('Prep library');
     ok(`${p.id} is not held long enough to blunt the session`, p.work <= 45, `${p.work}s`);
     ok(`${p.id} does not prescribe running`, !LOCOMOTION.test(p.name + ' ' + p.instr),
        LOCOMOTION.test(p.name + ' ' + p.instr) ? `matched: ${(p.name + ' ' + p.instr).match(LOCOMOTION)[0]}` : '');
+    // Same contract EXERCISES/INSIGHTS hold each other to: explaining why is the
+    // app's defining habit, so a movement without one is a bug, not an omission.
+    ok(`${p.id} has a "why"`, !!p.why && p.why.length > 20, p.why ? `${p.why.length} chars` : 'missing');
+    ok(`${p.id} has a "deep"`, !!p.deep && p.deep.length > 80, p.deep ? `${p.deep.length} chars` : 'missing');
+    ok(`${p.id} why stays short enough for the in-session card`, (p.why || '').length <= 220, `${(p.why || '').length} chars`);
+    /* Note: the LOCOMOTION guard deliberately does NOT apply to why/deep. It
+       exists to stop an ITEM instructing you to go for a jog; the insight text
+       is prose whose whole job is to explain the running benefit, so words like
+       "stride" and "run" belong there. Guarding it caught its own explanation. */
   }
+  for (const id of Object.keys(PREP_INSIGHTS)) ok(`PREP_INSIGHTS "${id}" refers to a real movement`, PREPS.some(p => p.id === id));
+  eq('every prep movement has an insight', PREPS.filter(p => !p.why).map(p => p.id).join(',') || 'none', 'none');
 
   // Every muscle the app can train needs 2+ prep options, for the same reason
   // stretches do: with one, the leftover pass can never give it a second look.

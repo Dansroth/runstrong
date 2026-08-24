@@ -353,3 +353,22 @@ input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit
 /* v14: nav stays tappable while a prompt sheet is open */
 .tabbar { z-index: 55; }
 body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-bottom)); border-radius: 20px; }
+/* ---- reduced motion ----
+   Two things in here are exactly what this setting exists to stop: .flash.on
+   pulses a full-screen overlay three times, and .rpes.nudge flashes the RPE row
+   twice. Durations collapse to ~0 rather than being removed outright, so every
+   element still arrives at its final state — the toast, the rest bar and the
+   progress fill are all shown by class, with the transition only decorating the
+   change. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* "why this helps" disclosure on the warm-up / stretch screen */
+.rt-why { margin-top: 10px; }
+.rt-why-txt { font-size: .84rem; line-height: 1.5; color: var(--dim); max-width: 34ch; margin: 6px auto 0; text-align: center; }

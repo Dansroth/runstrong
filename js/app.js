@@ -94,13 +94,24 @@ function loadState() {
   }
 }
 
+/* Derived-data caches. Declared up here, above save(), on purpose: save() runs
+   once at boot to persist migrations, and it clears these — a `let` sitting
+   further down the file would still be in its temporal dead zone at that point
+   and take the whole app down before the first render. */
+let _exHistCache = null, _mergedAllCache = null, _actIndex = null, _actIndexKey = null, _actIndexOther = null;
+
 let ST = loadState();
-function save() { localStorage.setItem(DB_KEY, JSON.stringify(ST)); }
+function save() {
+  // Every mutation funnels through here, which makes it the honest place to drop
+  // the derived caches — they are rebuilt lazily on the next read.
+  invalidateExHistory(); invalidateMergedRuns(); invalidateActivityIndex();
+  localStorage.setItem(DB_KEY, JSON.stringify(ST));
+}
 save(); // persist immediately so migrations and first-visit program generation stick
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v24';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v25';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -138,19 +149,41 @@ function phaseLabel(date) {
 }
 
 /* full history for an exercise variant: [{date, sets:[...]}] oldest→newest, completed sessions only */
-function exHistory(exId, beforeDate) {
-  const out = [];
+/* ---- per-exercise history ----
+   This used to re-sort every session key and rescan every session on each call,
+   and the Progress → Log view calls it once per exercise in EXERCISES — 54 full
+   scans plus 54 array sorts to answer "which lifts have any history?". It was
+   the single most expensive thing in the app, and it got worse with every
+   session logged.
+
+   One pass now builds the whole exId → visits index. Cache is cleared by save()
+   (every mutation goes through it) and again at the top of render(), so it is
+   rebuilt at most once per redraw and can never outlive a change to the data.
+   Still returns a fresh array per call, exactly as before, so no caller can be
+   surprised by a shared reference. */
+
+function invalidateExHistory() { _exHistCache = null; }
+function exHistoryIndex() {
+  if (_exHistCache) return _exHistCache;
+  const idx = new Map();
   for (const id of Object.keys(ST.sessions).sort()) {
     const s = ST.sessions[id];
     if (s.status !== 'done' && id !== ST.activeSessionId) continue;
-    if (beforeDate && s.date >= beforeDate) continue;
     for (const e of s.exercises) {
-      if (e.exId !== exId) continue;
       const sets = e.sets.filter(x => x.done);
-      if (sets.length) out.push({ date: s.date, sets });
+      if (!sets.length) continue;
+      let arr = idx.get(e.exId);
+      if (!arr) { arr = []; idx.set(e.exId, arr); }
+      arr.push({ date: s.date, sets });
     }
   }
-  return out;
+  _exHistCache = idx;
+  return idx;
+}
+function exHistory(exId, beforeDate) {
+  const all = exHistoryIndex().get(exId);
+  if (!all) return [];
+  return beforeDate ? all.filter(h => h.date < beforeDate) : all.slice();
 }
 
 function vibrate(pattern) { if (ST.settings.vibrate && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
@@ -453,6 +486,7 @@ function render() {
   // 'history' and 'trends' stay mapped as aliases of the merged Progress tab so any
   // older deep link (or a stale service-worker page) still lands somewhere sensible.
   const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, settings: vSettings, stretch: vStretch, progress: vProgress, history: vProgress, trends: vProgress };
+  invalidateMergedRuns(); invalidateExHistory();   // one build per render, never a stale one
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   // a crashing view must never leave the app silently frozen — show what broke instead
   try {
@@ -729,6 +763,7 @@ window.stravaConnect = function () {
 };
 window.stravaDisconnect = function () {
   ST.strava.auth = null; ST.strava.activities = {}; ST.strava.lastSync = null;
+  invalidateActivityIndex();
   save(); render(); toast('Strava disconnected. Synced runs removed; your strength log is untouched.');
 };
 async function stravaTokenRequest(params) {
@@ -793,6 +828,7 @@ async function stravaSync(force) {
     const cutoff = dadd(today(), -56);
     for (const id of Object.keys(ST.strava.activities)) if (ST.strava.activities[id].date < cutoff) delete ST.strava.activities[id];
     ST.strava.lastSync = Date.now();
+    invalidateActivityIndex();
     save();
     if (force) toast(`Strava sync ✓ — ${acts.length} activities (${added} new).`);
     render();
@@ -868,6 +904,7 @@ function importGarminText(text) {
   const cutoff = dadd(today(), -56);
   for (const id of Object.keys(ST.strava.activities)) if (ST.strava.activities[id].date < cutoff) delete ST.strava.activities[id];
   ST.strava.lastSync = Date.now();
+  invalidateActivityIndex();
   save(); render();
   return { added, dupes, skipped };
 }
@@ -884,10 +921,39 @@ window.importGarminFile = function (input) {
 };
 
 /* ---- merged runs: Strava is the source of truth for distance/time/HR; manual log keeps feel/notes ---- */
-function stravaRunOn(date) {
-  const acts = Object.values(ST.strava?.activities || {});
-  return acts.find(a => a.date === date && (a.type === 'Run' || ST.strava.includeOther)) || null;
+/* ---- synced-activity lookup ----
+   stravaRunOn() used to do Object.values(activities).find(...) on every call:
+   a fresh array allocation plus a linear scan, once per lookup. One Progress
+   render calls it ~1,730 times, so with a year of Garmin imports (~400
+   activities) that was ~692,000 comparisons and 1,730 array allocations for a
+   screen that only lists your runs — measured at 56 ms, the slowest view in the
+   app by a factor of three.
+
+   The index below is built once and reused. Staleness is checked by reference
+   identity on the activities object plus the one flag that changes what gets
+   indexed — both O(1). The obvious version keyed on Object.keys(acts).length
+   allocates an array of every activity on every lookup, which profiling caught
+   costing 7.7 ms per render by itself. In-place mutations don't change the
+   reference, so those sites call invalidateActivityIndex() and save() clears it
+   too; the explicit path is the real guarantee and this is the cheap belt.
+   First-match-wins matches the old .find() semantics exactly. */
+
+function invalidateActivityIndex() { _actIndex = null; _actIndexKey = null; }
+function activityIndex() {
+  const sv = ST.strava || {};
+  const acts = sv.activities || {};
+  const key = acts;
+  if (_actIndex && _actIndexKey === key && _actIndexOther === !!sv.includeOther) return _actIndex;
+  _actIndexOther = !!sv.includeOther;
+  const idx = new Map();
+  for (const a of Object.values(acts)) {
+    if (!(a.type === 'Run' || sv.includeOther)) continue;
+    if (!idx.has(a.date)) idx.set(a.date, a);   // first match wins, as .find() did
+  }
+  _actIndex = idx; _actIndexKey = key;
+  return idx;
 }
+function stravaRunOn(date) { return activityIndex().get(date) || null; }
 function mergedRunFor(date) {
   const sr = stravaRunOn(date);
   const mr = ST.runs[date];
@@ -895,11 +961,19 @@ function mergedRunFor(date) {
   if (mr && !mr.skipped) return { ...mr, src: 'manual' };
   return null;
 }
+/* Rebuilt from scratch every time it was called, and a single Progress render
+   calls it several times over. The cache lives for exactly one render pass —
+   render() clears it before building a view — so it can never go stale between
+   a mutation and the redraw that follows it. */
+
+function invalidateMergedRuns() { _mergedAllCache = null; }
 function mergedRunsAll() {
+  if (_mergedAllCache) return _mergedAllCache;
   const dates = new Set(Object.keys(ST.runs).filter(d => !ST.runs[d].skipped));
   for (const a of Object.values(ST.strava?.activities || {})) if (a.type === 'Run' || ST.strava.includeOther) dates.add(a.date);
   const out = {};
   for (const d of [...dates].sort()) { const r = mergedRunFor(d); if (r) out[d] = r; }
+  _mergedAllCache = out;
   return out;
 }
 /* run classification for trends: hard runs excluded from EF like-for-like */
@@ -1256,11 +1330,21 @@ window.openReadiness = function (date, tpl) {
     ${radar ? `<div class="notice">⚠️ ${esc(radar)}</div>` : ''}
     <div class="ready-q"><div>Muscle soreness</div><div class="scale" id="r-sore">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>fresh</span><span>wrecked</span></div></div>
     <div class="ready-q"><div>Overall fatigue</div><div class="scale" id="r-fat">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>energised</span><span>flat</span></div></div>
+    <div class="ready-q" id="r-wu" hidden><div>Warm-up length</div>
+      <div class="scale" id="r-wumins">${PREP_MINS_CHOICES.map(n => `<button data-v="${n}"${n === PREP_MINS_LIFT ? ' class="sel"' : ''}>${n} min</button>`).join('')}</div></div>
     <button class="btn primary big" id="r-go" disabled>Start</button>
     <button class="linkbtn" id="r-skipwu" hidden>Skip warm-up — straight to the workout</button>
     <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
   m.classList.add('open');
-  let sore = null, fat = null, guidance = null;
+  let sore = null, fat = null, guidance = null, wuMins = PREP_MINS_LIFT;
+  /* Single-select, unlike the 1-5 readiness scales above which fill cumulatively. */
+  $('#r-wumins').onclick = e => {
+    if (!e.target.dataset.v) return;
+    wuMins = +e.target.dataset.v;
+    [...$('#r-wumins').children].forEach(b => b.classList.toggle('sel', +b.dataset.v === wuMins));
+    const g = $('#r-go');
+    if (!g.disabled) g.textContent = g.textContent.replace(/\d+ min/, `${wuMins} min`);
+  };
   const update = () => {
     const go = $('#r-go');
     go.disabled = !(sore && fat);
@@ -1277,7 +1361,8 @@ window.openReadiness = function (date, tpl) {
     /* The warm-up leads into the workout rather than sitting beside it — one tap
        to do the right thing, one link to opt out. The two "lighter day" escapes
        above keep starting immediately; someone taking those wants to get going. */
-    go.textContent = guidance.level === 'red' ? '🔥 Warm up → full workout anyway' : '🔥 Warm up → workout';
+    go.textContent = guidance.level === 'red' ? `🔥 Warm up ${wuMins} min → full workout` : `🔥 Warm up ${wuMins} min → workout`;
+    $('#r-wu').hidden = false;
     const skip = $('#r-skipwu');
     skip.hidden = false;
     skip.onclick = () => beginSession(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
@@ -1285,7 +1370,7 @@ window.openReadiness = function (date, tpl) {
   };
   $('#r-sore').onclick = e => { if (e.target.dataset.v) { sore = +e.target.dataset.v; [...$('#r-sore').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= sore)); update(); } };
   $('#r-fat').onclick = e => { if (e.target.dataset.v) { fat = +e.target.dataset.v; [...$('#r-fat').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= fat)); update(); } };
-  $('#r-go').onclick = () => startLiftPrep(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
+  $('#r-go').onclick = () => startLiftPrep(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null, wuMins);
 };
 window.closeModal = function () { $('#modal').classList.remove('open'); $('#modal').innerHTML = ''; };
 
@@ -1761,7 +1846,8 @@ window.startStretch = function (mins) {
 /* ST.routines is keyed by date rather than hung off the run record, because
    saveRun() REPLACES ST.runs[date] wholesale — a flag stored there would
    silently vanish the moment the run was logged. */
-const PREP_MINS_LIFT = 6;
+const PREP_MINS_LIFT = 6;               // default; the readiness sheet offers the rest
+const PREP_MINS_CHOICES = [4, 6, 8];
 function markRoutine(date, kind, mins, count) {
   if (!ST.routines) ST.routines = {};
   const r = ST.routines[date] || (ST.routines[date] = {});
@@ -1773,13 +1859,14 @@ function routineDone(date, kind) {
   return !!(r && r[kind] && r[kind].completed);
 }
 /* Lift day: warm up, then fall straight into the session. */
-function startLiftPrep(date, tpl, readiness, downgrade, guidance) {
+function startLiftPrep(date, tpl, readiness, downgrade, guidance, mins) {
   closeModal();
-  const r = prepRoutine(plannedLoads(tpl), PREP_MINS_LIFT, { soreBias: !!(readiness && readiness.sore >= 4) });
+  const m = mins || PREP_MINS_LIFT;
+  const r = prepRoutine(plannedLoads(tpl), m, { soreBias: !!(readiness && readiness.sore >= 4) });
   startRoutine({
     list: r.list, kind: 'prep', title: '🔥 Warm-up',
     endLabel: 'skip the rest — start the workout',
-    markComplete: () => markRoutine(date, 'prep', PREP_MINS_LIFT, r.list.length),
+    markComplete: () => markRoutine(date, 'prep', m, r.list.length),
     onDone: () => beginSession(date, tpl, readiness, downgrade, guidance),
   });
 }
@@ -1901,6 +1988,9 @@ window.stretchSkip = function () {
   if (SR.idx >= SR.list.length) { routineEnd(true); return; }
   beginPhase('ready'); render();
 };
+/* Sits below the controls deliberately: expanding it mid-routine must never
+   shift the Pause and Skip buttons out from under your thumb. */
+window.toggleRoutineWhy = function () { if (!SR) return; SR.showWhy = !SR.showWhy; render(); };
 /* in position early — don't make them wait out the setup gap */
 window.stretchStartNow = function () {
   if (!SR || SR.phase !== 'ready') return;
@@ -1932,6 +2022,10 @@ function vStretch() {
         <button class="btn big" style="flex:1" onclick="stretchPause()">${SR.paused ? '▶ Resume' : '⏸ Pause'}</button>
         <button class="btn big" style="flex:1" onclick="stretchSkip()">Skip →</button>
       </div>
+      ${st.why ? `<div class="rt-why">
+        <button class="linkbtn" onclick="toggleRoutineWhy()">${SR.showWhy ? '▲ hide' : '▼ why this helps your half'}</button>
+        ${SR.showWhy ? `<p class="rt-why-txt">${esc(st.why)}</p>` : ''}
+      </div>` : ''}
       <button class="linkbtn" onclick="stretchEnd()">${esc(SR.endLabel)}</button>
     </main>`;
 }
@@ -2764,7 +2858,7 @@ function vSettings() {
     <button class="btn primary big" onclick="document.getElementById('garminpick').click()">📥 Import Garmin CSV</button>
     <input type="file" id="garminpick" accept=".csv,text/csv" style="display:none" onchange="importGarminFile(this)">
     <div class="set-row"><span>Synced activities</span><span class="dim small">${Object.keys(ST.strava.activities).length} cached${ST.strava.lastSync ? ' · updated ' + new Date(ST.strava.lastSync).toLocaleDateString() : ''}</span></div>
-    <div class="set-row"><span>Include non-run activities</span><button class="toggle ${ST.strava.includeOther ? 'on' : ''}" onclick="ST.strava.includeOther=!ST.strava.includeOther;save();render()">${ST.strava.includeOther ? 'ON' : 'OFF'}</button></div>
+    <div class="set-row"><span>Include non-run activities</span><button class="toggle ${ST.strava.includeOther ? 'on' : ''}" onclick="ST.strava.includeOther=!ST.strava.includeOther;invalidateActivityIndex();save();render()">${ST.strava.includeOther ? 'ON' : 'OFF'}</button></div>
     ${Object.keys(ST.strava.activities).length ? `<button class="btn small" onclick="if(confirm('Remove all synced activities? Manual run logs are kept.')){ST.strava.activities={};save();render();}">Clear synced activities</button>` : ''}
     <div class="section-label">Strava (optional — needs a paid Strava subscription for API access)</div>
     ${stravaConnected() ? `
