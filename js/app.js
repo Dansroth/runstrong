@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 function defaultState() {
   return {
@@ -17,6 +17,7 @@ function defaultState() {
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
     races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, melbourne: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
     maintenance: { active: false, startedOn: null },
+    routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
@@ -59,6 +60,14 @@ const MIGRATIONS = {
     if (!s.settings.step || s.settings.step === 2.5) s.settings.step = WEIGHT_STEP_DEFAULT;
     s.schemaVersion = 8; return s;
   },
+  // 8 → 9: warm-up before sessions + cool-down after runs. Additive: one new
+  // top-level routines{}, keyed by date → { prep, stretch }. Deliberately NOT
+  // stored on ST.runs[date], which saveRun() replaces wholesale. Lift stretches
+  // keep living on the session object as before. History untouched.
+  8: (s) => {
+    s.routines = s.routines || {};
+    s.schemaVersion = 9; return s;
+  },
 };
 
 function migrate(s) {
@@ -91,7 +100,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v23';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v24';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -565,12 +574,17 @@ function vHome() {
   } else if (day.kind === 'run' || day.kind === 'race') {
     const mr = mergedRunFor(t);
     const skippedManual = ST.runs[t] && ST.runs[t].skipped && !stravaRunOn(t);
+    /* Warm-up before the run, cool-down after it — the card only ever shows the
+       one that's next, so "Log this run" never gets pushed down the screen.
+       The warm-up is mobility only: no jog, no strides. */
+    const prepBtn = `<button class="btn" onclick="startRunPrep('${t}')">🔥 ${routineDone(t, 'prep') ? 'Warm up again' : `Warm up — ${runPrepMins(day)} min`}</button>`;
+    const coolBtn = `<button class="btn big" onclick="offerRunStretch('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Stretch again' : 'Cool down'}</button>`;
     const logged = mr
       ? `<div class="run-logged">✓ ${mr.src !== 'manual' ? `<span class="svbadge ${mr.src}">${mr.src}</span> ${esc(mr.name || 'Run')} — ` : ''}${mr.km} km · ${mr.min} min · ${paceStr(mr.km, mr.min) || ''}${mr.hr ? ` · ${mr.hr} bpm` : ''}${mr.feel ? ` · felt ${mr.feel}` : ''}${mr.note ? ` · 📝 ${esc(mr.note)}` : ''}</div>
-         <button class="mini" onclick="openRunLog('${t}')">${mr.feel ? 'edit' : 'add feel'}</button>`
+         ${coolBtn}<button class="mini" onclick="openRunLog('${t}')">${mr.feel ? 'edit' : 'add feel'}</button>`
       : skippedManual
         ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openRunLog('${t}')">log anyway</button>`
-        : `<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
+        : `${prepBtn}<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
     const raceHere = day.kind === 'race' ? RACES.find(r => r.date === t) : null;
     const raceBtn = raceHere && !ST.races[raceHere.key].result ? `<button class="btn big" onclick="openRaceResult('${raceHere.key}')" style="margin-top:8px">🏁 Log official result</button>` : '';
     card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}${raceBtn}</div>`;
@@ -1243,6 +1257,7 @@ window.openReadiness = function (date, tpl) {
     <div class="ready-q"><div>Muscle soreness</div><div class="scale" id="r-sore">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>fresh</span><span>wrecked</span></div></div>
     <div class="ready-q"><div>Overall fatigue</div><div class="scale" id="r-fat">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>energised</span><span>flat</span></div></div>
     <button class="btn primary big" id="r-go" disabled>Start</button>
+    <button class="linkbtn" id="r-skipwu" hidden>Skip warm-up — straight to the workout</button>
     <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
   m.classList.add('open');
   let sore = null, fat = null, guidance = null;
@@ -1259,12 +1274,18 @@ window.openReadiness = function (date, tpl) {
       ${guidance.level === 'red' ? `<button class="btn warn big" id="r-red" style="margin-top:10px">Use lighter workout (−40% volume)</button>` : ''}
     </div>`);
     if ($('#r-red')) $('#r-red').onclick = () => beginSession(date, tpl, { sore, fat }, 'red', { ...guidance, followed: 'lighter' });
-    go.textContent = guidance.level === 'red' ? 'Start full workout anyway' : 'Start workout';
+    /* The warm-up leads into the workout rather than sitting beside it — one tap
+       to do the right thing, one link to opt out. The two "lighter day" escapes
+       above keep starting immediately; someone taking those wants to get going. */
+    go.textContent = guidance.level === 'red' ? '🔥 Warm up → full workout anyway' : '🔥 Warm up → workout';
+    const skip = $('#r-skipwu');
+    skip.hidden = false;
+    skip.onclick = () => beginSession(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
     if (!ST.settings.disclaimerSeen) { ST.settings.disclaimerSeen = true; save(); }
   };
   $('#r-sore').onclick = e => { if (e.target.dataset.v) { sore = +e.target.dataset.v; [...$('#r-sore').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= sore)); update(); } };
   $('#r-fat').onclick = e => { if (e.target.dataset.v) { fat = +e.target.dataset.v; [...$('#r-fat').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= fat)); update(); } };
-  $('#r-go').onclick = () => beginSession(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
+  $('#r-go').onclick = () => startLiftPrep(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
 };
 window.closeModal = function () { $('#modal').classList.remove('open'); $('#modal').innerHTML = ''; };
 
@@ -1705,7 +1726,22 @@ function offerStretch() {
     <button class="linkbtn" onclick="closeModal();finishSessionFinal()">Skip — straight to summary</button></div>`;
   m.classList.add('open');
 }
-let SR = null;   // running stretch state (transient)
+let SR = null;   // running routine state (transient) — a stretch or a prep
+/* One starter for every timed routine. The engine is shared; the caller says
+   what it's called, what the escape hatch says, and what happens at the end. */
+function startRoutine(cfg) {
+  if (!cfg.list || !cfg.list.length) { if (cfg.onDone) cfg.onDone(); return; }
+  SR = {
+    list: cfg.list, idx: 0, side: 1, paused: false, int: null, phase: 'ready',
+    kind: cfg.kind || 'stretch',
+    title: cfg.title || '🧘 Stretch',
+    endLabel: cfg.endLabel || 'end stretching — go to summary',
+    markComplete: cfg.markComplete || null,
+    onDone: cfg.onDone || null,
+  };
+  beginPhase('ready');
+  view = { name: 'stretch' }; render();
+}
 window.startStretch = function (mins) {
   closeModal();
   const s = ST.sessions[ST.activeSessionId];
@@ -1713,27 +1749,106 @@ window.startStretch = function (mins) {
   if (!r.list.length) { finishSessionFinal(); return; }
   s.stretch = { mins, stretches: r.list.length, completed: false };
   save();
-  SR = { list: r.list, idx: 0, side: 1, paused: false, int: null, phase: 'ready' };
-  beginPhase('ready');
-  view = { name: 'stretch' }; render();
+  startRoutine({
+    list: r.list, kind: 'stretch', title: '🧘 Stretch',
+    endLabel: 'end stretching — go to summary',
+    markComplete: () => { const x = ST.sessions[ST.activeSessionId]; if (x && x.stretch) x.stretch.completed = true; },
+    onDone: finishSessionFinal,
+  });
+};
+
+/* ================= movement prep + run cool-down ================= */
+/* ST.routines is keyed by date rather than hung off the run record, because
+   saveRun() REPLACES ST.runs[date] wholesale — a flag stored there would
+   silently vanish the moment the run was logged. */
+const PREP_MINS_LIFT = 6;
+function markRoutine(date, kind, mins, count) {
+  if (!ST.routines) ST.routines = {};
+  const r = ST.routines[date] || (ST.routines[date] = {});
+  r[kind] = { mins, items: count, completed: true, ts: Date.now() };
+  save();
+}
+function routineDone(date, kind) {
+  const r = ST.routines && ST.routines[date];
+  return !!(r && r[kind] && r[kind].completed);
+}
+/* Lift day: warm up, then fall straight into the session. */
+function startLiftPrep(date, tpl, readiness, downgrade, guidance) {
+  closeModal();
+  const r = prepRoutine(plannedLoads(tpl), PREP_MINS_LIFT, { soreBias: !!(readiness && readiness.sore >= 4) });
+  startRoutine({
+    list: r.list, kind: 'prep', title: '🔥 Warm-up',
+    endLabel: 'skip the rest — start the workout',
+    markComplete: () => markRoutine(date, 'prep', PREP_MINS_LIFT, r.list.length),
+    onDone: () => beginSession(date, tpl, readiness, downgrade, guidance),
+  });
+}
+/* Run day: no jog, no strides — mobilise and switch on, then go out the door.
+   The first easy kilometre of the run is the temperature raise. */
+window.startRunPrep = function (date) {
+  const day = dayFor(date);
+  const mins = runPrepMins(day);
+  const r = prepRoutine(runLoads(day), mins, {});
+  startRoutine({
+    list: r.list, kind: 'prep', title: '🔥 Warm-up',
+    endLabel: 'end warm-up — back to today',
+    markComplete: () => markRoutine(date, 'prep', mins, r.list.length),
+    onDone: () => go('home'),
+  });
+};
+window.offerRunStretch = function (date) {
+  const day = dayFor(date);
+  const est = m => Math.round(stretchRoutine(runLoads(day), m, {}).total / 60);
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>Cool down?</h2>
+    <div class="dim" style="margin-bottom:12px;font-size:.9rem">Built around what a ${esc((runType(day) === 'race' ? 'race' : runType(day)) + ' run')} loads — calves, hamstrings, hips and glutes. This is for range of motion and winding down; the lifting is what protects you from injury.</div>
+    <button class="btn primary big" onclick="startRunStretch('${date}',7)">🧘 Standard — ~${est(7)} min</button>
+    <button class="btn big" onclick="startRunStretch('${date}',5)">Short — ~${est(5)} min</button>
+    <button class="btn big" onclick="startRunStretch('${date}',10)">Long — ~${est(10)} min</button>
+    <button class="linkbtn" onclick="closeModal()">Not now</button></div>`;
+  m.classList.add('open');
+};
+window.startRunStretch = function (date, mins) {
+  closeModal();
+  const day = dayFor(date);
+  const r = stretchRoutine(runLoads(day), mins, {});
+  startRoutine({
+    list: r.list, kind: 'stretch', title: '🧘 Cool down',
+    endLabel: 'end stretching — back to today',
+    markComplete: () => markRoutine(date, 'stretch', mins, r.list.length),
+    onDone: () => go('home'),
+  });
 };
 /* Two phases per hold: 'ready' = the STRETCH_SETUP_SECS get-into-position gap
    (next stretch already on screen), 'hold' = the stretch itself. Nothing starts
    holding until the setup gap has run out or you tap "start now". */
+function setupSecs(st) { return st && st.setup != null ? st.setup : STRETCH_SETUP_SECS; }
 function beginPhase(phase) {
   const st = SR.list[SR.idx];
   SR.phase = phase;
   SR.paused = false;
   SR.lastBlip = null;
-  SR.endTs = Date.now() + (phase === 'ready' ? STRETCH_SETUP_SECS : st.hold) * 1000;
+  SR.endTs = Date.now() + (phase === 'ready' ? setupSecs(st) : st.hold) * 1000;
   clearInterval(SR.int);
   SR.int = setInterval(tickStretch, 250);
+}
+/* Every routine — post-session stretch, pre-session prep, post-run stretch —
+   runs on this one engine; the only difference is what happens at the end. A
+   lift stretch closes the session out to the summary, a run routine goes back
+   to Today. SR.onDone carries that difference so the timer never has to know. */
+function routineEnd(completed) {
+  if (!SR) return;
+  clearInterval(SR.int);
+  if (completed && typeof SR.markComplete === 'function') SR.markComplete();
+  const done = SR.onDone;
+  SR = null;
+  if (typeof done === 'function') done();
 }
 function stretchTotalRemain() {
   const cur = SR.list[SR.idx];
   let t = SR.paused ? Math.ceil(SR.pausedRemain / 1000) : Math.max(0, Math.ceil((SR.endTs - Date.now()) / 1000));
-  if (SR.phase === 'ready') t += cur.hold;                              // the hold this setup leads into
-  if (cur.perSide && SR.side === 1) t += STRETCH_SETUP_SECS + cur.hold; // the other side, setup included
+  if (SR.phase === 'ready') t += cur.hold;                          // the hold this setup leads into
+  if (cur.perSide && SR.side === 1) t += setupSecs(cur) + cur.hold;  // the other side, setup included
   for (let i = SR.idx + 1; i < SR.list.length; i++) t += stretchDur(SR.list[i]);
   return t;
 }
@@ -1742,13 +1857,7 @@ function stretchAdvance() {
   const st = SR.list[SR.idx];
   if (st.perSide && SR.side === 1) { SR.side = 2; beginPhase('ready'); render(); return; }
   SR.idx++; SR.side = 1;
-  if (SR.idx >= SR.list.length) {
-    clearInterval(SR.int);
-    const s = ST.sessions[ST.activeSessionId];
-    if (s && s.stretch) s.stretch.completed = true;
-    finishSessionFinal();
-    return;
-  }
+  if (SR.idx >= SR.list.length) { routineEnd(true); return; }
   beginPhase('ready'); render();
 }
 function tickStretch() {
@@ -1785,11 +1894,11 @@ window.stretchPause = function () {
   else { SR.pausedRemain = Math.max(0, SR.endTs - Date.now()); SR.paused = true; }
   render();
 };
-/* Skip = drop this stretch entirely (both sides) and set up the next one. */
+/* Skip = drop this item entirely (both sides) and set up the next one. */
 window.stretchSkip = function () {
   if (!SR) return;
   SR.idx++; SR.side = 1;
-  if (SR.idx >= SR.list.length) { clearInterval(SR.int); const s = ST.sessions[ST.activeSessionId]; if (s && s.stretch) s.stretch.completed = true; finishSessionFinal(); return; }
+  if (SR.idx >= SR.list.length) { routineEnd(true); return; }
   beginPhase('ready'); render();
 };
 /* in position early — don't make them wait out the setup gap */
@@ -1798,27 +1907,32 @@ window.stretchStartNow = function () {
   ensureAudio();
   beginPhase('hold'); render();
 };
-window.stretchEnd = function () { if (SR) clearInterval(SR.int); finishSessionFinal(); };
+window.stretchEnd = function () { routineEnd(false); };
 function vStretch() {
   if (!SR) return vHome();
   const st = SR.list[SR.idx];
   const ready = SR.phase === 'ready';
   const remain = SR.paused ? Math.ceil(SR.pausedRemain / 1000) : Math.max(0, Math.ceil((SR.endTs - Date.now()) / 1000));
   const sideTxt = st.perSide ? (SR.side === 1 ? 'First side' : 'Other side') : '';
-  return `<header class="top slim"><div class="phase">🧘 Stretch · ${SR.idx + 1} of ${SR.list.length}</div>
+  /* A prep item is a movement, not a hold, so the working phase says GO and the
+     early-start button doesn't talk about getting into position. */
+  const isPrep = SR.kind === 'prep';
+  const working = isPrep ? 'GO' : 'HOLD IT';
+  const startTxt = isPrep ? '▶ Ready — start' : "▶ I'm in position — start";
+  return `<header class="top slim"><div class="phase">${esc(SR.title)} · ${SR.idx + 1} of ${SR.list.length}</div>
       <div class="prog-txt" style="margin-left:auto" id="st-total">${fmtSecs(stretchTotalRemain())} left</div></header>
     <main style="text-align:center">
-      <div class="st-kicker ${ready ? 'ready' : ''}">${ready ? (SR.side === 2 ? 'SWAP SIDES — GET READY' : 'GET READY') : 'HOLD IT'}</div>
+      <div class="st-kicker ${ready ? 'ready' : ''}">${ready ? (SR.side === 2 ? 'SWAP SIDES — GET READY' : 'GET READY') : working}</div>
       <h1 style="font-size:1.5rem;margin-top:6px">${esc(st.name)}</h1>
       ${sideTxt ? `<div class="badge mid" style="margin-top:6px">${sideTxt}</div>` : ''}
       <div class="stretch-count ${ready ? 'ready' : ''}" id="st-count">${remain}s</div>
       <p class="stretch-instr">${esc(st.instr)}</p>
-      ${ready ? `<button class="btn primary big" style="margin-top:18px" onclick="stretchStartNow()">▶ I'm in position — start</button>` : ''}
+      ${ready ? `<button class="btn primary big" style="margin-top:18px" onclick="stretchStartNow()">${startTxt}</button>` : ''}
       <div style="display:flex;gap:10px;margin-top:${ready ? 10 : 22}px">
         <button class="btn big" style="flex:1" onclick="stretchPause()">${SR.paused ? '▶ Resume' : '⏸ Pause'}</button>
         <button class="btn big" style="flex:1" onclick="stretchSkip()">Skip →</button>
       </div>
-      <button class="linkbtn" onclick="stretchEnd()">end stretching — go to summary</button>
+      <button class="linkbtn" onclick="stretchEnd()">${esc(SR.endLabel)}</button>
     </main>`;
 }
 

@@ -247,7 +247,11 @@ const TRAINED_SHARE = 0.65;   // at least this much of the budget goes to what w
    "get ready" gap, and a per-side stretch pays for both a setup and a hold twice. */
 function stretchDur(st, hold) {
   const h = hold != null ? hold : st.hold;
-  return (STRETCH_SETUP_SECS + h) * (st.perSide ? 2 : 1);
+  /* Prep items carry their own, shorter setup gap (see PREP_SETUP_SECS): ten
+     seconds to get down into a floor stretch is right, ten seconds before leg
+     swings is dead air. Anything without an explicit setup keeps the original. */
+  const setup = st.setup != null ? st.setup : STRETCH_SETUP_SECS;
+  return (setup + h) * (st.perSide ? 2 : 1);
 }
 
 /* loads: { muscle: setsCompleted }. opts: { soreBias }.
@@ -291,6 +295,191 @@ function stretchRoutine(loads, mins, opts) {
     const st = nextFor(m); if (!st) continue;
     take(st, st.hold, false);
   }
+  return { list, total };
+}
+
+/* =====================================================================
+   MOVEMENT PREP — the routine that runs BEFORE a session
+   =====================================================================
+   Evidence base, cited the same way as the progression engine below, so a
+   future change can be checked against the literature rather than vibes.
+
+   [1] Behm DG, Chaouachi A. "A review of the acute effects of static and dynamic
+       stretching on performance." Eur J Appl Physiol 2011;111(11):2633-51.
+   [2] Simic L, Sarabon N, Markovic G. "Does pre-exercise static stretching
+       inhibit maximal muscular performance? A meta-analysis." Scand J Med Sci
+       Sports 2013;23(2):131-48.
+   [3] Behm DG, Blazevich AJ, Kay AD, McHugh M. "Acute effects of muscle
+       stretching on physical performance, range of motion, and injury incidence
+       in healthy active individuals." Appl Physiol Nutr Metab 2016;41(1):1-11.
+   [4] Jeffreys I. "Warm-up revisited — the RAMP method." UKSCA 2006.
+
+   Two rules follow, and the whole library is built around them.
+
+   NOTHING IS HELD. [1][2][3] Static holds at or beyond ~60s per muscle
+   measurably cut force and power output; below ~30s the effect is trivial but
+   there is still nothing to gain. So every item here is a movement, not a hold,
+   and STRETCHES above — the post-session library — must never be used to build
+   a prep routine. tools/test-warmup.js asserts exactly that, because reaching
+   for the ready-made muscle-tagged stretch library is the obvious shortcut and
+   the wrong call.
+
+   MOBILISE, THEN ACTIVATE. [4] RAMP is Raise, Activate, Mobilise, Potentiate.
+   Two of those four are deliberately absent here because they are already
+   covered elsewhere:
+     - Potentiate, for lifts, is the barbell ramp in warmupPlan().
+     - Raise, for runs, is the first easy kilometre of the run itself. This app
+       does NOT prescribe a warm-up jog, strides or running drills before a run —
+       a deliberate product decision, not an oversight. Nothing in PREPS involves
+       going anywhere.
+   What is left is the part nothing else covers: take the joints the session will
+   use through their range, then switch on the muscles that will do the work.
+   Run continuously with short setup gaps, a six-minute circuit of this raises
+   muscle temperature on its own.
+   ===================================================================== */
+
+/* Prep items are movements, so the "get ready" gap is half the stretch one —
+   you are already standing up. stretchDur() honours the per-item override. */
+const PREP_SETUP_SECS = 5;
+
+/* work = seconds of movement (per side when perSide). The rep target lives in
+   the instruction rather than in a counter: every time estimate in this app
+   derives from durations, and a rep-counted item would make the "~N min"
+   buttons and the "time left" readout lie. tier orders the routine — every
+   mobilise item runs before any activate item. */
+const PREPS = [
+  // ---- mobilise ----
+  { id:'wu-ankle-rock',  name:'Ankle rocks',            muscles:['calves'],              tier:'mobilise', perSide:true,  work:30, instr:'Stand facing a wall, one foot forward. Drive that knee forward over your toes and back. Heel stays down. About 15 rocks.' },
+  { id:'wu-legswing-fb', name:'Leg swings, front to back', muscles:['hipflex','hams'],   tier:'mobilise', perSide:true,  work:30, instr:'Hold a wall. Swing one leg forward and back, relaxed and loose. Let the range build. About 15 swings.' },
+  { id:'wu-legswing-lr', name:'Leg swings, side to side', muscles:['adductors','glutes'],tier:'mobilise', perSide:true,  work:30, instr:'Face the wall, hands on it. Swing one leg across your body and out. Keep your hips facing forward. About 15 swings.' },
+  { id:'wu-9090',        name:'90-90 hip switches',     muscles:['hipflex','glutes'],    tier:'mobilise', perSide:false, work:40, instr:'Sit with both knees bent, one leg in front, one to the side. Rotate your knees over to the other side. Slow, controlled, back and forth.' },
+  { id:'wu-worldgreat',  name:'Deep lunge with a turn',  muscles:['hipflex','hams','back'], tier:'mobilise', perSide:true, work:35, instr:'Step into a long lunge, both hands inside the front foot. Reach the inside arm up and follow it with your eyes. Step back, repeat.' },
+  { id:'wu-catcow',      name:'Cat-cow',                muscles:['back','core'],         tier:'mobilise', perSide:false, work:30, instr:'On hands and knees. Round your back up, then let it sag and lift your chest. Move with your breathing.' },
+  { id:'wu-tspine',      name:'Open-book rotations',    muscles:['back','chest'],        tier:'mobilise', perSide:true,  work:30, instr:'On your side, knees bent, arms out in front. Sweep the top arm across and open your chest to the ceiling. Back and forth.' },
+  { id:'wu-armcircle',   name:'Arm circles',            muscles:['shoulders'],           tier:'mobilise', perSide:false, work:30, instr:'Big slow circles forward, then backward. Let them get bigger as the shoulders free up.' },
+  { id:'wu-wallslide',   name:'Wall slides',            muscles:['shoulders','chest'],   tier:'mobilise', perSide:false, work:30, instr:'Back to a wall, arms in a goalpost shape touching it. Slide them up overhead and back down. Keep contact if you can.' },
+  { id:'wu-squat-deep',  name:'Bodyweight squats',      muscles:['quads','glutes'],      tier:'mobilise', perSide:false, work:35, instr:'Feet about shoulder width. Squat as deep as you comfortably go, stand tall. Slow down, no bouncing.' },
+  { id:'wu-revlunge-dyn',name:'Reverse lunges',         muscles:['quads','hipflex'],     tier:'mobilise', perSide:true,  work:30, instr:'Step back into a lunge, back knee toward the floor, then drive up. Tall chest. About 8 each side.' },
+  { id:'wu-inchworm',    name:'Inchworm walkouts',      muscles:['hams','core','shoulders'], tier:'mobilise', perSide:false, work:35, instr:'Bend and put your hands down. Walk them out to a plank, hold a beat, walk them back and stand up.' },
+  { id:'wu-cossack',     name:'Side lunges',            muscles:['adductors','quads'],   tier:'mobilise', perSide:true,  work:30, instr:'Stand wide. Sink your weight onto one bent leg, the other stays straight. Push across to the other side.' },
+
+  // ---- activate ----
+  { id:'wu-glutebridge', name:'Glute bridges',          muscles:['glutes'],              tier:'activate', perSide:false, work:30, instr:'On your back, knees bent. Drive your hips up, squeeze hard at the top for a beat, lower. About 15.' },
+  { id:'wu-monster',     name:'Lateral band walks',     muscles:['glutes','adductors'],  tier:'activate', perSide:false, work:35, instr:'Band round your shins or knees, small squat. Step sideways one way, then back. No band? Just step wide and slow.' },
+  { id:'wu-calfraise',   name:'Calf raises',            muscles:['calves'],              tier:'activate', perSide:false, work:30, instr:'Stand tall, rise onto your toes, lower slow. Straight knees. About 15.' },
+  { id:'wu-soleus',      name:'Bent-knee calf raises',  muscles:['calves'],              tier:'activate', perSide:false, work:30, instr:'Same again but with your knees slightly bent the whole time. This one wakes up the deep calf muscle underneath.' },
+  { id:'wu-kneedrive',   name:'Standing knee drives',   muscles:['hipflex','core'],      tier:'activate', perSide:true,  work:30, instr:'Stand tall, hold something if you need to. Drive one knee up to hip height and lower it under control. About 12 each side.' },
+  { id:'wu-deadbug',     name:'Dead bugs',              muscles:['core'],                tier:'activate', perSide:false, work:40, instr:'On your back, arms up, knees over hips. Lower one arm and the opposite leg, then swap. Lower back stays flat.' },
+  { id:'wu-birddog',     name:'Bird dogs',              muscles:['core','back','glutes'],tier:'activate', perSide:true,  work:30, instr:'On hands and knees. Reach one arm forward and the opposite leg back. Hips level, no twisting. Swap slowly.' },
+  { id:'wu-slbalance',   name:'Single-leg reaches',     muscles:['glutes','calves'],     tier:'activate', perSide:true,  work:30, instr:'Stand on one leg. Reach the other foot forward, out, then behind you, tapping lightly. Stay tall.' },
+  { id:'wu-bandpull',    name:'Band pull-aparts',       muscles:['shoulders','back'],    tier:'activate', perSide:false, work:30, instr:'Band at chest height, arms straight. Pull it apart to your chest, control it back. No band? Squeeze your shoulder blades together instead.' },
+  { id:'wu-scappush',    name:'Scap push-ups',          muscles:['chest','shoulders'],   tier:'activate', perSide:false, work:30, instr:'In a plank or against a wall, arms straight. Let your chest sink between your shoulder blades, then push it away. Elbows stay locked.' },
+  { id:'wu-planktap',    name:'Plank shoulder taps',    muscles:['core','shoulders'],    tier:'activate', perSide:false, work:30, instr:'High plank, feet wide. Tap one hand to the opposite shoulder, then swap. Stop your hips rocking.' },
+  { id:'wu-hamcurl-sl',  name:'Standing hamstring curls', muscles:['hams'],              tier:'activate', perSide:true,  work:30, instr:'Stand tall, hold something. Curl one heel up toward your backside and lower it slow. About 12 each side.' },
+];
+
+const PREP_TIER_ORDER = { mobilise: 0, activate: 1 };
+/* Ceiling on how much of a prep budget mobilising may spend — see prepRoutine. */
+const PREP_MOBILISE_SHARE = 0.6;
+const PREP_MOBILISE_SHARE_SORE = 0.75;
+
+/* Synthetic muscle loads for a run, on the same scale as lift sets so the
+   trained-share arithmetic in prepRoutine behaves identically for both. These
+   describe what the run will DEMAND, not what a warm-up jog would do — there
+   is no warm-up jog. Easy days get a light dose; long and hard days weight the
+   posterior chain and hip flexors up, because that is what goes first. */
+const RUN_LOADS = {
+  easy: { calves: 4, glutes: 3, hams: 3, quads: 2, hipflex: 3 },
+  hard: { calves: 6, glutes: 5, hams: 5, quads: 4, hipflex: 4 },
+  long: { calves: 6, hams: 6, glutes: 5, quads: 4, hipflex: 5 },
+  race: { calves: 6, glutes: 5, hams: 5, quads: 4, hipflex: 5 },
+};
+/* Minutes of prep per run type. An easy recovery run does not need six minutes
+   of anything; race morning does. */
+const RUN_PREP_MINS = { easy: 4, hard: 6, long: 6, race: 8 };
+
+function runType(day) {
+  if (!day) return 'easy';
+  if (day.kind === 'race') return 'race';
+  const t = (day.title || '').toLowerCase();
+  if (t.includes('hard')) return 'hard';
+  if (t.includes('long')) return 'long';
+  return 'easy';
+}
+function runLoads(day) { return { ...RUN_LOADS[runType(day)] }; }
+function runPrepMins(day) { return RUN_PREP_MINS[runType(day)]; }
+
+/* Loads a lift session is ABOUT to produce, from its template — the prep
+   equivalent of the { muscle: setsCompleted } map buildStretchRoutine() derives
+   from a finished session. Prescribed sets, because nothing is done yet. */
+function plannedLoads(tplId) {
+  const tpl = TEMPLATES[tplId];
+  const loads = {};
+  if (!tpl) return loads;
+  for (const [exId, sets] of tpl.items) {
+    for (const m of (MUSCLE_MAP[exId] || [])) loads[m] = (loads[m] || 0) + sets;
+  }
+  return loads;
+}
+
+/* Same contract and the same three-pass shape as stretchRoutine, so the two are
+   learnable as one idea: what the session will use (hardest-loaded first), then
+   the runner essentials it will not, capped, then whatever budget is left.
+   STRETCH_ESSENTIALS and TRAINED_SHARE are reused deliberately — "what a runner
+   always needs a look at" is the same list coming or going.
+   opts: { soreBias } — a sore body gets more mobilising and less activating,
+   done by taking a second mobilise pass before activation is considered. */
+function prepRoutine(loads, mins, opts) {
+  opts = opts || {};
+  loads = loads || {};
+  const budget = mins * 60;
+  const trained = Object.keys(loads).filter(m => loads[m] > 0).sort((a, b) => loads[b] - loads[a]);
+  const bare = !trained.length;
+  const tail = STRETCH_ESSENTIALS.filter(m => !loads[m]);
+  const tailCap = bare ? budget : budget * (1 - TRAINED_SHARE);
+
+  /* Mobilising is cheap to want and expensive to buy: one item per trained
+     muscle will happily consume the entire budget and leave nothing switched
+     on, which is a stretch routine wearing a warm-up's clothes. So mobilise is
+     capped at a share of the budget exactly as the essentials tail is, and
+     activation always has room left. A sore body gets a bigger mobilise share
+     and correspondingly less activation. */
+  /* Second cap, and it exists for the reason documented above stretchRoutine:
+     two passes over today's muscles will otherwise consume the whole budget and
+     leave an upper-body day with no calf or hip work at all — the exact
+     regression that routine was fixed for. So the trained passes are held to
+     TRAINED_SHARE and the essentials tail keeps its share. The final leftover
+     pass is uncapped, so nothing is wasted when the tail comes up short. */
+  const trainedCap = budget * TRAINED_SHARE;
+  const mobCap = trainedCap * (opts.soreBias ? PREP_MOBILISE_SHARE_SORE : PREP_MOBILISE_SHARE);
+
+  const used = new Set(); const list = []; let total = 0; let tailTime = 0; let mobTime = 0; let trainedTime = 0;
+  const nextFor = (m, tier) => PREPS.find(x => x.muscles.includes(m) && !used.has(x.id) && (!tier || x.tier === tier));
+  const take = (p, isTail, capped) => {
+    const item = { ...p, hold: p.work, setup: PREP_SETUP_SECS };
+    const d = stretchDur(item);
+    if (total + d > budget + 20) return false;
+    if (isTail && tailTime + d > tailCap + 20) return false;
+    if (!isTail && capped && trainedTime + d > trainedCap + 20) return false;
+    if (capped && p.tier === 'mobilise' && mobTime + d > mobCap + 20) return false;
+    used.add(p.id); list.push(item); total += d;
+    if (isTail) tailTime += d; else trainedTime += d;
+    if (p.tier === 'mobilise') mobTime += d;
+    return true;
+  };
+  const pass = (muscles, tier, isTail, capped) => {
+    for (const m of muscles) { const p = nextFor(m, tier); if (p) take(p, isTail, capped); }
+  };
+
+  pass(trained, 'mobilise', false, true);                 // 1. free up what today will use, capped
+  pass(trained, 'activate', false, true);                 // 2. switch it on, within the same share
+  pass(tail, null, true, false);                          // 3. runner essentials today skips, capped
+  pass(trained, null, false, false);                      // 4. spend what is left on the heaviest-loaded
+
+  // RAMP order is a property of the routine, not of the selection: mobilise
+  // everything before activating anything. Sort is stable, so muscle priority
+  // survives inside each tier.
+  list.sort((a, b) => PREP_TIER_ORDER[a.tier] - PREP_TIER_ORDER[b.tier]);
   return { list, total };
 }
 
@@ -707,5 +896,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
     warmupPlan, e1rm, buildProgram,
+    PREPS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
+    prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
   };
 }
