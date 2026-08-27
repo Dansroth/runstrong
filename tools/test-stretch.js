@@ -12,7 +12,7 @@
 const P = require('../js/program.js');
 const { TEMPLATES, EXERCISES, MUSCLE_MAP, STRETCHES, STRETCH_ESSENTIALS, TRAINED_SHARE,
         stretchRoutine, stretchDur, STRETCH_SETUP_SECS, materializeTemplate, plannedLoads,
-        STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS } = P;
+        STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, dadd } = P;
 
 const BUDGETS = [5, 7, 10];
 let pass = 0, fail = 0; const fails = [];
@@ -234,6 +234,34 @@ group('area-targeted stretching: picker mapping and routine builder');
 
   // degenerate input
   eq('no muscle tags yields an empty routine', JSON.stringify(areaStretchRoutine([], 8)), JSON.stringify({ list: [], total: 0 }));
+}
+
+group('sore-spot repeat-pattern detection');
+{
+  const T = '2026-11-30';
+  const log = (days, areas) => ({ date: dadd(T, -days), areas });
+  eq('empty log: no pattern', JSON.stringify(sorePattern([], T, 30, 3)), '[]');
+  eq('below threshold: no pattern', JSON.stringify(sorePattern([log(1, ['lowback']), log(2, ['lowback'])], T, 30, 3)), '[]');
+  {
+    const hits = sorePattern([log(1, ['lowback']), log(5, ['lowback']), log(10, ['lowback'])], T, 30, 3);
+    eq('at threshold: one area flagged', hits.length, 1);
+    eq('...with the right id and count', JSON.stringify(hits[0]), JSON.stringify({ areaId: 'lowback', count: 3 }));
+  }
+  {
+    // one pick 40 days ago (outside the 30-day window) must not count
+    const hits = sorePattern([log(1, ['hip']), log(5, ['hip']), log(40, ['hip'])], T, 30, 3);
+    eq('picks outside the window do not count toward the threshold', hits.length, 0);
+  }
+  {
+    // multiple areas in one session, multiple sessions — most-picked first
+    const hits = sorePattern([log(1, ['hip', 'lowback']), log(3, ['hip', 'lowback']), log(5, ['hip']), log(7, ['lowback'])], T, 30, 3);
+    eq('two areas can both clear the threshold', hits.length, 2);
+    eq('ranked most-picked first', hits[0].areaId, 'hip');
+    eq('hip picked all 3 sessions it appeared in', hits[0].count, 3);
+    eq('lowback also reaches 3 across its own sessions', hits[1].count, 3);
+  }
+  ok('a custom threshold is honoured', sorePattern([log(1, ['calf']), log(2, ['calf'])], T, 30, 2).length === 1);
+  ok('malformed entries do not throw', Array.isArray(sorePattern([null, { date: T }, { date: T, areas: null }], T, 30, 3)));
 }
 
 /* =================================================================== */

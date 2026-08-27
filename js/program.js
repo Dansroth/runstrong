@@ -468,6 +468,26 @@ function areaStretchRoutine(muscleTags, mins) {
   return { list, total };
 }
 
+/* soreLog: [{date, areas:[STRETCH_AREAS ids]}], appended once per picked
+   session in app.js. This does not diagnose anything — it just notices when
+   the same area keeps coming back, which is exactly the kind of pattern
+   worth an actual assessment rather than more stretching. Pure — no app
+   state — so tools/test-stretch.js can drive it directly.
+   Returns [{areaId, count}] for areas picked >= threshold times within the
+   trailing `days`-day window, most-picked first. */
+function sorePattern(soreLog, todayISO, days, threshold) {
+  const cutoff = dadd(todayISO, -(days || 30));
+  const counts = {};
+  for (const entry of (soreLog || [])) {
+    if (!entry || entry.date < cutoff) continue;
+    for (const a of (entry.areas || [])) counts[a] = (counts[a] || 0) + 1;
+  }
+  return Object.entries(counts)
+    .filter(([, c]) => c >= (threshold || 3))
+    .map(([areaId, count]) => ({ areaId, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /* =====================================================================
    MOVEMENT PREP — the routine that runs BEFORE a session
    =====================================================================
@@ -823,15 +843,18 @@ function materializeTemplate(tplId, dateISO, mesoStartISO) {
 }
 
 /* race-week checklist defaults (editable per race in-app) */
+/* Stable ids, not positional index — ST.races[key].checklist is keyed by
+   item.id so reordering or inserting an item here can never scramble an
+   existing user's checked state the way a plain array-of-strings did. */
 const RACE_CHECKLIST = [
-  'Race kit laid out (shoes, socks, top, shorts, anti-chafe)',
-  'Bib collected / registration confirmed',
-  'Breakfast planned and tested (nothing new on race day)',
-  'Gels / fuel packed (~30-60g carbs per hour)',
-  'Hydration plan sorted (course drink stations checked)',
-  'Pacing plan set (check the app\'s projection — start conservative)',
-  'Transport & start-line logistics confirmed',
-  'Trust the taper: feeling flat this week is normal and temporary',
+  { id: 'kit', text: 'Race kit laid out (shoes, socks, top, shorts, anti-chafe)' },
+  { id: 'bib', text: 'Bib collected / registration confirmed' },
+  { id: 'breakfast', text: 'Breakfast planned and tested (nothing new on race day)' },
+  { id: 'fuel', text: 'Gels / fuel packed (~30-60g carbs per hour)' },
+  { id: 'hydration', text: 'Hydration plan sorted (course drink stations checked)' },
+  { id: 'pacing', text: 'Pacing plan set (check the app\'s projection — start conservative)' },
+  { id: 'logistics', text: 'Transport & start-line logistics confirmed' },
+  { id: 'taper', text: 'Trust the taper: feeling flat this week is normal and temporary' },
 ];
 const RECOVERY_WEEK = [
   'Day 1-2: walk, eat, sleep. Nothing else — the race is still in your legs.',
@@ -1241,7 +1264,7 @@ if (typeof module !== 'undefined' && module.exports) {
     WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
-    STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS,
+    STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern,
     warmupPlan, e1rm, buildProgram, PLATE_SET, platesPerSide,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,

@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -25,6 +25,7 @@ function defaultState() {
     races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, melbourne: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
     maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
+    soreLog: [],           // [{date, areas: [STRETCH_AREAS ids]}] — from the on-demand stretch picker
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
@@ -94,6 +95,21 @@ const MIGRATIONS = {
     if (s.maintenance.mesoStart === undefined) s.maintenance.mesoStart = null;
     s.schemaVersion = 11; return s;
   },
+  // 11 → 12: RACE_CHECKLIST moved from positional-index keys to stable ids
+  // (see program.js) — remap existing checked state using the array's
+  // CURRENT order, which is exactly what makes a future reorder safe from
+  // here on. Also adds soreLog[] for the area-targeted stretch picker's
+  // repeat-pattern note. Additive/remapping only; no history lost.
+  11: (s) => {
+    for (const key of Object.keys(s.races || {})) {
+      const old = s.races[key].checklist || {};
+      const remapped = {};
+      RACE_CHECKLIST.forEach((item, i) => { if (old[i] != null) remapped[item.id] = old[i]; });
+      s.races[key].checklist = remapped;
+    }
+    s.soreLog = s.soreLog || [];
+    s.schemaVersion = 12; return s;
+  },
 };
 
 function migrate(s) {
@@ -147,7 +163,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v28';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v29';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -669,7 +685,7 @@ function vHome() {
     const hasData2 = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0;
     const backupDue2 = hasData2 && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
     const backupCard2 = backupDue2 ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
-    return `<header class="top"><div class="phase">${esc(phase)}</div></header>
+    return `<header class="top"><h1 class="phase">${esc(phase)}</h1></header>
       <main>${maintenanceCard()}${streakHeatmap()}${backupCard2}${soreSpotBtn()}</main>${navBar()}${installBanner()}`;
   }
   if (active && active.status === 'active') {
@@ -727,7 +743,7 @@ function vHome() {
   const backupDue = hasData && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this plan?</button>`;
-  return `<header class="top"><div class="phase">${esc(phase)}</div>${raceCountdowns()}</header>
+  return `<header class="top"><h1 class="phase">${esc(phase)}</h1>${raceCountdowns()}</header>
     <main>${raceExtraCards()}${radarCard}${card}${streakHeatmap()}${upNext(t)}${backlogCard}${backupCard}${soreSpotBtn()}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
 /* Reachable from Home no matter the program state or whether a session is
@@ -1326,7 +1342,7 @@ window.openChecklist = function (key) {
     : 'Race done. Here\'s what you had on the list.';
   m.innerHTML = `<div class="sheet"><h2>🏁 ${esc(r.name)}${d >= 0 && d <= 6 ? ' — race week' : ''}</h2>
     <div class="dim small" style="margin-bottom:10px">${sub}</div>
-    ${RACE_CHECKLIST.map((item, i) => `<label class="chk-row"><input type="checkbox" ${st.checklist[i] ? 'checked' : ''} onchange="ST.races['${key}'].checklist[${i}]=this.checked;save()"> <span>${esc(item)}</span></label>`).join('')}
+    ${RACE_CHECKLIST.map(item => `<label class="chk-row"><input type="checkbox" ${st.checklist[item.id] ? 'checked' : ''} onchange="ST.races['${key}'].checklist['${item.id}']=this.checked;save()"> <span>${esc(item.text)}</span></label>`).join('')}
     <button class="btn primary big" onclick="closeModal()" style="margin-top:12px">Close</button></div>`;
   m.classList.add('open');
 };
@@ -1628,14 +1644,14 @@ function vSession() {
       <div class="ex-ref">
         <div class="ex-last">${lastStr}</div>
         <div class="ex-cue">${esc(ex.cue || '')}</div>
-        ${ex.steps ? `<div class="ex-why ${howtoOpen ? 'open' : ''}" onclick="howtoOpen=!howtoOpen;render()">
+        ${ex.steps ? `<button class="ex-why ${howtoOpen ? 'open' : ''}" aria-expanded="${howtoOpen}" onclick="howtoOpen=!howtoOpen;render()">
           <span class="ex-why-t">📋 How to ${howtoOpen ? '▾' : '▸'}</span>
           ${howtoOpen ? `<div class="ex-why-body"><ol class="ex-steps">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
-        </div>` : ''}
-        ${ex.why ? `<div class="ex-why ${whyOpen ? 'open' : ''}" onclick="whyOpen=!whyOpen;render()">
+        </button>` : ''}
+        ${ex.why ? `<button class="ex-why ${whyOpen ? 'open' : ''}" aria-expanded="${whyOpen}" onclick="whyOpen=!whyOpen;render()">
           <span class="ex-why-t">🎯 Why this helps your half ${whyOpen ? '▾' : '▸'}</span>
           ${whyOpen ? `<div class="ex-why-body">${isTaperPhase(s.date) ? esc(ex.taperWhy || TAPER_WHY) + '<br><span class="dim">' + esc(ex.why) + '</span>' : esc(ex.why)}</div>` : ''}
-        </div>` : ''}
+        </button>` : ''}
         ${ex.swaps.length && !e.sets.some(t => t.done) ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
       </div>
       <div class="sets">${setRows}</div>
@@ -1647,7 +1663,7 @@ function vSession() {
       </div>
       ${s.curIdx < s.exercises.length - 1 ? `<button class="linkbtn" onclick="finishSession()">finish workout early</button>` : ''}
     </main>
-    <div id="restbar" class="restbar" role="timer" aria-label="Rest timer" onclick="addRest(30)"><div id="restbar-fill" class="restbar-fill"></div><div class="restbar-txt"><span id="restbar-label"></span><b id="restbar-time"></b><span class="dim">tap bar +30s</span><button class="mini restskip" onclick="event.stopPropagation();skipRest()">Skip</button></div></div>`;
+    <div id="restbar" class="restbar"><div id="restbar-fill" class="restbar-fill"></div><div class="restbar-txt"><button class="restbar-tap" onclick="addRest(30)" aria-label="Rest timer. Tap to add 30 seconds"><span id="restbar-label"></span><b id="restbar-time"></b><span class="dim">tap +30s</span></button><button class="mini restskip" onclick="skipRest()">Skip</button></div></div>`;
 }
 
 /* ---- in-workout exercise header ----
@@ -2008,11 +2024,23 @@ window.startStretch = function (mins) {
    tool someone opens specifically because something hurts, possibly weeks
    or months after the last time. */
 let soreAreas = new Set();   // transient — which STRETCH_AREAS ids are checked
+/* Noticing a repeat pick is not a diagnosis either — just a nudge that a
+   pattern like this is worth an actual assessment. Threshold/window are a
+   practical judgment call, not a clinical claim. */
+function sorePatternNote() {
+  const hits = sorePattern(ST.soreLog, today(), 30, 3);
+  if (!hits.length) return '';
+  const labels = hits.map(h => (STRETCH_AREAS.find(a => a.id === h.areaId) || {}).label).filter(Boolean).map(l => l.toLowerCase());
+  if (!labels.length) return '';
+  const what = labels.length === 1 ? `${labels[0]} ${hits[0].count} times` : `${labels.join(' and ')}, repeatedly`;
+  return `<div class="notice" style="margin-bottom:12px">You've picked ${esc(what)} in the last 30 days. A pattern like that is worth mentioning to a physio, not just stretching through it.</div>`;
+}
 window.openSoreSpot = function () {
   soreAreas = new Set();
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h2>🧘 Stretch a sore spot</h2>
     <div class="dim small" style="margin-bottom:12px;line-height:1.5">This is general tightness and range-of-motion work — not a diagnosis or treatment for pain. If it's new, getting worse, spreads down a limb, or comes with numbness or weakness, that's a reason to see a physio or doctor, not to stretch through it.</div>
+    ${sorePatternNote()}
     ${STRETCH_AREAS.map(a => `<label class="chk-row"><input type="checkbox" onchange="toggleSoreArea('${a.id}',this.checked)"> <span>${esc(a.label)}</span></label>`).join('')}
     <div class="stepper-lbl" style="margin-top:14px">Session length</div>
     <button class="btn primary big" onclick="startSoreStretch(8)">🧘 Standard — ~8 min</button>
@@ -2026,10 +2054,13 @@ window.toggleSoreArea = function (id, checked) {
 };
 window.startSoreStretch = function (mins) {
   if (!soreAreas.size) { toast('Pick at least one area first.'); return; }
+  const areaIds = [...soreAreas];
   const tags = [...new Set(STRETCH_AREAS.filter(a => soreAreas.has(a.id)).flatMap(a => a.muscles))];
   const r = areaStretchRoutine(tags, mins);
   closeModal();
   if (!r.list.length) { toast("Couldn't find a stretch for that pick — try a different area."); return; }
+  ST.soreLog.push({ date: today(), areas: areaIds });
+  save();
   startRoutine({
     list: r.list, kind: 'stretch', title: '🧘 Stretch',
     endLabel: 'end — back to Today',
@@ -2299,7 +2330,7 @@ function vSummary() {
   const avg = a => a.length ? (a.reduce((x, y) => x + y, 0) / a.length) : null;
   const rN = avg(rpeNow), rP = avg(rpePrev);
   const mins = s.finishedTs && s.startedTs ? Math.round((s.finishedTs - s.startedTs) / 60000) : null;
-  return `<header class="top"><div class="phase">${esc(phaseLabel(s.date))}</div></header>
+  return `<header class="top"><h1 class="phase">${esc(phaseLabel(s.date))}</h1></header>
   <main>
     <div class="card"><div class="card-kicker">Session complete ✓</div><div class="card-title">${esc(s.title)}</div>
     <div class="card-sub">${fmtDate(s.date)}${mins ? ` · ${mins} min` : ''}${s.downgraded ? ' · downgraded' : ''}</div></div>
@@ -2352,7 +2383,7 @@ function vSchedule() {
   const t = today();
   const w = weekFor(t);
   const ad = adherence();
-  return `<header class="top"><div class="phase">${esc(phaseLabel(t))}</div>${raceCountdowns()}
+  return `<header class="top"><h1 class="phase">${esc(phaseLabel(t))}</h1>${raceCountdowns()}
     <div class="dim small" style="margin-top:6px">💪 ${ad.done} of ${ad.planned} workouts${ad.streak != null && ad.streak >= 2 ? ` · 🔥 ${ad.streak}-workout streak` : ''}</div></header>
   <main>
   ${ST.program.weeks.map(wk => `
@@ -2385,7 +2416,7 @@ function vSchedule() {
       const done = Object.values(st.checklist).filter(Boolean).length;
       const d = daysUntil(r.date);
       const status = st.result ? `ran ${esc(st.result)}` : d >= 0 ? `${done} of ${RACE_CHECKLIST.length} ticked · ${d} day${d === 1 ? '' : 's'} out` : `${done} of ${RACE_CHECKLIST.length} ticked`;
-      return `<div class="exlist-row" onclick="openChecklist('${r.key}')"><span>🏁 ${esc(r.name)}</span><span class="dim">${status}</span><span>›</span></div>`;
+      return `<button class="exlist-row" onclick="openChecklist('${r.key}')"><span>🏁 ${esc(r.name)}</span><span class="dim">${status}</span><span>›</span></button>`;
     }).join('')}`}
   <button class="linkbtn" onclick="showWhy()">Why this plan?</button>
   </main>${navBar()}`;
@@ -2414,7 +2445,7 @@ function vProgress() {
     <button class="seg-btn ${tab === 'log' ? 'sel' : ''}" role="tab" aria-selected="${tab === 'log'}" onclick="setProgressTab('log')">📈 Log</button>
     <button class="seg-btn ${tab === 'insights' ? 'sel' : ''}" role="tab" aria-selected="${tab === 'insights'}" onclick="setProgressTab('insights')">📊 Insights</button>
   </div>`;
-  return `<header class="top"><div class="phase">Progress</div>${seg}</header>
+  return `<header class="top"><h1 class="phase">Progress</h1>${seg}</header>
   <main>${tab === 'log' ? logBody() : insightsBody()}</main>${navBar()}`;
 }
 
@@ -2464,7 +2495,7 @@ function logBody() {
        <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''}${p.feel ? ` · felt ${p.feel}` : ''}</span>
        ${p.splits.length ? `<div class="notesum">splits: ${p.splits.map(fmtSplit).join(' · ')}</div>` : ''}</div>`).join('') : ''}
     ${ST.weeklySummaries.length ? `<div class="section-label">📒 Weekly summaries</div>` + ST.weeklySummaries.slice().reverse().map((s, i) =>
-      `<div class="exlist-row" onclick='showWeeklySummary(ST.weeklySummaries[${ST.weeklySummaries.length - 1 - i}], true)'><span>${esc(s.phase)}</span><span class="dim">week of ${fmtDate(s.weekOf)}</span><span>›</span></div>`).join('') : ''}
+      `<button class="exlist-row" onclick='showWeeklySummary(ST.weeklySummaries[${ST.weeklySummaries.length - 1 - i}], true)'><span>${esc(s.phase)}</span><span class="dim">week of ${fmtDate(s.weekOf)}</span><span>›</span></button>`).join('') : ''}
     <div class="section-label">🏋️ Lifting — weekly volume (tonnes)</div>
     <div class="volchart">${weekVols.map(v => `<div class="volcol"><div class="volbar" style="height:${Math.max(2, 100 * v.vol / maxV)}%"></div><div class="voln">${(v.vol / 1000).toFixed(1)}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
     <div class="section-label">Every lift you've logged</div>
@@ -2472,7 +2503,7 @@ function logBody() {
       const h = exHistory(id);
       const last = h[h.length - 1];
       const top = Math.max(...last.sets.map(t => t.weight || 0));
-      return `<div class="exlist-row" onclick="go('exdetail',{ex:'${id}',back:'log'})"><span>${esc(EXERCISES[id].name)}</span><span class="dim">${h.length} session${h.length > 1 ? 's' : ''} · last ${top} kg</span><span>›</span></div>`;
+      return `<button class="exlist-row" onclick="go('exdetail',{ex:'${id}',back:'log'})"><span>${esc(EXERCISES[id].name)}</span><span class="dim">${h.length} session${h.length > 1 ? 's' : ''} · last ${top} kg</span><span>›</span></button>`;
     }).join('') : `<div class="card"><div class="card-sub">No workouts logged yet. Charts appear here after your first session.</div></div>`}`;
 }
 
@@ -2485,7 +2516,7 @@ function vExDetail() {
     e1: Math.max(...s.sets.map(t => e1rm(t.weight, t.reps, t.rpe))),
   }));
   const backTab = view.back === 'insights' || view.back === 'trends' ? 'insights' : 'log';
-  return `<header class="top slim"><button class="backbtn" aria-label="Back to Progress" onclick="setProgressTab('${backTab}')">‹</button><div class="phase">${esc(ex.name)}</div></header>
+  return `<header class="top slim"><button class="backbtn" aria-label="Back to Progress" onclick="setProgressTab('${backTab}')">‹</button><h1 class="phase">${esc(ex.name)}</h1></header>
   <main>
     ${ex.steps ? `<div class="card"><div class="card-kicker">📋 How to</div>
       <ol class="ex-steps" style="color:var(--fg)">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
@@ -2793,6 +2824,27 @@ function liftTrajectories() {
   }
   return out.sort((a, b) => b.pct - a.pct);
 }
+/* Same first-k/last-k e1RM comparison as liftTrajectories(), but scoped to
+   the hypertrophy phase's own history and restricted to its anchor lifts —
+   the ones that never rotate, so they're the only ones with a continuous
+   trend worth reading (see HYPER_POOLS in program.js). A lighter bar than
+   liftTrajectories()'s 3+ sessions: a phase can legitimately be young. */
+const HYPER_ANCHORS = ['bench', 'pullup', 'ohp', 'bbcurl', 'pushdown'];
+function hyperTrajectories() {
+  const since = ST.maintenance.startedOn || today();
+  const out = [];
+  for (const exId of HYPER_ANCHORS) {
+    const hist = exHistory(exId).filter(h => h.date >= since);
+    const vals = hist.map(h => Math.max(0, ...h.sets.map(t => e1rm(t.weight, t.reps, t.rpe)))).filter(v => v > 0);
+    if (vals.length < 2) continue;
+    const k = Math.max(1, Math.min(3, Math.floor(vals.length / 2)));
+    const first = vals.slice(0, k).reduce((a, b) => a + b, 0) / k;
+    const last = vals.slice(-k).reduce((a, b) => a + b, 0) / k;
+    if (!first) continue;
+    out.push({ exId, name: EXERCISES[exId].name, pct: Math.round((last - first) / first * 1000) / 10, n: vals.length });
+  }
+  return out.sort((a, b) => b.pct - a.pct);
+}
 function liftPRBook() {
   const out = [];
   for (const exId of Object.keys(EXERCISES)) {
@@ -3006,7 +3058,10 @@ function insightsBody() {
     ${explorers.map(x => `<div class="card explorer ${x.s.ready ? '' : 'dim-card'}"><div class="card-kicker">${x.icon} ${esc(x.title)}</div><div class="card-sub">${esc(x.s.line)}</div></div>`).join('')}
 
     ${retroReady ? `<div class="section-label">The block</div>
-      <div class="card"><div class="card-sub">Nine weeks, two races — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}`;
+      <div class="card"><div class="card-sub">Nine weeks, two races — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}
+
+    ${ST.maintenance.active && ST.maintenance.program === 'hypertrophy' ? `<div class="section-label">The hypertrophy phase</div>
+      <div class="card"><div class="card-sub">Chest and arms lead, legs and back held steady — how it's actually going.</div><button class="btn primary big" onclick="showHyperRetro()">🏋️ Phase, in numbers</button></div>` : ''}`;
 }
 /* one-shot post-block report */
 window.showRetro = function () {
@@ -3034,10 +3089,46 @@ window.showRetro = function () {
     <button class="btn primary big" onclick="closeModal()">Close</button></div>`;
   m.classList.add('open');
 };
+/* on-demand report for the CURRENT hypertrophy phase — showRetro() above is
+   a one-shot look back at the finished 9-week race block, this is an
+   ongoing "how's it going" for a phase that has no end date */
+const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory' };
+window.showHyperRetro = function () {
+  const since = ST.maintenance.startedOn || today();
+  const mesoStart = ST.maintenance.mesoStart || since;
+  const weeksIn = weeksSince(mesoStart, today()) + 1;
+  const blockNum = Math.floor(weeksSince(mesoStart, today()) / HYPER_MESO_WEEKS) + 1;
+  const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= since);
+  const byTpl = {};
+  for (const s of doneSessions) byTpl[s.tpl] = (byTpl[s.tpl] || 0) + 1;
+  const dayLines = HYPER_ORDER.map(tp => `${TEMPLATES[tp].title}: ${byTpl[tp] || 0}`);
+  const traj = hyperTrajectories();
+  const lifters = traj.map(x => `${x.name}: ${x.pct >= 0 ? '+' : ''}${x.pct}% e1RM`);
+  const totTon = Math.round(tonnageIn(since, today()) / 100) / 10;
+  const runsInPhase = Object.keys(mergedRunsAll()).filter(d => d >= since).length;
+  const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, today())].name}`);
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>🏋️ Hypertrophy phase, in numbers</h2>
+    <div class="dim small" style="margin-bottom:10px">Week ${weeksIn} of this phase · rotation block ${blockNum} (accessories rotate every ${HYPER_MESO_WEEKS} weeks)</div>
+    <div class="wksum-sec"><div class="wksum-h">📅 Sessions this phase</div>${dayLines.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
+    <div class="wksum-sec"><div class="wksum-h">🏋️ Anchor lifts (est. 1RM change)</div>
+      ${lifters.length ? lifters.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('') : '<div class="wksum-li dim">Not enough repeat sessions yet to compare.</div>'}</div>
+    <div class="wksum-sec"><div class="wksum-h">🔄 Currently rotating in</div>${rotation.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
+    <div class="wksum-sec"><div class="wksum-h">🏃 Running maintenance</div><div class="wksum-li">${runsInPhase} run${runsInPhase === 1 ? '' : 's'} logged this phase — no schedule, just showing up</div></div>
+    <div class="wksum-sec"><div class="wksum-h">📦 Totals</div><div class="wksum-li">${doneSessions.length} gym sessions · ${totTon} t lifted</div></div>
+    <button class="btn primary big" onclick="closeModal()">Close</button></div>`;
+  m.classList.add('open');
+};
 
 /* ---------- settings ---------- */
+/* Every on/off control in Settings shares this markup so they all carry
+   real switch semantics — a screen reader previously heard only "ON"/"OFF"
+   button text with no indication it was a toggle. */
+function toggleBtn(checked, onclick) {
+  return `<button class="toggle ${checked ? 'on' : ''}" role="switch" aria-checked="${checked}" onclick="${onclick}">${checked ? 'ON' : 'OFF'}</button>`;
+}
 function vSettings() {
-  return `<header class="top"><div class="phase">Settings</div></header>
+  return `<header class="top"><h1 class="phase">Settings</h1></header>
   <main>
     <div class="set-row"><span>Weight stepper increment</span>
       <select onchange="ST.settings.step=+this.value;save()">
@@ -3048,11 +3139,11 @@ function vSettings() {
         ${[20, 15, 10].map(v => `<option value="${v}" ${ST.settings.barWeight === v ? 'selected' : ''}>${v} kg</option>`).join('')}
       </select></div>
     <div class="dim small" style="margin-bottom:8px">Used by the plate calculator on barbell lifts — standard plates (25/20/15/10/5/2.5/1.25 kg) assumed per side.</div>
-    <div class="set-row"><span>Rest chime</span><button class="toggle ${ST.settings.sound ? 'on' : ''}" onclick="ST.settings.sound=!ST.settings.sound;save();render()">${ST.settings.sound ? 'ON' : 'OFF'}</button></div>
-    <div class="set-row"><span>Vibration</span><button class="toggle ${ST.settings.vibrate ? 'on' : ''}" onclick="ST.settings.vibrate=!ST.settings.vibrate;save();render()">${ST.settings.vibrate ? 'ON' : 'OFF'}</button></div>
+    <div class="set-row"><span>Rest chime</span>${toggleBtn(ST.settings.sound, "ST.settings.sound=!ST.settings.sound;save();render()")}</div>
+    <div class="set-row"><span>Vibration</span>${toggleBtn(ST.settings.vibrate, "ST.settings.vibrate=!ST.settings.vibrate;save();render()")}</div>
     <div class="section-label">Equipment on hand</div>
     <div class="dim small" style="margin-bottom:8px">Turn off anything you don't have — the ⇄ swap-exercise list in a workout ranks compatible variants first.</div>
-    ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span><button class="toggle ${ST.settings.equip[k] ? 'on' : ''}" onclick="ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()">${ST.settings.equip[k] ? 'ON' : 'OFF'}</button></div>`).join('')}
+    ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span>${toggleBtn(ST.settings.equip[k], `ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()`)}</div>`).join('')}
     <div class="section-label">Mode</div>
     ${ST.maintenance.active
       ? `<div class="dim small" style="margin-bottom:8px">${ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance mode'} is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: ${ST.maintenance.program === 'hypertrophy' ? '5 sessions a week — chest & arms priority, legs and back stay real' : '3 flexible gym workouts a week'}, no race clock.</div>
@@ -3069,7 +3160,7 @@ function vSettings() {
     <button class="btn primary big" onclick="document.getElementById('garminpick').click()">📥 Import Garmin CSV</button>
     <input type="file" id="garminpick" accept=".csv,text/csv" style="display:none" onchange="importGarminFile(this)">
     <div class="set-row"><span>Synced activities</span><span class="dim small">${Object.keys(ST.strava.activities).length} cached${ST.strava.lastSync ? ' · updated ' + new Date(ST.strava.lastSync).toLocaleDateString() : ''}</span></div>
-    <div class="set-row"><span>Include non-run activities</span><button class="toggle ${ST.strava.includeOther ? 'on' : ''}" onclick="ST.strava.includeOther=!ST.strava.includeOther;invalidateActivityIndex();save();render()">${ST.strava.includeOther ? 'ON' : 'OFF'}</button></div>
+    <div class="set-row"><span>Include non-run activities</span>${toggleBtn(ST.strava.includeOther, "ST.strava.includeOther=!ST.strava.includeOther;invalidateActivityIndex();save();render()")}</div>
     ${Object.keys(ST.strava.activities).length ? `<button class="btn small" onclick="if(confirm('Remove all synced activities? Manual run logs are kept.')){ST.strava.activities={};save();render();}">Clear synced activities</button>` : ''}
     <div class="section-label">Strava (optional — needs a paid Strava subscription for API access)</div>
     ${stravaConnected() ? `
@@ -3141,13 +3232,25 @@ function download(name, content, type) {
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+/* The old check (`!s.schemaVersion || !s.sessions`) only asked "are these
+   keys truthy" — a file with sessions:"oops" or sessions:[] would pass this
+   gate and then fail unpredictably somewhere inside migrate() or a later
+   render(), with no clue why. This checks the actual shape every migration
+   and view assumes: sessions/runs/settings must be real, non-array objects,
+   and schemaVersion a real positive number. Still no schema library — just
+   the handful of assumptions this file's own code already depends on. */
+function looksLikeBackup(s) {
+  const isObj = v => typeof v === 'object' && v !== null && !Array.isArray(v);
+  return isObj(s) && typeof s.schemaVersion === 'number' && s.schemaVersion > 0
+    && isObj(s.sessions) && isObj(s.runs) && isObj(s.settings);
+}
 window.importJSON = function (input) {
   const f = input.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = () => {
     try {
       const s = JSON.parse(r.result);
-      if (!s.schemaVersion || !s.sessions) throw new Error('not a RunStrong backup');
+      if (!looksLikeBackup(s)) throw new Error('not a RunStrong backup');
       ST = migrate(s); save(); render();
       alert('Import complete ✓');
     } catch (e) { alert('Import failed: ' + e.message); }
