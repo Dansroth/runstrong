@@ -382,6 +382,93 @@ function stretchRoutine(loads, mins, opts) {
 }
 
 /* =====================================================================
+   ON-DEMAND, AREA-TARGETED STRETCHING — no workout required
+   =====================================================================
+   For "I'm sore/tight right now," not for what a session just trained.
+   Deliberately NOT stretchRoutine(): that builder always gives
+   STRETCH_ESSENTIALS a guaranteed slot (right for a runner's post-session
+   routine, meaningless when someone picked "shoulders" because that's what's
+   bothering them) and dedupes to one stretch per muscle per call, which
+   fights the actual goal here — depth on a couple of areas, not breadth
+   across a whole session.
+
+   Framing matters as much as the selection: this is range-of-motion and
+   comfort work, not a diagnosis or treatment for pain. [S1][S2] The UI layer
+   (app.js) is responsible for saying that plainly and persistently — this
+   file only owns picking stretches and timing them honestly.
+
+   [S1] Herbert RD, Gabriel M. "Effects of stretching before and after
+        exercising on muscle soreness and risk of injury." BMJ 2002 —
+        static stretching does not meaningfully reduce soreness.
+   [S2] Hayden JA, Ellis J, Ogilvie R, Malmivaara A, van Tulder MW. "Exercise
+        therapy for chronic low back pain." Cochrane Database Syst Rev —
+        exercise therapy, not passive stretching alone, is the evidence-backed
+        approach to actual back pain; this feature is deliberately NOT that.
+   [S3] Thomas E, Bianco A, Paoli A, Palma A. "The Relation Between Stretching
+        Typology and Stretching Duration: The Effects on Range of Motion."
+        Int J Sports Med 2018 — roughly 60s total time-under-stretch per
+        muscle per session captures most of the ROM benefit; more is
+        diminishing returns, not "more thorough." Drives AREA_TARGET_SECS. */
+const AREA_TARGET_SECS = 60;
+
+/* Body-area picker → the existing STRETCHES muscle vocabulary. 'back' alone
+   has to stand in for both neck/upper-back and lower-back complaints — there
+   is no finer tag in the library — so Neck & Lower Back share it deliberately
+   rather than inventing a distinction the content can't back up. */
+const STRETCH_AREAS = [
+  { id: 'neck',     label: 'Neck & upper back',   muscles: ['back', 'shoulders'] },
+  { id: 'shoulder', label: 'Shoulders & chest',   muscles: ['shoulders', 'chest'] },
+  { id: 'lowback',  label: 'Lower back',          muscles: ['back', 'core'] },
+  { id: 'hip',      label: 'Hip & glutes',        muscles: ['glutes', 'hipflex', 'adductors'] },
+  { id: 'thigh',    label: 'Front of hip/thigh',  muscles: ['quads', 'hipflex'] },
+  { id: 'hams',     label: 'Hamstrings',          muscles: ['hams'] },
+  { id: 'calf',     label: 'Calves & Achilles',   muscles: ['calves'] },
+  { id: 'arms',     label: 'Arms',                muscles: ['biceps', 'triceps'] },
+];
+
+/* muscleTags: array of muscle strings (already resolved from the areas the
+   user picked — dedupe before calling if multiple areas were selected).
+   Pure — no app state — so tools/test-stretch.js can drive it directly.
+
+   Two passes: first one rep of every matching stretch (best-matching —
+   most overlapping tags — first), then, budget allowing, repeat reps of
+   the best match for any muscle still short of AREA_TARGET_SECS. A stretch
+   can legally appear more than once in the returned list — startRoutine()/
+   vStretch() just play whatever's there, no dedup of their own. */
+function areaStretchRoutine(muscleTags, mins) {
+  const budget = mins * 60;
+  const tagSet = new Set(muscleTags);
+  const candidates = STRETCHES.filter(st => st.muscles.some(m => tagSet.has(m)));
+  const ranked = candidates
+    .map((st, i) => ({ st, score: st.muscles.filter(m => tagSet.has(m)).length, i }))
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .map(x => x.st);
+
+  const list = []; let total = 0;
+  const exposure = {}; for (const m of muscleTags) exposure[m] = 0;
+  const add = st => {
+    const d = stretchDur(st);
+    if (total + d > budget + 20) return false;
+    list.push({ ...st }); total += d;
+    const gain = st.hold * (st.perSide ? 2 : 1);
+    for (const m of st.muscles) if (m in exposure) exposure[m] += gain;
+    return true;
+  };
+
+  // pass 1: one rep of everything relevant, best match first
+  for (const st of ranked) add(st);
+  // pass 2: top up any muscle still short of the evidence-based target [S3],
+  // repeating its best-matching stretch until it clears the target or the
+  // budget runs out
+  for (const m of muscleTags) {
+    const best = ranked.find(st => st.muscles.includes(m));
+    if (!best) continue;
+    while (exposure[m] < AREA_TARGET_SECS) { if (!add(best)) return { list, total }; }
+  }
+  return { list, total };
+}
+
+/* =====================================================================
    MOVEMENT PREP — the routine that runs BEFORE a session
    =====================================================================
    Evidence base, cited the same way as the progression engine below, so a
@@ -1154,6 +1241,7 @@ if (typeof module !== 'undefined' && module.exports) {
     WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
+    STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS,
     warmupPlan, e1rm, buildProgram, PLATE_SET, platesPerSide,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,

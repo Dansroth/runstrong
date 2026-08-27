@@ -11,7 +11,8 @@
 
 const P = require('../js/program.js');
 const { TEMPLATES, EXERCISES, MUSCLE_MAP, STRETCHES, STRETCH_ESSENTIALS, TRAINED_SHARE,
-        stretchRoutine, stretchDur, STRETCH_SETUP_SECS, materializeTemplate, plannedLoads } = P;
+        stretchRoutine, stretchDur, STRETCH_SETUP_SECS, materializeTemplate, plannedLoads,
+        STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS } = P;
 
 const BUDGETS = [5, 7, 10];
 let pass = 0, fail = 0; const fails = [];
@@ -173,6 +174,66 @@ group('stretch library and muscle map are complete and consistent');
   }
   const noStretch = [...trainedTags].filter(m => !tagged[m]);
   eq('every trainable muscle has a stretch', noStretch.join(',') || 'none', 'none');
+}
+
+/* ===================================================================
+   5. on-demand area-targeted stretching (no workout required)
+   =================================================================== */
+group('area-targeted stretching: picker mapping and routine builder');
+{
+  const stretchTags = new Set(STRETCHES.flatMap(st => st.muscles));
+  eq('every STRETCH_AREAS entry has a unique id', STRETCH_AREAS.length, new Set(STRETCH_AREAS.map(a => a.id)).size);
+  for (const area of STRETCH_AREAS) {
+    ok(`area "${area.label}" maps to at least one muscle tag`, area.muscles.length > 0);
+    for (const m of area.muscles) ok(`area "${area.label}"'s tag "${m}" has real stretches to draw on`, stretchTags.has(m));
+  }
+
+  for (const area of STRETCH_AREAS) {
+    for (const mins of [5, 8, 12]) {
+      const r = areaStretchRoutine(area.muscles, mins);
+      ok(`${area.label} @${mins}m: produces a routine`, r.list.length > 0, area.muscles.join(','));
+      ok(`${area.label} @${mins}m: every stretch matches a requested tag`,
+         r.list.every(st => st.muscles.some(m => area.muscles.includes(m))));
+      ok(`${area.label} @${mins}m: stays within budget`, r.total <= mins * 60 + 20, `${r.total}s of ${mins * 60}s`);
+    }
+  }
+
+  // generous budget: single-tag areas should clear the evidence-based dose target
+  for (const area of STRETCH_AREAS.filter(a => a.muscles.length === 1)) {
+    const r = areaStretchRoutine(area.muscles, 15);
+    const exposure = r.list.filter(st => st.muscles.includes(area.muscles[0]))
+      .reduce((a, st) => a + st.hold * (st.perSide ? 2 : 1), 0);
+    ok(`${area.label} @15m (generous budget): reaches the ${AREA_TARGET_SECS}s target`, exposure >= AREA_TARGET_SECS, `${exposure}s`);
+  }
+
+  // a stretch may legally repeat to reach the dose target — confirm that
+  // actually happens rather than just assuming the mechanism works. Needs a
+  // budget narrow enough to exclude a second distinct candidate (so pass 1
+  // alone falls short) but wide enough for a second rep of the first one —
+  // 'adductors' at 1.5min is such a case: butterfly (40s, not per-side, so a
+  // single rep is under the 60s target) fits, its next-best alternative
+  // (sidelunge, per-side) does not, leaving room for pass 2 to repeat it.
+  {
+    const r = areaStretchRoutine(['adductors'], 1.5);
+    const ids = r.list.map(st => st.id);
+    ok('a narrow budget can repeat the same stretch to add dose', new Set(ids).size < ids.length, names(r.list));
+    ok('...and the repeat clears the dose target', ids.length >= 2);
+  }
+
+  // tight budget: never exceeds it, even if that means falling short of the dose target
+  {
+    const r = areaStretchRoutine(['back'], 1);
+    ok('a 1-minute budget is still respected', r.total <= 80, `${r.total}s`);
+  }
+
+  // multiple areas at once
+  {
+    const r = areaStretchRoutine(['hams', 'calves'], 8);
+    ok('multiple areas: covers both requested tags', ['hams', 'calves'].every(m => r.list.some(st => st.muscles.includes(m))), names(r.list));
+  }
+
+  // degenerate input
+  eq('no muscle tags yields an empty routine', JSON.stringify(areaStretchRoutine([], 8)), JSON.stringify({ list: [], total: 0 }));
 }
 
 /* =================================================================== */

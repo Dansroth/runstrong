@@ -147,7 +147,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v27';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v28';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -670,7 +670,7 @@ function vHome() {
     const backupDue2 = hasData2 && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
     const backupCard2 = backupDue2 ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
     return `<header class="top"><div class="phase">${esc(phase)}</div></header>
-      <main>${maintenanceCard()}${streakHeatmap()}${backupCard2}</main>${navBar()}${installBanner()}`;
+      <main>${maintenanceCard()}${streakHeatmap()}${backupCard2}${soreSpotBtn()}</main>${navBar()}${installBanner()}`;
   }
   if (active && active.status === 'active') {
     card = `<div class="card action" onclick="go('session')">
@@ -728,8 +728,11 @@ function vHome() {
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this plan?</button>`;
   return `<header class="top"><div class="phase">${esc(phase)}</div>${raceCountdowns()}</header>
-    <main>${raceExtraCards()}${radarCard}${card}${streakHeatmap()}${upNext(t)}${backlogCard}${backupCard}${whyBtn}</main>${navBar()}${installBanner()}`;
+    <main>${raceExtraCards()}${radarCard}${card}${streakHeatmap()}${upNext(t)}${backlogCard}${backupCard}${soreSpotBtn()}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
+/* Reachable from Home no matter the program state or whether a session is
+   active — the whole point is "I'm sore right now," not "after my workout." */
+function soreSpotBtn() { return `<button class="linkbtn" onclick="openSoreSpot()">🧘 Sore somewhere? Stretch it out</button>`; }
 
 /* ---------- run logging ---------- */
 function paceStr(km, min) {
@@ -1990,6 +1993,47 @@ window.startStretch = function (mins) {
     endLabel: 'end stretching — go to summary',
     markComplete: () => { const x = ST.sessions[ST.activeSessionId]; if (x && x.stretch) x.stretch.completed = true; },
     onDone: finishSessionFinal,
+  });
+};
+
+/* ================= on-demand, area-targeted stretching ================= */
+/* Not tied to a workout at all — reachable from Home regardless of program
+   mode or an active session. Deliberately NOT stretchRoutine()/offerStretch():
+   this is "I'm sore right now," not "here's what I just trained" — see
+   areaStretchRoutine() in program.js for why that's a different builder.
+
+   The framing note below is shown every time, not gated behind a one-time
+   "seen it" flag the way ST.settings.disclaimerSeen is — that flag means
+   "shown once, ever," which fits a general training-advice caveat but not a
+   tool someone opens specifically because something hurts, possibly weeks
+   or months after the last time. */
+let soreAreas = new Set();   // transient — which STRETCH_AREAS ids are checked
+window.openSoreSpot = function () {
+  soreAreas = new Set();
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>🧘 Stretch a sore spot</h2>
+    <div class="dim small" style="margin-bottom:12px;line-height:1.5">This is general tightness and range-of-motion work — not a diagnosis or treatment for pain. If it's new, getting worse, spreads down a limb, or comes with numbness or weakness, that's a reason to see a physio or doctor, not to stretch through it.</div>
+    ${STRETCH_AREAS.map(a => `<label class="chk-row"><input type="checkbox" onchange="toggleSoreArea('${a.id}',this.checked)"> <span>${esc(a.label)}</span></label>`).join('')}
+    <div class="stepper-lbl" style="margin-top:14px">Session length</div>
+    <button class="btn primary big" onclick="startSoreStretch(8)">🧘 Standard — ~8 min</button>
+    <button class="btn big" onclick="startSoreStretch(5)">Short — ~5 min</button>
+    <button class="btn big" onclick="startSoreStretch(12)">Long — ~12 min</button>
+    <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  m.classList.add('open');
+};
+window.toggleSoreArea = function (id, checked) {
+  if (checked) soreAreas.add(id); else soreAreas.delete(id);
+};
+window.startSoreStretch = function (mins) {
+  if (!soreAreas.size) { toast('Pick at least one area first.'); return; }
+  const tags = [...new Set(STRETCH_AREAS.filter(a => soreAreas.has(a.id)).flatMap(a => a.muscles))];
+  const r = areaStretchRoutine(tags, mins);
+  closeModal();
+  if (!r.list.length) { toast("Couldn't find a stretch for that pick — try a different area."); return; }
+  startRoutine({
+    list: r.list, kind: 'stretch', title: '🧘 Stretch',
+    endLabel: 'end — back to Today',
+    onDone: () => go('home'),
   });
 };
 
