@@ -488,6 +488,21 @@ function sorePattern(soreLog, todayISO, days, threshold) {
     .sort((a, b) => b.count - a.count);
 }
 
+/* Pure judgment call on whether a recent-vs-prior set count for a muscle
+   group counts as a "notable" increase — correlational context to sit
+   alongside a sorePattern() hit, never framed as a cause. Deliberately
+   conservative: a floor on the absolute set count (6) so a 2-vs-1 blip never
+   qualifies, and a 30% jump on top of that for the case where there IS a
+   real prior baseline. Returns a plain "X → Y sets" fragment, or null if the
+   shift isn't worth mentioning. app.js supplies the actual set counts (it
+   owns ST.sessions) — this file only owns the threshold judgment. */
+function volumeShiftNote(recentSets, priorSets) {
+  if (recentSets < 6) return null;
+  if (priorSets === 0) return `0 → ${recentSets} sets`;
+  if (recentSets / priorSets >= 1.3) return `${priorSets} → ${recentSets} sets`;
+  return null;
+}
+
 /* =====================================================================
    MOVEMENT PREP — the routine that runs BEFORE a session
    =====================================================================
@@ -1264,7 +1279,7 @@ if (typeof module !== 'undefined' && module.exports) {
     WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
-    STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern,
+    STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, PLATE_SET, platesPerSide,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,

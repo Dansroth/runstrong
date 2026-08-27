@@ -12,7 +12,7 @@
 const P = require('../js/program.js');
 const { TEMPLATES, EXERCISES, MUSCLE_MAP, STRETCHES, STRETCH_ESSENTIALS, TRAINED_SHARE,
         stretchRoutine, stretchDur, STRETCH_SETUP_SECS, materializeTemplate, plannedLoads,
-        STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, dadd } = P;
+        STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote, dadd } = P;
 
 const BUDGETS = [5, 7, 10];
 let pass = 0, fail = 0; const fails = [];
@@ -262,6 +262,17 @@ group('sore-spot repeat-pattern detection');
   }
   ok('a custom threshold is honoured', sorePattern([log(1, ['calf']), log(2, ['calf'])], T, 30, 2).length === 1);
   ok('malformed entries do not throw', Array.isArray(sorePattern([null, { date: T }, { date: T, areas: null }], T, 30, 3)));
+}
+
+group('recent-vs-prior training-volume shift (correlational context only)');
+{
+  eq('below the absolute floor: never notable, even a huge ratio', volumeShiftNote(5, 1), null);
+  eq('zero prior baseline, enough recent volume: notable', volumeShiftNote(8, 0), '0 → 8 sets');
+  eq('zero prior baseline, but under the floor: not notable', volumeShiftNote(4, 0), null);
+  eq('a real prior baseline with a big jump: notable', volumeShiftNote(14, 8), '8 → 14 sets');
+  eq('a real prior baseline with a small change: not notable', volumeShiftNote(9, 8), null);
+  eq('exactly at the 30% threshold: notable', volumeShiftNote(13, 10), '10 → 13 sets');
+  ok('a decrease is never notable', volumeShiftNote(6, 20) === null);
 }
 
 /* =================================================================== */

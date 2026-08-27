@@ -15,7 +15,7 @@ function defaultEquip() { const e = {}; for (const k of EQUIP_KEYS) e[k] = true;
 function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, seenWhy: false, disclaimerSeen: false },
+    settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, disclaimerSeen: false, notifPrimed: false },
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
@@ -163,7 +163,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v29';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v30';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -657,18 +657,36 @@ function currentStreak() {
   while (dates.has(d)) { n++; d = dadd(d, -1); }
   return n;
 }
+/* Longest run of consecutive activity dates ever, not just the live one —
+   currentStreak() answers "am I on one right now", this answers "what's the
+   best I've done", which needs the whole history rather than a walk back
+   from today. */
+function longestStreak() {
+  const dates = [...activityDates()].sort();
+  if (!dates.length) return 0;
+  let best = 1, cur = 1;
+  for (let i = 1; i < dates.length; i++) {
+    cur = dadd(dates[i - 1], 1) === dates[i] ? cur + 1 : 1;
+    best = Math.max(best, cur);
+  }
+  return best;
+}
 const STREAK_DAYS = 35;
 function streakHeatmap() {
   const dates = activityDates();
   const streak = currentStreak();
+  const best = longestStreak();
   let cells = '';
   for (let i = STREAK_DAYS - 1; i >= 0; i--) {
     const d = dadd(today(), -i);
     const on = dates.has(d);
     cells += `<div class="heat-cell ${on ? 'on' : ''} ${d === today() ? 'istoday' : ''}" title="${esc(fmtDate(d))}${on ? ' — trained' : ''}"></div>`;
   }
+  const kicker = streak > 0
+    ? `${streak}-day streak${best > streak ? ` · best ${best}` : ''}`
+    : (best > 0 ? `Start a streak · best ${best}` : 'Start a streak');
   return `<div class="card streak">
-    <div class="card-kicker">🔥 ${streak > 0 ? `${streak}-day streak` : 'Start a streak'}</div>
+    <div class="card-kicker">🔥 ${esc(kicker)}</div>
     <div class="card-sub">${streak > 0 ? 'A lift or a run, any day, keeps it alive.' : 'Log a lift or a run today to start one.'}</div>
     <div class="heatmap">${cells}</div>
   </div>`;
@@ -1018,7 +1036,7 @@ window.importGarminFile = function (input) {
   const rd = new FileReader();
   rd.onload = () => {
     const res = importGarminText(rd.result);
-    if (res.error) { alert(res.error); return; }
+    if (res.error) { toast(res.error, 5500); return; }
     toast(`Garmin import ✓ — ${res.added} new run${res.added === 1 ? '' : 's'}, ${res.dupes} already known${res.skipped ? `, ${res.skipped} skipped (non-runs / unreadable)` : ''}. 💾 Export a backup when you get a chance.`, 5500);
   };
   rd.readAsText(f);
@@ -1487,9 +1505,15 @@ window.openReadiness = function (date, tpl) {
     guidance = computeGuidance(date, sore, fat);
     const old = $('#r-guidance'); if (old) old.remove();
     const disclaimer = !ST.settings.disclaimerSeen ? `<div class="dim" style="font-size:.72rem;margin-top:8px">Guidance based on your own trends — it's training advice, not medical advice. (Shown once.)</div>` : '';
+    /* Notification.requestPermission() fires the instant Start is tapped
+       (see beginSession()), with no other context — this is the one place
+       that context can land first, since it's the last screen before that
+       happens. Only shown when a prompt is actually about to fire. */
+    const notifNote = ('Notification' in window && Notification.permission === 'default' && !ST.settings.notifPrimed)
+      ? `<div class="dim" style="font-size:.72rem;margin-top:4px">Starting will ask permission to notify you when your rest timer ends in the background. (Shown once.)</div>` : '';
     go.insertAdjacentHTML('beforebegin', `<div id="r-guidance">
       <div class="guide ${guidance.level}">${esc(guidance.message)}
-        <div class="guide-why">${esc(guidance.reason)}</div>${disclaimer}</div>
+        <div class="guide-why">${esc(guidance.reason)}</div>${disclaimer}${notifNote}</div>
       ${guidance.level === 'red' ? `<button class="btn warn big" id="r-red" style="margin-top:10px">Use lighter workout (−40% volume)</button>` : ''}
     </div>`);
     if ($('#r-red')) $('#r-red').onclick = () => beginSession(date, tpl, { sore, fat }, 'red', { ...guidance, followed: 'lighter' });
@@ -1502,6 +1526,7 @@ window.openReadiness = function (date, tpl) {
     skip.hidden = false;
     skip.onclick = () => beginSession(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
     if (!ST.settings.disclaimerSeen) { ST.settings.disclaimerSeen = true; save(); }
+    if (!ST.settings.notifPrimed) { ST.settings.notifPrimed = true; save(); }
   };
   $('#r-sore').onclick = e => { if (e.target.dataset.v) { sore = +e.target.dataset.v; [...$('#r-sore').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= sore)); update(); } };
   $('#r-fat').onclick = e => { if (e.target.dataset.v) { fat = +e.target.dataset.v; [...$('#r-fat').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= fat)); update(); } };
@@ -2024,16 +2049,40 @@ window.startStretch = function (mins) {
    tool someone opens specifically because something hurts, possibly weeks
    or months after the last time. */
 let soreAreas = new Set();   // transient — which STRETCH_AREAS ids are checked
+/* Sets logged against exercises tagged with any of `muscles`, in [fromISO,
+   toISO]. Plain volume, not intensity/soreness — the same "sets" unit
+   plannedLoads()/tonnageIn() already use elsewhere in this file. */
+function recentSetsFor(muscles, fromISO, toISO) {
+  let n = 0;
+  for (const s of Object.values(ST.sessions)) {
+    if (s.status !== 'done' || s.date < fromISO || s.date > toISO) continue;
+    for (const e of s.exercises) {
+      if (!(MUSCLE_MAP[e.exId] || []).some(m => muscles.includes(m))) continue;
+      n += e.sets.filter(t => t.done).length;
+    }
+  }
+  return n;
+}
 /* Noticing a repeat pick is not a diagnosis either — just a nudge that a
    pattern like this is worth an actual assessment. Threshold/window are a
-   practical judgment call, not a clinical claim. */
+   practical judgment call, not a clinical claim. The recent-training-volume
+   context (via volumeShiftNote()) is the same: correlational, never framed
+   as a cause — it's "also worth mentioning," not "this is why." */
 function sorePatternNote() {
   const hits = sorePattern(ST.soreLog, today(), 30, 3);
   if (!hits.length) return '';
   const labels = hits.map(h => (STRETCH_AREAS.find(a => a.id === h.areaId) || {}).label).filter(Boolean).map(l => l.toLowerCase());
   if (!labels.length) return '';
   const what = labels.length === 1 ? `${labels[0]} ${hits[0].count} times` : `${labels.join(' and ')}, repeatedly`;
-  return `<div class="notice" style="margin-bottom:12px">You've picked ${esc(what)} in the last 30 days. A pattern like that is worth mentioning to a physio, not just stretching through it.</div>`;
+  let text = `You've picked ${what} in the last 30 days. A pattern like that is worth mentioning to a physio, not just stretching through it.`;
+  const top = STRETCH_AREAS.find(a => a.id === hits[0].areaId);
+  if (top) {
+    const recent = recentSetsFor(top.muscles, dadd(today(), -14), today());
+    const prior = recentSetsFor(top.muscles, dadd(today(), -28), dadd(today(), -15));
+    const shift = volumeShiftNote(recent, prior);
+    if (shift) text += ` Also worth noting: training volume for that area went ${shift} over the same two weeks — not necessarily the cause, but worth mentioning too.`;
+  }
+  return `<div class="notice" style="margin-bottom:12px">${esc(text)}</div>`;
 }
 window.openSoreSpot = function () {
   soreAreas = new Set();
@@ -2427,7 +2476,6 @@ window.showWhy = function () {
   m.innerHTML = `<div class="sheet"><div class="why">${WHY_SCHEDULE.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>')}</div>
   <button class="btn primary big" onclick="closeModal()">Got it</button></div>`;
   m.classList.add('open');
-  ST.settings.seenWhy = true; save();
 };
 
 /* ================= Progress tab =================
@@ -3032,9 +3080,16 @@ function insightsBody() {
     : traj[0].pct >= 5 ? `${traj[0].name} leads the pack, up ${traj[0].pct}% in estimated strength.${traj[traj.length - 1].pct < 0 ? ` ${traj[traj.length - 1].name} is the laggard (${traj[traj.length - 1].pct}%) — worth a look.` : ''}`
     : 'Strength is roughly holding across the board — during a running block, holding IS winning.';
   const retroReady = daysUntil(RACES[1].date) < 0 || ST.maintenance.active;
+  // On a fresh install (or right after a reset) every one of these sections
+  // independently rendered its own "not enough data" card — a wall of four
+  // empty placeholders before anything real ever appears. If literally
+  // nothing is ready yet, say so once and skip the wall; the moment any one
+  // section has real data, everything reverts to its normal per-section form.
+  const allEmpty = !traj.length && !prsL.length && !rb && !ef.ready && explorers.every(x => !x.s.ready);
   return `
     <div class="card insight"><div class="card-kicker">💡 Insight of the week</div><div class="card-sub">${safe(topInsight, 'Insights are having a moment — the rest of the tab still works.')}</div></div>
 
+    ${allEmpty ? `<div class="card"><div class="card-kicker">📊 Building up</div><div class="card-sub">Strength trajectories, a PR book, your aerobic engine trend and the cause-and-effect explorers all need a few real sessions before they have anything to say. Keep logging — this tab fills itself in.</div></div>` : `
     <div class="section-label">Strength trajectory</div>
     <div class="card"><div class="card-sub" style="margin-bottom:10px">${esc(trajLine)}</div>
       ${traj.length ? `<div class="tj-wrap">${trajBars(traj)}</div><div class="dim small" style="margin-top:6px">Estimated 1-rep max, early sessions vs recent. Tap a lift for its full chart.</div>` : ''}</div>
@@ -3056,6 +3111,7 @@ function insightsBody() {
 
     <div class="section-label">Cause & effect</div>
     ${explorers.map(x => `<div class="card explorer ${x.s.ready ? '' : 'dim-card'}"><div class="card-kicker">${x.icon} ${esc(x.title)}</div><div class="card-sub">${esc(x.s.line)}</div></div>`).join('')}
+    `}
 
     ${retroReady ? `<div class="section-label">The block</div>
       <div class="card"><div class="card-sub">Nine weeks, two races — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}
@@ -3196,7 +3252,7 @@ window.restoreV4Backup = function () {
     const raw = localStorage.getItem('runstrong.backup.v4');
     ST = migrate(JSON.parse(raw)); save(); render();
     toast('Backup restored (and re-migrated to the current version).');
-  } catch (e) { alert('Restore failed: ' + e.message); }
+  } catch (e) { toast('Restore failed: ' + e.message, 5000); }
 };
 window.downloadV4Backup = function () {
   const raw = localStorage.getItem('runstrong.backup.v4'); if (!raw) return;
@@ -3252,8 +3308,8 @@ window.importJSON = function (input) {
       const s = JSON.parse(r.result);
       if (!looksLikeBackup(s)) throw new Error('not a RunStrong backup');
       ST = migrate(s); save(); render();
-      alert('Import complete ✓');
-    } catch (e) { alert('Import failed: ' + e.message); }
+      toast('Import complete ✓');
+    } catch (e) { toast('Import failed: ' + e.message, 5000); }
   };
   r.readAsText(f);
 };
@@ -3271,7 +3327,7 @@ function installBanner() {
   return `<div class="install" id="installbanner">
     <div>📲 <b>Install this app</b> for offline gym use</div>
     <button class="mini" onclick="showInstall()">How</button>
-    <button class="mini dim" onclick="dismissInstall()">✕</button></div>`;
+    <button class="mini dim" onclick="dismissInstall()" aria-label="Dismiss install prompt">✕</button></div>`;
 }
 window.dismissInstall = function () { ST.settings.seenInstall = true; save(); const b = $('#installbanner'); if (b) b.remove(); };
 window.showInstall = function (fromSettings) {
