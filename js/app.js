@@ -163,7 +163,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v30';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v31';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -550,7 +550,7 @@ let elapsedInterval = null;
 function render() {
   // 'history' and 'trends' stay mapped as aliases of the merged Progress tab so any
   // older deep link (or a stale service-worker page) still lands somewhere sensible.
-  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, settings: vSettings, stretch: vStretch, progress: vProgress, history: vProgress, trends: vProgress };
+  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, daypreview: vDayPreview, settings: vSettings, stretch: vStretch, progress: vProgress, history: vProgress, trends: vProgress };
   invalidateMergedRuns(); invalidateExHistory();   // one build per render, never a stale one
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   // a crashing view must never leave the app silently frozen — show what broke instead
@@ -723,7 +723,7 @@ function vHome() {
       : `<div class="card action">
           <div class="card-kicker">Today's lift · ~${TEMPLATES[day.tpl].est} min</div>
           <div class="card-title">${esc(day.title)}</div>
-          <div class="card-sub">${TEMPLATES[day.tpl].items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')}</div>
+          <div class="card-sub" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${TEMPLATES[day.tpl].items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button></div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
     const mr = mergedRunFor(t);
@@ -2449,9 +2449,11 @@ function vSchedule() {
         const extraRun = !isRun && merged && merged.src !== 'manual';   // synced run on a non-plan day (Runna ≠ plan)
         const icon = d.kind === 'run' ? '🏃' : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
-        if (done) action = `<button class="mini" onclick="go('summary',{sid:'${d.date}'})">view</button>`;
-        else if (isRun && d.date <= t) action = `<button class="mini" onclick="openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
-        return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}">
+        if (done) action = `<button class="mini" onclick="event.stopPropagation();go('summary',{sid:'${d.date}'})">view</button>`;
+        else if (isRun && d.date <= t) action = `<button class="mini" onclick="event.stopPropagation();openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
+        const isLift = d.kind === 'lift' && !done;
+        const rowClick = isLift ? ` onclick="go('daypreview',{tpl:'${d.tpl}',date:'${d.date}'})"` : '';
+        return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}"${rowClick}>
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${extraRun ? '🏃' : icon}</span>
           <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge '+merged.src+'">'+merged.src+'</span>' : esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
@@ -2564,7 +2566,10 @@ function vExDetail() {
     e1: Math.max(...s.sets.map(t => e1rm(t.weight, t.reps, t.rpe))),
   }));
   const backTab = view.back === 'insights' || view.back === 'trends' ? 'insights' : 'log';
-  return `<header class="top slim"><button class="backbtn" aria-label="Back to Progress" onclick="setProgressTab('${backTab}')">‹</button><h1 class="phase">${esc(ex.name)}</h1></header>
+  const backBtn = view.back === 'daypreview'
+    ? `<button class="backbtn" aria-label="Back" onclick="go('daypreview',{tpl:'${view.tpl}',date:'${view.date}'})">‹</button>`
+    : `<button class="backbtn" aria-label="Back to Progress" onclick="setProgressTab('${backTab}')">‹</button>`;
+  return `<header class="top slim">${backBtn}<h1 class="phase">${esc(ex.name)}</h1></header>
   <main>
     ${ex.steps ? `<div class="card"><div class="card-kicker">📋 How to</div>
       <ol class="ex-steps" style="color:var(--fg)">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
@@ -2574,6 +2579,23 @@ function vExDetail() {
     ${svgChart(pts)}
     ${h.slice().reverse().map(s => `<div class="sumrow"><b>${fmtDate(s.date)}</b><span>${s.sets.map(t => setStr(ex, t)).join(' · ')}</span>
       ${s.sets.filter(t => t.note).map(t => `<div class="notesum">📝 ${esc(t.note)}</div>`).join('')}</div>`).join('')}
+  </main>${navBar()}`;
+}
+
+function vDayPreview() {
+  const tplId = view.tpl;
+  const date = view.date || today();
+  const tpl = materializeTemplate(tplId, date, ST.maintenance.mesoStart);
+  if (!tpl) return vSchedule();
+  return `<header class="top slim"><button class="backbtn" aria-label="Back to Plan" onclick="go('schedule')">‹</button><h1 class="phase">${esc(tpl.title)}</h1></header>
+  <main>
+    <div class="dim small" style="margin:-4px 0 14px">~${tpl.est} min · ${tpl.items.length} exercise${tpl.items.length === 1 ? '' : 's'}</div>
+    ${tpl.items.map(([exId, sets, reps]) => {
+      const ex = EXERCISES[exId];
+      const unit = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
+      const perSide = ex.perSide ? '/side' : '';
+      return `<button class="exlist-row" onclick="go('exdetail',{ex:'${exId}',back:'daypreview',tpl:'${tplId}',date:'${date}'})"><span>${esc(ex.name)}</span><span class="dim">${sets} × ${reps}${unit}${perSide}</span><span>›</span></button>`;
+    }).join('')}
   </main>${navBar()}`;
 }
 
