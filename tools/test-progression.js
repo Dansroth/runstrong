@@ -182,6 +182,7 @@ group('program phase labels map to the right policy');
   eq('Recover → rebuild', phaseKeyFromLabel('Recover → rebuild'), 'rebuild');
   eq('Taper', phaseKeyFromLabel('Taper'), 'taper');
   eq('Melbourne race week', phaseKeyFromLabel('Melbourne race week'), 'raceweek');
+  eq('Geelong taper (the live final week) is a taper, not a race-week primer', phaseKeyFromLabel('Geelong taper'), 'taper');
   eq('unknown label falls back to build', phaseKeyFromLabel('something else'), 'build');
   eq('missing label falls back to build', phaseKeyFromLabel(null), 'build');
   // every week the program generates must resolve to a real policy
@@ -214,9 +215,20 @@ group('taper weeks cut volume into the 41-60% band while intensity is held');
   }));
   const peak = Math.max(...weeks.map(w => w.sets));
   const cutOf = w => Math.round(100 * (1 - w.sets / peak));
+  const program = buildProgram();
+  const raceWeekNums = new Set(program.weeks.filter(w => w.days.some(d => d.kind === 'race')).map(w => w.num));
   for (const w of weeks.filter(x => /taper/i.test(x.phase))) {
     const cut = cutOf(w);
-    ok(`week ${w.num} (${w.phase}) cuts volume ${cut}% — inside 41-60%`, cut >= 41 && cut <= 60, `${w.sets} of ${peak} sets = ${cut}%`);
+    if (raceWeekNums.has(w.num)) {
+      // The week that holds the race is taper AND race week in one (see the
+      // GEELONG TAPER header): lifting cuts deeper than the 41-60% running
+      // band on purpose [T3], but still shows up more than once [T1].
+      ok(`week ${w.num} (${w.phase}) cuts lifting volume ${cut}% — deeper than 60% in the race week`, cut > 60, `${w.sets} of ${peak} sets = ${cut}%`);
+      const lifts = program.weeks.find(x => x.num === w.num).days.filter(d => d.kind === 'lift').length;
+      ok(`week ${w.num} still lifts at least twice (frequency kept)`, lifts >= 2, `${lifts} lift days`);
+    } else {
+      ok(`week ${w.num} (${w.phase}) cuts volume ${cut}% — inside 41-60%`, cut >= 41 && cut <= 60, `${w.sets} of ${peak} sets = ${cut}%`);
+    }
   }
   // intensity held: taper templates must not raise the rep counts (heavy stays heavy)
   const repsOf = tpl => Object.fromEntries(TEMPLATES[tpl].items.map(i => [i[0], i[2]]));
@@ -226,9 +238,49 @@ group('taper weeks cut volume into the 41-60% band while intensity is held');
     ok(`taper keeps ${exId} reps at or below build reps (no drift to hypertrophy)`, taperLowerA[exId] <= buildLowerA[exId], `taper=${taperLowerA[exId]} build=${buildLowerA[exId]}`);
   }
   ok('the taper never introduces a movement that is not in the build weeks', Object.keys(taperLowerA).every(id => !!EXERCISES[id]));
-  // race week is a primer only — deeper than the taper band on purpose
-  const race = weeks.find(w => /race week/i.test(w.phase));
-  ok('race week is lighter still than the taper weeks', cutOf(race) > 60, `${cutOf(race)}%`);
+}
+
+/* ===================================================================
+   6b. the program's shape: one race, a real taper, nothing after it
+   =================================================================== */
+group('program ends on Geelong with an 8-day taper (GEELONG TAPER header)');
+{
+  const { RACES } = P;
+  const prog = buildProgram();
+  const last = prog.weeks[prog.weeks.length - 1];
+  const lastDay = last.days[last.days.length - 1];
+  eq('exactly one race is on the calendar', RACES.length, 1);
+  eq('and it is the A race', RACES[0].tag, 'A race');
+  eq('the program has 6 weeks', prog.weeks.length, 6);
+  eq('the last day of the program is race day', lastDay.date, RACES[0].date);
+  eq('race day is a race, not a long run', lastDay.kind, 'race');
+  eq('the final week resolves to the taper policy (load frozen)', phaseKeyFromLabel(last.phase), 'taper');
+  // no lifting within 3 days of the race; the two lifts sit Mon/Tue
+  const liftDates = last.days.filter(d => d.kind === 'lift').map(d => d.date);
+  ok('no lift within 3 days of the race', liftDates.every(d => dadd(d, 3) < RACES[0].date), liftDates.join(','));
+  eq('two lifts in race week', liftDates.length, 2);
+  eq('race week lifts Monday (crisp squat triples)', last.days[0].tpl, 'lowerTaperB');
+  eq('race week lifts Tuesday (upper, no running cost)', last.days[1].tpl, 'upperTaperA');
+  eq('Wednesday is the sharpener, still a hard run for warm-up dosing', last.days[2].kind === 'run' && /Hard Run/.test(last.days[2].title), true);
+  ok('the sharpener says what to do, not the build-week placeholder', /goal half pace/.test(last.days[2].sub));
+  eq('Thursday is mobility only', last.days[3].kind, 'mobility');
+  eq('Friday is an easy run', last.days[4].kind === 'run' && /Easy/.test(last.days[4].title), true);
+  eq('Saturday is not a lift', last.days[5].kind === 'lift', false);
+  // the taper starts the Sunday before race week: the peak week's long run is cut
+  const peakWeek = prog.weeks.find(w => /peak/i.test(w.phase));
+  const peakSunday = peakWeek.days[6];
+  eq('peak week Sunday is still a long run', peakSunday.kind === 'run' && /Long Run/.test(peakSunday.title), true);
+  ok('…but a cut one (12-14 km, not 20)', /12–14 km/.test(peakSunday.sub) && !/20 km/.test(peakSunday.sub), peakSunday.sub);
+  ok('peak week keeps all four lifts (the cut is running only)', peakWeek.days.filter(d => d.kind === 'lift').length === 4);
+  // every day of every full week is accounted for, no gaps
+  for (const w of prog.weeks.slice(1)) {
+    eq(`week ${w.num} has 7 days`, w.days.length, 7);
+    for (let i = 1; i < w.days.length; i++) eq(`week ${w.num} day ${i} follows day ${i - 1}`, w.days[i].date, dadd(w.days[i - 1].date, 1));
+  }
+  // build weeks are untouched by the taper change
+  const build = prog.weeks.find(w => w.phase === 'Build');
+  eq('build week long run is still ~20 km', build.days[6].sub, '~20 km');
+  eq('build week has 4 lifts', build.days.filter(d => d.kind === 'lift').length, 4);
 }
 
 group('rep schemes stay runner-appropriate (heavy, low-rep + plyometrics)');

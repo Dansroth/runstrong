@@ -1,9 +1,12 @@
-/* RunStrong — program data: exercise library, 8-week plan, progression engine */
+/* RunStrong — program data: exercise library, 6-week plan, progression engine */
 'use strict';
 
+/* One race. Geelong was the B race on the way to Melbourne (2026-10-11) until
+   2026-09-12, when Melbourne was dropped — Geelong is now the A race and the
+   last race until 2027. Everything that reads "the race" should go through
+   this array (finalRace()/nextRace() in app.js), never a literal key. */
 const RACES = [
-  { key: 'geelong', name: 'Geelong Half', tag: 'B race', date: '2026-09-20' },
-  { key: 'melbourne', name: 'Melbourne Half', tag: 'A race', date: '2026-10-11' },
+  { key: 'geelong', name: 'Geelong Half', tag: 'A race', date: '2026-09-20' },
 ];
 
 const PROGRAM_START = '2026-08-13'; // Thursday — partial intro week 1
@@ -866,6 +869,8 @@ const RACE_CHECKLIST = [
   { id: 'bib', text: 'Bib collected / registration confirmed' },
   { id: 'breakfast', text: 'Breakfast planned and tested (nothing new on race day)' },
   { id: 'fuel', text: 'Gels / fuel packed (~30-60g carbs per hour)' },
+  // [T4] ~90 min event: a modest day-before load is enough, no multi-day protocol
+  { id: 'carbs', text: 'Carbs up the day before (~7-10 g/kg — normal meals, more rice/pasta/bread, nothing exotic)' },
   { id: 'hydration', text: 'Hydration plan sorted (course drink stations checked)' },
   { id: 'pacing', text: 'Pacing plan set (check the app\'s projection — start conservative)' },
   { id: 'logistics', text: 'Transport & start-line logistics confirmed' },
@@ -889,9 +894,9 @@ Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat
 
 • **Tue & Sat are upper days** — they sit directly before the Wed hard run and Sun long run, so no fresh leg fatigue is carried into either key run.
 
-Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 mini-tapers into Geelong (B race). Week 7 recovers, then one final lower session Thursday — the last real leg stimulus. Weeks 8–9 taper into Melbourne (A race).
+Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 tapers into Geelong — the A race and the last race of the block, now that Melbourne is off the calendar.
 
-**The taper rule:** cut the volume, keep the weights. Taper weeks drop to about 40% of peak sets (a ~60% cut) while the heavy triples stay heavy — that's the combination the tapering research backs, and it's why the app stops suggesting load increases in taper weeks instead of making the sessions feel easy. Race week is a primer only.`;
+**The taper rule:** cut the volume, keep the intensity. The tapering research (Bosquet 2007 meta-analysis) backs a 41–60% volume cut with paces and loads untouched over 8–14 days — we have 8, so it starts with the Sunday long run before race week (12–14 km, not 20) and lands at a 30–40% running cut for the final week. Lifting goes deeper than that on purpose: two short sessions Mon/Tue with the heavy work still heavy, then nothing — strength holds for 2–3 weeks without training, so the gym has nothing to gain and freshness to lose. Missed sessions from peak week stay missed; making them up now is the classic taper mistake. The app stops suggesting load increases in taper weeks instead of making the sessions feel easy.`;
 
 /* ---- date helpers (local time) ---- */
 function dstr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -919,11 +924,62 @@ function fmtDate(iso) {
 function daysUntil(iso) { const [y, m, d] = iso.split('-').map(Number); const t = new Date(); const a = new Date(y, m - 1, d); const b = new Date(t.getFullYear(), t.getMonth(), t.getDate()); return Math.round((a - b) / 86400000); }
 
 /* ---- program generation ---- */
+/* =====================================================================
+   GEELONG TAPER — the final week (Mon 14 → Sun 20 Sep 2026)
+   =====================================================================
+   Geelong became the A race with eight days to go (Melbourne dropped), so
+   the old B-race "mini-taper" turned into a real taper with only one week
+   to do it in. The week is shaped by:
+   [T1] Bosquet L, Montpetit J, Arvisais D, Mujika I. "Effects of tapering
+        on performance: a meta-analysis." Med Sci Sports Exerc 2007;39(8):
+        1358-65 — best results from a 41-60% cut in training VOLUME with
+        intensity and frequency maintained, over roughly 8-14 days,
+        progressive rather than step. ~2-3% performance gain.
+   [T2] Mujika I, Padilla S. "Scientific bases for precompetition tapering
+        strategies." Med Sci Sports Exerc 2003;35(7):1182-7 — fatigue clears
+        faster than fitness fades, and the intensity work is what keeps
+        fitness from fading, hence "cut volume, keep intensity".
+   [T3] Bosquet L, Berryman N, Dupuy O, et al. "Effect of training cessation
+        on muscular performance: a meta-analysis." Scand J Med Sci Sports
+        2013;23(3):e140-9 — strength is retained for 2-3 weeks without
+        training, so the gym's only job this week is to stay crisp and
+        avoid soreness: two short exposures early, then nothing.
+   [T4] Burke LM, Hawley JA, Wong SHS, Jeukendrup AE. "Carbohydrates for
+        training and competition." J Sports Sci 2011;29(S1):S17-27 — for a
+        ~90-minute event a modest load (~7-10 g/kg/day over the final
+        24-36 h) is enough; no multi-day supercompensation protocol.
+
+   How the rules land on the calendar:
+   • Sun 13 (last day of peak week): long run cut from ~20 km to 12-14 km
+     with the final 3 km at goal pace — the first ~40% volume cut [T1],
+     and the last touch of race pace at distance [T2].
+   • Mon: squat triples + calves (lowerTaperB, 6 sets) — intensity kept,
+     volume ~40% of a peak lower day, and no eccentric-heavy single-leg
+     work that could leave soreness 6 days out [T1][T3].
+   • Tue: bench/pull-up/Pallof (upperTaperA, 10 sets) — last gym session,
+     5 days out, no running cost [T3].
+   • Wed: sharpener — 5 × 2 min at goal half pace inside an easy run. The
+     hard day at about half its usual volume; intensity is the thing the
+     taper must keep [T1][T2].
+   • Thu: mobility only. "Nothing heavy within 3 days of the race" is the
+     rule this app has always used for race week.
+   • Fri: 25-30 min easy + strides — frequency maintained, volume cut [T1].
+   • Sat: rest or a 15 min shake-out, easy stretch + rollout.
+   Running volume Sun 13 → Sat 19 lands near 25-30 km against a ~37 km
+   normal week — a 30-40% cut in the final 8 days on top of the shortened
+   long run. That is inside the [T1] window given one week, not the
+   two-week ideal, and WHY_SCHEDULE says so. Lifting drops to 16 sets from
+   a peak of 81 (~80% cut): deeper than the 41-60% band, deliberately —
+   with a single week available the race gets priority over the barbell,
+   and [T3] says nothing is lost in the gym by doing so.
+   Sessions missed in peak week are NOT made up: a missed session eight
+   days out is gone, and adding it to the taper is the classic error [T1].
+   ===================================================================== */
 function buildProgram() {
   const weeks = [];
   const phases = [
     'Intro — conservative loads', 'Build', 'Build', 'Build — peak load',
-    'Geelong mini-taper', 'Recover → rebuild', 'Taper', 'Melbourne race week',
+    'Geelong taper',
   ];
   // Week 1: partial intro week, Thu Aug 13 – Sun Aug 16 (two conservative sessions)
   weeks.push({
@@ -938,27 +994,33 @@ function buildProgram() {
   // day plan per week: map dayIndex(0=Mon..6=Sun) → {kind, tpl?, title?}
   const RUN = { 2: { kind: 'run', title: 'Hard Run', sub: 'Intervals / tempo — lifting stays out of the way' }, 4: { kind: 'run', title: 'Easy Run', sub: 'Recovery pace' }, 6: { kind: 'run', title: 'Long Run', sub: '~20 km' } };
   const layouts = [
-    /* wk1-4 */ null, null, null, null,
-    /* wk5 */ { 0: { kind: 'lift', tpl: 'lowerTaperG' }, 1: { kind: 'lift', tpl: 'upperLight' }, 3: { kind: 'lift', tpl: 'upperLightB' }, 5: { kind: 'mobility', title: 'Mobility only', sub: 'Race tomorrow — easy stretch + rollout' }, 6: { kind: 'race', race: 'geelong' } },
-    /* wk6 */ { 0: { kind: 'mobility', title: 'Rest / Mobility', sub: 'Race recovery — no lifting' }, 1: { kind: 'lift', tpl: 'upperLight' }, 3: { kind: 'lift', tpl: 'lowerFinal' }, 5: { kind: 'lift', tpl: 'upperMod' } },
-    /* wk7 */ { 0: { kind: 'lift', tpl: 'lowerTaperA' }, 1: { kind: 'lift', tpl: 'upperTaperA' }, 3: { kind: 'lift', tpl: 'lowerTaperB' }, 5: { kind: 'lift', tpl: 'upperTaperB' } },
-    /* wk8 */ { 0: { kind: 'lift', tpl: 'primer' }, 1: { kind: 'mobility', title: 'Mobility only', sub: 'Nothing within 3 days of the race' }, 3: { kind: 'mobility', title: 'Mobility only', sub: 'Stay loose, stay fresh' }, 5: { kind: 'rest', title: 'Rest', sub: 'Feet up. Carb up.' }, 6: { kind: 'race', race: 'melbourne' } },
+    /* wk2-4 */ null, null, null,
+    /* wk5 — peak week, but its Sunday is already the first taper day (see the
+       GEELONG TAPER header): the long run is cut, nothing else changes. */
+    { 6: { kind: 'run', title: 'Long Run', sub: '12–14 km easy, last 3 km at goal half pace — the taper starts here, not race pace all the way' } },
+    /* wk6 — Geelong taper / race week. Two short lifts early, then nothing. */
+    {
+      0: { kind: 'lift', tpl: 'lowerTaperB' },
+      1: { kind: 'lift', tpl: 'upperTaperA' },
+      2: { kind: 'run', title: 'Hard Run', sub: 'Sharpener: 15 min easy → 5 × 2 min at goal half pace / 2 min easy float → 10 min easy (~8 km)' },
+      3: { kind: 'mobility', title: 'Mobility only', sub: 'Nothing heavy within 3 days of the race — easy stretch + rollout' },
+      4: { kind: 'run', title: 'Easy Run', sub: '25–30 min easy + 4 × 20 s relaxed strides. Short on purpose.' },
+      5: { kind: 'mobility', title: 'Rest / shake-out', sub: 'Optional 15 min shake-out + 3 strides, then easy stretch + rollout. Carbs up today.' },
+      6: { kind: 'race', race: 'geelong' },
+    },
   ];
-  for (let w = 0; w < 8; w++) {
+  // Build weeks: Mon light lower, Tue upper, Thu heavy lower, Sat upper (WHY_SCHEDULE)
+  const norm = { 0: { kind: 'lift', tpl: 'lowerA' }, 1: { kind: 'lift', tpl: 'upperA' }, 3: { kind: 'lift', tpl: 'lowerB' }, 5: { kind: 'lift', tpl: 'upperB' } };
+  for (let w = 0; w < phases.length; w++) {
     const monday = dadd(WEEK2_MONDAY, w * 7);
     const days = [];
+    const layout = layouts[w];
+    const raceWeek = !!(layout && Object.values(layout).some(p => p.kind === 'race'));
     for (let i = 0; i < 7; i++) {
       const date = dadd(monday, i);
-      let plan;
-      const layout = layouts[w];
-      if (layout) {
-        plan = layout[i] || RUN[i] || { kind: 'rest', title: 'Rest' };
-        if (layout[i] && RUN[i]) plan = layout[i]; // explicit overrides (race replaces long run)
-      } else {
-        // normal build weeks 1–4
-        const norm = { 0: { kind: 'lift', tpl: 'lowerA' }, 1: { kind: 'lift', tpl: 'upperA' }, 3: { kind: 'lift', tpl: 'lowerB' }, 5: { kind: 'lift', tpl: 'upperB' } };
-        plan = norm[i] || RUN[i] || { kind: 'rest', title: 'Rest' };
-      }
+      // A layout entry always wins (a race replaces the long run, a cut long run
+      // replaces the default one); a race week has no default lifts at all.
+      const plan = (layout && layout[i]) || (raceWeek ? null : norm[i]) || RUN[i] || { kind: 'rest', title: 'Rest' };
       const day = { date, kind: plan.kind };
       if (plan.kind === 'lift') {
         day.tpl = plan.tpl;
@@ -966,7 +1028,7 @@ function buildProgram() {
       } else if (plan.kind === 'race') {
         const r = RACES.find(x => x.key === plan.race);
         day.title = '🏁 ' + r.name;
-        day.sub = r.tag + (plan.race === 'geelong' ? ' — replaces the long run' : ' — the one it was all for');
+        day.sub = r.tag + ' — the one it was all for. Replaces the long run.';
       } else {
         day.title = plan.title; day.sub = plan.sub;
       }

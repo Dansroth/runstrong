@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -22,7 +22,7 @@ function defaultState() {
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     strava: { clientId: '', clientSecret: '', tokenUrl: '', auth: null, activities: {}, lastSync: null, includeOther: false },
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
-    races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, melbourne: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
+    races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
     maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     soreLog: [],           // [{date, areas: [STRETCH_AREAS ids]}] — from the on-demand stretch picker
@@ -110,6 +110,17 @@ const MIGRATIONS = {
     s.soreLog = s.soreLog || [];
     s.schemaVersion = 12; return s;
   },
+  // 12 → 13: Melbourne dropped, Geelong is the A race (2026-09-12). The
+  // program is stored, not recomputed, so rebuild it (precedent: 1 → 2):
+  // the plan now ends on Geelong's Sunday with a real taper week. Sessions,
+  // runs and routines are keyed by date and survive untouched. Melbourne's
+  // race record only ever held an empty checklist for this user — drop it
+  // rather than carry a dead race around.
+  12: (s) => {
+    s.program = buildProgram();
+    if (s.races) delete s.races.melbourne;
+    s.schemaVersion = 13; return s;
+  },
 };
 
 function migrate(s) {
@@ -163,7 +174,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v31';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v32';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -631,7 +642,7 @@ function raceExtraCards() {
     const st = raceState(r.key);
     const d = daysUntil(r.date);
     if (st.result && d < 0 && d >= -7) {
-      out += `<div class="card"><div class="card-kicker">🏁 ${esc(r.name)} result</div><div class="card-sub">${st.projAtRace ? `Projected ${esc(st.projAtRace)} → ran <b>${esc(st.result)}</b>.` : `Ran <b>${esc(st.result)}</b>.`}${st.feel ? ` Felt ${esc(st.feel)}.` : ''}${r.key === 'melbourne' ? ` <button class="mini" onclick="offerRecoveryMode()">What now?</button>` : ''}</div></div>`;
+      out += `<div class="card"><div class="card-kicker">🏁 ${esc(r.name)} result</div><div class="card-sub">${st.projAtRace ? `Projected ${esc(st.projAtRace)} → ran <b>${esc(st.result)}</b>.` : `Ran <b>${esc(st.result)}</b>.`}${st.feel ? ` Felt ${esc(st.feel)}.` : ''}${r.key === finalRace().key ? ` <button class="mini" onclick="offerRecoveryMode()">What now?</button>` : ''}</div></div>`;
     }
   }
   return out;
@@ -715,7 +726,7 @@ function vHome() {
   } else if (!day) {
     card = t < ST.program.startDate
       ? `<div class="card"><div class="card-title">Program starts ${fmtDate(ST.program.startDate)}</div><div class="card-sub">Browse the plan meanwhile 👇</div></div>`
-      : `<div class="card"><div class="card-title">Program complete 🎉</div><div class="card-sub">Hope Melbourne went fast.</div><button class="btn primary big" onclick="offerRecoveryMode()">What's next?</button></div>`;
+      : `<div class="card"><div class="card-title">Program complete 🎉</div><div class="card-sub">Hope ${esc(finalRace().name)} went fast.</div><button class="btn primary big" onclick="offerRecoveryMode()">What's next?</button></div>`;
   } else if (day.kind === 'lift') {
     const done = ST.sessions[t] && ST.sessions[t].status === 'done';
     card = done
@@ -1342,6 +1353,12 @@ function upNext(t) {
 /* ================= race kit + maintenance mode ================= */
 function raceState(key) { return ST.races[key]; }
 function raceInfo(key) { return RACES.find(r => r.key === key); }
+/* The last race in RACES is the one the block builds to — its result is what
+   opens the "what now?" hand-off. nextRace() is the first race still ahead
+   (or the final one once they're all run) for countdown-style copy. Both
+   exist so no view ever needs a literal race key again. */
+function finalRace() { return RACES[RACES.length - 1]; }
+function nextRace() { return RACES.find(r => daysUntil(r.date) >= 0) || finalRace(); }
 function activeRaceWeek() {
   for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0 && d <= 6 && !raceState(r.key).result) return r.key; }
   return null;
@@ -1388,12 +1405,12 @@ window.saveRaceResult = function (key) {
   st.projAtRace = raceProjection() ? raceProjection().range : null;
   save(); closeModal(); render();
   toast(`${raceInfo(key).name}: ${t} logged. ${st.projAtRace ? 'Projection was ' + st.projAtRace + '.' : ''} 🎉`);
-  if (key === 'melbourne') offerRecoveryMode();
+  if (key === finalRace().key) offerRecoveryMode();
 };
 function offerRecoveryMode() {
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
-    <p class="dim" style="line-height:1.6;margin-bottom:10px">Nine weeks, two races. One guided recovery week either way, then pick what's next:</p>
+    <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. One guided recovery week either way, then pick what's next:</p>
     ${RECOVERY_WEEK.map(l => `<div class="wksum-li">• ${esc(l)}</div>`).join('')}
     <button class="btn primary big" onclick="startMaintenance('balanced')" style="margin-top:12px">Start recovery week → maintenance</button>
     <div class="dim small" style="margin:2px 0 0">3 flexible workouts a week, no race clock.</div>
@@ -2657,12 +2674,12 @@ function buildWeeklySummary(monday) {
   const runKm = Object.keys(merged).filter(inWeek).reduce((a, d) => a + (merged[d].km || 0), 0);
   // phase context
   const nextWk = wk ? ST.program.weeks.find(w => w.num === wk.num + 1) : null;
-  const raceDays = daysUntil(RACES[1].date);
+  const race = nextRace();
+  const raceDays = daysUntil(race.date);
   const PHASE_FOCUS = {
     'Intro': 'settling into the pattern', 'Build': 'the heaviest work of the block lives here',
-    'Build — peak load': 'the peak — after this it only gets lighter', 'Geelong mini-taper': 'volume drops for the tune-up race — that\'s the plan working, not slacking',
-    'Recover → rebuild': 'recover from Geelong, one last leg stimulus late in the week', 'Taper': 'volume keeps dropping while intensity stays crisp — race legs loading',
-    'Melbourne race week': 'almost nothing in the gym: the work is done',
+    'Build — peak load': 'the peak — after this it only gets lighter',
+    'Geelong taper': 'volume drops, intensity stays crisp — race legs loading, that\'s the plan working, not slacking',
   };
   const phaseKey = p => Object.keys(PHASE_FOCUS).find(k => (p || '').startsWith(k.split(' —')[0]));
   const nextFocus = nextWk ? (PHASE_FOCUS[phaseKey(nextWk.phase)] || nextWk.phase) : 'race day — go get it';
@@ -2673,7 +2690,7 @@ function buildWeeklySummary(monday) {
   return { weekOf: monday, phase: ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance') : wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
     nextPhase: ST.maintenance.active ? null : nextWk ? `Week ${nextWk.num} — ${nextWk.phase}` : null,
     nextFocus: ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? 'hypertrophy phase — chest & arms priority, 5 sessions a week' : 'maintenance — 3 workouts a week, your pace') : nextFocus,
-    raceWeeks: Math.max(0, Math.ceil(raceDays / 7)),
+    raceWeeks: Math.max(0, Math.ceil(raceDays / 7)), raceName: race.name,
     sessionsDone: doneSessions.length, planned, improvements, prs,
     hrvPts, hrvAvg: hrvAvg != null ? Math.round(hrvAvg) : null, hrvBase: base.ready ? Math.round(base.mean) : null,
     soreAvg: avg(sore), fatAvg: avg(fat), readLine, runKm: Math.round(runKm * 10) / 10, tonnes: Math.round(thisT / 100) / 10, note,
@@ -2715,7 +2732,7 @@ function showWeeklySummary(sum, archived) {
       <div class="wksum-li dim">${esc(soreTxt)}</div>
       <div class="wksum-li">${esc(sum.readLine)}</div></div>
     <div class="wksum-block"><div class="wksum-h">The plan</div>
-      <div class="wksum-li">${sum.phase === 'Maintenance' ? '' : `${sum.raceWeeks} week${sum.raceWeeks === 1 ? '' : 's'} to Melbourne. `}${sum.nextPhase ? `Next: ${esc(sum.nextPhase)} — ${esc(sum.nextFocus)}.` : esc(sum.nextFocus)}</div></div>
+      <div class="wksum-li">${sum.phase === 'Maintenance' || !sum.raceWeeks ? '' : `${sum.raceWeeks} week${sum.raceWeeks === 1 ? '' : 's'} to ${esc(sum.raceName || 'the race')}. `}${sum.nextPhase ? `Next: ${esc(sum.nextPhase)} — ${esc(sum.nextFocus)}.` : esc(sum.nextFocus)}</div></div>
     ${sum.insight ? `<div class="wksum-block insight"><div class="wksum-h">💡 Insight of the week</div><div class="wksum-li">${esc(sum.insight)}</div><button class="mini" onclick="closeWeeklySummary(${archived ? 'true' : 'false'});setProgressTab('insights')">More in Insights →</button></div>` : ''}
     ${sum.note ? `<div class="wksum-block"><div class="wksum-h">In your words</div><div class="wksum-li">📝 “${esc(sum.note)}”</div></div>` : ''}
     <button class="btn primary big" onclick="closeWeeklySummary(${archived ? 'true' : 'false'})" style="margin-top:12px">${archived ? 'Close' : 'Nice — archive it'}</button>
@@ -3101,7 +3118,7 @@ function insightsBody() {
   const trajLine = !traj.length ? 'Log each lift 3+ times and its trajectory appears here.'
     : traj[0].pct >= 5 ? `${traj[0].name} leads the pack, up ${traj[0].pct}% in estimated strength.${traj[traj.length - 1].pct < 0 ? ` ${traj[traj.length - 1].name} is the laggard (${traj[traj.length - 1].pct}%) — worth a look.` : ''}`
     : 'Strength is roughly holding across the board — during a running block, holding IS winning.';
-  const retroReady = daysUntil(RACES[1].date) < 0 || ST.maintenance.active;
+  const retroReady = daysUntil(finalRace().date) < 0 || ST.maintenance.active;
   // On a fresh install (or right after a reset) every one of these sections
   // independently rendered its own "not enough data" card — a wall of four
   // empty placeholders before anything real ever appears. If literally
@@ -3230,7 +3247,7 @@ function vSettings() {
            <option value="hypertrophy" ${ST.maintenance.program === 'hypertrophy' ? 'selected' : ''}>Hypertrophy — chest & arms</option>
          </select></div>
          <button class="btn big" onclick="if(confirm('Switch back to the race program view?')){ST.maintenance={active:false,startedOn:null,program:'balanced',mesoStart:null};save();render();}">Back to program mode</button>`
-      : `<div class="dim small" style="margin-bottom:8px">After Melbourne the app offers this choice automatically — or start it any time here.</div>
+      : `<div class="dim small" style="margin-bottom:8px">After the last race the app offers this choice automatically — or start it any time here.</div>
          <button class="btn big" onclick="if(confirm('Start maintenance mode? The race program view is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance('balanced')">Start maintenance mode</button>
          <button class="btn big" onclick="if(confirm('Start the hypertrophy phase? The race program view is replaced by 5 sessions a week — chest & arms priority. You can switch back here any time.'))startMaintenance('hypertrophy')">Start hypertrophy phase</button>`}
     <div class="section-label">Run sync</div>
