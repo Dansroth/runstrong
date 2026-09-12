@@ -52,7 +52,7 @@ const EXERCISES = {
   // ---- Upper B ----
   ohp:       { name: 'Overhead Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['landmine', 'dbshoulder'], equip: ['barbell'], cue: 'Glutes tight, ribs down, full lockout.' },
   csrow:     { name: 'Chest-Supported Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['sealrow', 'cablerow'], equip: ['machine'], cue: 'Chest glued to pad, squeeze shoulder blades.' },
-  incline:   { name: 'Incline DB Press', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 8], swaps: ['incmach', 'pushup'], equip: ['dumbbell', 'bench'], cue: '30–45° bench, elbows ~45°.' },
+  incline:   { name: 'Incline DB Press', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['incmach', 'pushup'], equip: ['dumbbell', 'bench'], cue: '30–45° bench, elbows ~45°.' },
   facepull:  { name: 'Face Pull', group: 'upper', mode: 'reps', rest: 45, rpe: null, swaps: ['revpec', 'bandpull'], equip: ['cable'], cue: 'Rope to eyebrows, thumbs back, pause.' },
   abwheel:   { name: 'Ab Wheel', group: 'upper', mode: 'bw', rest: 60, rpe: null, swaps: ['hangraise', 'cablecrunch'], equip: [], cue: 'Hips locked — no sag. Shorten range if lower back talks.' },
   // ---- Swap variants (own history each) ----
@@ -104,6 +104,18 @@ const EXERCISES = {
   pushdown:     { name: 'Triceps Pushdown', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['overheadext', 'skullcrusher'], equip: ['cable'], cue: 'Elbows pinned to your ribs, full lockout, control the return.' },
   overheadext:  { name: 'Overhead Triceps Extension', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['pushdown', 'skullcrusher'], equip: ['dumbbell'], cue: 'Elbows pointed forward and still, deep stretch behind your head.' },
   skullcrusher: { name: 'Lying Triceps Extension', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['pushdown', 'overheadext'], equip: ['barbell', 'bench'], cue: 'Elbows stay stacked over your shoulders — lower to your forehead, not your chest.' },
+  // ---- Hypertrophy block (v34) — the slots a balanced growth split needs that
+  // a running-support library never had: side/rear delts, a hamstring curl at
+  // long length, a quad isolation, a strict curl, a constant-tension flye.
+  // Isolation rest 60-75 s, compounds keep their 120-150 s [H5]; rpe [8,9]
+  // because the last reps are what grow small muscles [H4]. Every one has a
+  // no-machine swap so a home session still materialises.
+  latraise:     { name: 'DB Lateral Raise', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['dbshoulder', 'facepull'], equip: ['dumbbell'], cue: 'Lead with the elbows, slight forward lean, stop at shoulder height.' },
+  reardelt:     { name: 'Rear-Delt DB Flye', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['revpec', 'facepull'], equip: ['dumbbell'], cue: 'Hinge over, arms wide, pinkies up, no shrug.' },
+  cableflye:    { name: 'Cable Flye', group: 'upper', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['dbflye', 'dip'], equip: ['cable'], cue: 'Step forward, slight elbow bend, deep stretch at the back — the stretch is the rep.' },
+  preachercurl: { name: 'Preacher Curl', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['inclinecurl', 'bbcurl'], equip: ['dumbbell', 'bench'], cue: 'Armpits over the pad, lower all the way to a straight arm.' },
+  legcurl:      { name: 'Seated Leg Curl', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['slrdl', 'rdl'], equip: ['machine'], cue: 'Torso upright, hips pinned, full stretch at the top of each rep.' },
+  legext:       { name: 'Leg Extension', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['bss', 'stepup'], equip: ['machine'], cue: 'Lean back slightly, full lockout, three seconds down.' },
 };
 
 /* =====================================================================
@@ -173,6 +185,14 @@ const INSIGHTS = {
      half." This phase's actual goal is chest/arm growth, so its rationale is
      the training-science case for that, not a running-transfer story that
      wouldn't be true for a curl. */
+  // ---- Hypertrophy block (v34). Honest voice: these are growth lifts for the
+  // block you asked for, not running-support lifts, and they say so. ----
+  latraise:    { why: 'Side delts are the muscle the presses barely touch — this is the block\'s only direct dose, and it is a growth exercise, not a running one.', deep: 'Pressing loads the front delt; the side delt only does real work when the arm travels out to the side against load. High reps, short rest, close to failure — once sets are hard, the rep range barely matters for growth [H3][H4].' },
+  reardelt:    { why: 'Rear delts and upper back keep the shoulder balanced when pressing volume goes up — the face pull\'s job, a heavier dose of it.', deep: 'Rear delts respond to the same near-failure, moderate-rep work as any small muscle. Hinged over with the arms wide takes the traps out of it; a slight pinkies-up turn puts the rear delt in charge.' },
+  cableflye:   { why: 'Chest through a long stretch under constant tension — the range a press never loads at the bottom.', deep: 'Training a muscle at long lengths grows it more [H6][H7][H8]; the cable keeps tension where a dumbbell flye loses it at the top. It rotates with the DB flye and the incline press so the pattern changes every block [H9].' },
+  preachercurl:{ why: 'Biceps with the swing removed: the pad makes every rep strict, and the bottom of the rep is the hard part.', deep: 'On the pad the arm sits in front of the body, so the stretched bottom position is where tension peaks — the rep the incline curl gets from behind, this gets from in front. Lower all the way; the shortened rep is the one that doesn\'t count [H8].' },
+  legcurl:     { why: 'Seated, not lying: the hamstrings are stretched at the hip while they work at the knee, and that is where they grow most.', deep: 'The seated leg curl produced roughly half again as much hamstring growth as the prone version over twelve weeks — same muscle, longer length [H7]. In this block it is the hamstrings\' main growth lift; the RDL keeps the hinge strong.' },
+  legext:      { why: 'Quads in isolation — the rectus femoris is barely trained by squats, and this is the block for it.', deep: 'The rectus femoris crosses the hip, so squats and presses leave it under-worked; the extension is the only lift here that loads it hard. Long, controlled reps close to failure [H3][H4]. A growth lift, not a running-economy lift — it leaves the plan again when the run build starts.' },
   dbflye:      { why: 'Chest volume the pressing lifts don\'t fully cover — a stretch-focused exercise adds range a press can\'t reach.', deep: 'Pressing and flye work overlap but aren\'t redundant: a flye loads the chest through a longer stretch under tension than a press does, and that stretched-position loading is part of what current hypertrophy research points to for growth. This is volume for its own sake, not for your stride — that\'s the honest reason it\'s here this phase.' },
   dip:         { why: 'Bodyweight-loadable chest and triceps volume, deep stretch at the bottom that a press alone won\'t give you.', deep: 'The forward-leaning dip biases chest over triceps and takes the shoulder through a deep stretched position under load. It scales by adding weight once bodyweight gets easy, same principle as the pull-up already in this app.' },
   bbcurl:      { why: 'Biceps get almost no direct work anywhere else in this app — a straight bar, heavy as you can handle with strict elbows.', deep: 'Every pulling exercise in the base program trains biceps incidentally, never as the target. Direct curls close that gap. This is the anchor lift for tracking biceps progress across the phase — the accessory curl slot rotates, this one doesn\'t, so there\'s always one number going up over time.' },
@@ -219,6 +239,16 @@ const HOWTO = {
   glutebridge: { steps: ['Lie on your back, bar over your hips, knees bent, feet flat.', 'Feet a little closer to your hips than a hip thrust — shins near-vertical at lockout.', 'Drive your hips up to full extension, squeezing hard at the top.', 'Lower with control back to the floor between reps.'] },
   pushup:     { steps: ['Hands on two dumbbells (or blocks), set slightly wider than shoulder width.', 'Body in one straight line from head to heels.', 'Lower your chest below the level of your hands — the deficit is the point.', 'Press back up without letting your hips sag or pike.'] },
   bandpull:   { steps: ['Hold the band at chest height, arms straight out in front, shoulder-width grip.', 'Pull the band apart by driving your shoulder blades together.', 'Keep your arms straight throughout — the movement comes from the shoulder blades, not the elbows.', 'Control the return; don\'t let the band snap your hands back in.'] },
+  legpress:    { steps: ['Feet mid-platform, about shoulder width, back and hips flat against the pad.', 'Unlock, then lower the sled until your knees are near your chest — as deep as your hips stay down.', 'Drive through the whole foot, knees tracking over your toes.', 'Stop just short of locking the knees at the top.'] },
+  cablerow:    { steps: ['Sit tall at the low pulley, feet braced, slight bend in the knees.', 'Pull the handle to your lower ribs, elbows driving back past your sides.', 'Squeeze the shoulder blades together for a beat.', 'Let the weight pull your arms long again under control — no rounding forward.'] },
+  dbshoulder:  { steps: ['Sit or stand tall, dumbbells at shoulder height, palms forward or slightly turned in.', 'Brace, then press both up until your arms are straight overhead.', 'Lower under control to just below ear height.', 'Weight is per dumbbell; keep the ribs down, no leaning back.'] },
+  hangraise:   { steps: ['Hang from the bar, arms straight, body still.', 'Lift your knees (or straight legs) toward your chest without swinging.', 'At the top, curl your pelvis up — that is where the abs work.', 'Lower slowly all the way, then let the swing settle before the next rep.'] },
+  latraise:    { steps: ['Stand tall, a dumbbell in each hand at your sides, slight forward lean.', 'Raise both arms out to the sides, leading with your elbows.', 'Stop at shoulder height — higher is traps, not delts.', 'Lower slowly; no swing from the hips to start the next rep.'] },
+  reardelt:    { steps: ['Hinge at the hips until your torso is near parallel, dumbbells hanging under your chest.', 'Raise the arms out wide, elbows slightly bent, pinkies leading.', 'Squeeze between the shoulder blades without shrugging.', 'Lower under control — light weight, strict reps.'] },
+  cableflye:   { steps: ['Set both pulleys at chest height, a handle in each hand, step forward into a split stance.', 'Arms wide with a slight fixed elbow bend — feel the stretch across the chest.', 'Sweep the handles together in front of your chest and squeeze for a beat.', 'Open back out slowly — the stretch at the back is where the growth is.'] },
+  preachercurl:{ steps: ['Sit at the preacher bench, armpits snug over the top of the pad.', 'Curl the dumbbells up without lifting your elbows off the pad.', 'Squeeze at the top.', 'Lower all the way to a straight arm — slowly, that is the hard part.'] },
+  legcurl:     { steps: ['Sit in the machine, back flat against the pad, thigh pad locked snug.', 'Legs straight out on the roller to start — that stretched position is the point.', 'Curl your heels down and under as far as the machine allows.', 'Return slowly to straight legs; no bouncing at the top.'] },
+  legext:      { steps: ['Sit back in the machine, knees lined up with the pivot, pad on your shins.', 'Extend to a full lockout and squeeze the quads for a beat.', 'Lower under control, at least three seconds.', 'Lean back slightly if the machine allows — it lengthens the rectus femoris.'] },
   dbflye:      { steps: ['Lie on a flat or slightly inclined bench, a dumbbell in each hand above your chest.', 'Set a slight, fixed bend in your elbows and keep it there the whole set.', 'Lower your arms out to the sides in an arc until you feel a real stretch across your chest.', 'Bring the dumbbells back together over your chest in the same arc, squeezing at the top.'] },
   dip:         { steps: ['Support yourself on parallel bars, arms locked.', 'Lean your torso forward and lower under control, elbows flaring slightly out.', 'Go down until you feel a real stretch across your chest.', 'Press back up without letting your shoulders shrug toward your ears.'] },
   bbcurl:      { steps: ['Stand tall, bar in an underhand grip, roughly shoulder width.', 'Elbows pinned to your sides for the whole set.', 'Curl the bar up without letting your elbows drift forward or your hips swing.', 'Lower under control all the way to a straight arm.'] },
@@ -258,6 +288,9 @@ const MUSCLE_MAP = {
   dbflye:['chest'], dip:['chest','triceps'],
   bbcurl:['biceps'], hammercurl:['biceps'], inclinecurl:['biceps'],
   pushdown:['triceps'], overheadext:['triceps'], skullcrusher:['triceps'],
+  // ---- Hypertrophy block (v34) ----
+  latraise:['shoulders'], reardelt:['shoulders','back'], cableflye:['chest'], preachercurl:['biceps'],
+  legcurl:['hams'], legext:['quads'],
 };
 /* "Get ready" gap before every hold: the next stretch is shown while this counts
    down, so you have time to get on the floor and into position before the hold
@@ -778,62 +811,139 @@ const TEMPLATES = {
   // Post-race recovery week: one very light session, movement over load
   recoverySession:{ title: 'Recovery · Move & Loosen', est: 25, items: [['glutebridge', 2, 10], ['pushup', 2, 8], ['bandpull', 2, 15], ['calfstand', 2, 10]] },
 
-  /* Hypertrophy phase (post-Melbourne, optional): 5 sessions/week, chest and
-     arms at 2x/week frequency, legs held at maintenance (reuses maintLower
-     above unchanged — see HYPER_ORDER). A 'ROTATE:<pool>' sentinel in place
-     of an exId means "resolve this from HYPER_POOLS via materializeTemplate()"
-     — see that function below for why. */
+  /* v27 chest-and-arms templates. No longer scheduled — the v34 block below
+     replaced them — but sessions logged in the old free-form hypertrophy
+     mode carry these ids, and summaries look the template up by id. */
   hyperChestTri:     { title: 'Chest & Triceps', est: 48, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['pushdown', 3, 12], ['ROTATE:tricepsAcc', 3, 12]] },
   hyperBackBi:       { title: 'Back & Biceps', est: 48, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 8], ['bbcurl', 3, 10], ['ROTATE:bicepsAcc', 3, 12]] },
   hyperShoulderArms: { title: 'Shoulders & Arms', est: 45, items: [['ohp', 4, 6], ['facepull', 3, 15], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:tricepsAcc', 3, 12]] },
   hyperChestBack:    { title: 'Chest & Back', est: 38, items: [['incline', 3, 10], ['dip', 3, 10], ['ROTATE:backAcc', 3, 10]] },
+
+  /* Hypertrophy block (v34, Mon 28 Sep → Sun 29 Nov 2026): 5 lifts a week,
+     every major muscle twice a week, balanced — legs are trained for growth
+     now that no race is near. `hyper: true` opts a template into the block's
+     volume ramp and deload in materializeTemplate(); 'ROTATE:<pool>' slots
+     resolve from HYPER_POOLS on a HYPER_MESO_WEEKS boundary. Sets below are
+     block-week-1 numbers; week 2 adds a set to the first two lifts, week 3 to
+     the first four, week 4 halves everything. Evidence: HYPERTROPHY BLOCK
+     header below. Order inside a session: compounds first, then the
+     long-length isolation work, calves/core last. */
+  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 55, items: [['squat', 4, 6], ['legpress', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['calfstand', 4, 12]] },
+  hypUpperA: { title: 'Upper A · Push', hyper: true, est: 55, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10]] },
+  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 55, items: [['rdl', 4, 8], ['hipthrust', 3, 10], ['legcurl', 3, 12], ['bss', 3, 10], ['calfseat', 4, 15]] },
+  hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 55, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 3, 12], ['incline', 4, 10], ['reardelt', 3, 15]] },
+  // Arms first while fresh — they are the reason this day exists; the delt
+  // work sits after so the ramp lands on arms, not on a shoulder count that
+  // pressing already feeds.
+  hypArms:   { title: 'Arms & Shoulders', hyper: true, est: 50, items: [['bbcurl', 4, 10], ['pushdown', 3, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:tricepsAcc', 3, 12], ['latraise', 4, 15], ['dbshoulder', 3, 10], ['hangraise', 2, 12]] },
 };
 
 /* =====================================================================
-   HYPERTROPHY PHASE — periodized exercise rotation
+   HYPERTROPHY BLOCK — volume, frequency, effort, rest, selection, rotation
    =====================================================================
-   Evidence base:
-   [H1] Fonseca RM, Roschel H, Tricoli V, et al. "Changes in exercises are
-        more effective than in loading schemes to improve muscle strength."
-        J Strength Cond Res 2014 — varying exercise selection outperformed
-        constant selection at matched progressive overload.
-   [H2] Rhea MR, Alderman BL. "A meta-analysis of periodized versus
-        nonperiodized strength and power training programs." Res Q Exerc
-        Sport 2004 — periodized structuring outperforms non-periodized.
-   [H3] Schoenfeld BJ, Grgic J, Krieger JW. "How many times per week should a
-        muscle be trained to maximize hypertrophy?" J Sports Sci 2019 —
-        2x/week beats 1x/week at equal volume (drives HYPER_ORDER's chest/arm
-        frequency and TEMPLATES.hyper* above).
+   Evidence base (each verified against the journal record, Sep 2026):
+   [H1] Schoenfeld BJ, Ogborn D, Krieger JW. Dose-response relationship
+        between weekly resistance training volume and increases in muscle
+        mass. J Sports Sci 2017;35(11):1073-82 — hypertrophy rises with
+        weekly hard sets per muscle, clearly to ~10+/week, diminishing (not
+        zero) beyond. → per-muscle weekly set targets: ≥10 in block week 1,
+        rising to ~16-18 by week 3 (the ramp in materializeTemplate).
+   [H2] Schoenfeld BJ, Grgic J, Krieger J. How many times per week should a
+        muscle be trained to maximize muscle hypertrophy? J Sports Sci
+        2019;37(11):1286-95 — at matched volume ≥2×/week beats 1×/week.
+        → every major muscle appears on at least two days of HYPER_WEEK.
+   [H3] Schoenfeld BJ, Grgic J, Ogborn D, Krieger JW. Strength and
+        hypertrophy adaptations between low- vs. high-load resistance
+        training. J Strength Cond Res 2017;31(12):3508-23 — similar growth
+        across ~6-20+ reps when sets are close to failure; heavy still wins
+        for strength. → compounds 6-10 reps, isolation 10-15 reps.
+   [H4] Robinson ZP, Pelland JC, Remmert JF, et al. Exploring the
+        dose-response relationship between estimated resistance training
+        proximity to failure, strength gain, and muscle hypertrophy: a series
+        of meta-regressions. Sports Med 2024;54(9):2209-31 — hypertrophy
+        improves the closer sets get to failure; strength does not need it.
+        → isolation lifts carry rpe [8,9] (1-2 RIR, last set harder);
+        compounds keep [7,8]/[8,8]; PHASE_POLICY.hypertrophy never parks
+        an on-target set as a hold.
+   [H5] Schoenfeld BJ, Pope ZK, Benik FM, et al. Longer interset rest periods
+        enhance muscle strength and hypertrophy in resistance-trained men.
+        J Strength Cond Res 2016;30(7):1805-12 — 3 min beat 1 min on
+        compounds. → compounds rest 120-150 s, isolation 60-75 s, set per
+        exercise in EXERCISES[x].rest, never one global value.
+   [H6] Maeo S, Wu Y, Huang M, et al. Triceps brachii hypertrophy is
+        substantially greater after elbow extension training performed in
+        the overhead versus neutral arm position. Eur J Sport Sci
+        2023;23(7):1240-50 — ~1.5× the growth overhead.
+   [H7] Maeo S, Huang M, Wu Y, et al. Greater hamstrings muscle hypertrophy
+        but similar damage protection after training at long versus short
+        muscle lengths. Med Sci Sports Exerc 2021;53(4):825-37 — seated leg
+        curl 14% vs prone 9% over 12 weeks.
+   [H8] Kassiano W, Costa B, Nunes JP, et al. Which ROMs lead to Rome? A
+        systematic review of the effects of range of motion on muscle
+        hypertrophy. J Strength Cond Res 2023;37(5):1135-44 — full ROM or
+        the lengthened part of it beats the shortened part for quads,
+        biceps, glutes, adductors (triceps is the exception: mid-range did
+        well, which is why the triceps call rests on [H6], not [H8]).
+        → [H6-H8] drive selection: overhead extension is the main triceps
+        lift, incline/preacher curls, seated leg curl, deep squat/press,
+        flyes loaded at the stretch, RDL.
+   [H9] Fonseca RM, Roschel H, Tricoli V, et al. Changes in exercises are
+        more effective than in loading schemes to improve muscle strength.
+        J Strength Cond Res 2014;28(11):3085-92 — varied selection beat
+        constant selection at matched overload. → accessories rotate per
+        mesocycle (HYPER_POOLS); anchor lifts never do, so the e1RM
+        trajectory the app tracks stays continuous.
+   [H10] Coleman M, Burke R, Augustin F, et al. Gaining more from doing less?
+        The effects of a one-week deload period during supervised resistance
+        training on muscular adaptations. PeerJ 2024;12:e16777 — a one-week
+        deload mid-programme neither helped nor hurt growth over 9 weeks.
+        → deloads here are fatigue management at the mesocycle boundary
+        (sets halved, loads kept — PHASE_POLICY.hyperDeload), not a growth
+        strategy, and are not claimed as one.
+   [H11] Schumann M, Feuerbacher JF, Sünkeler M, et al. Compatibility of
+        concurrent aerobic and strength training for skeletal muscle size and
+        function: an updated systematic review and meta-analysis. Sports Med
+        2022;52(3):601-12 — concurrent training does not compromise
+        hypertrophy or maximal strength (only explosive strength), same-day
+        vs separate-day made no difference. → the two easy runs sit where
+        they suit the week (Wed with mobility, Sun), not out of interference
+        fear; a Sunday run before Monday's quad day is fine.
+   [H12] Thomas E, Bianco A, Paoli A, Palma A. The relation between
+        stretching typology and stretching duration: the effects on range of
+        motion. Int J Sports Med 2018;39(4):243-54 — ROM improves with
+        roughly ≥5 min of stretching per muscle group per week, split any
+        way. → the weekly mobility session (mobilityRoutine, 25 min) plus
+        post-lift cool-downs clear that for every area.
 
-   Anchor lifts (bench, pullup, ohp, bbcurl, pushdown) are NOT in a pool and
-   never rotate — they're what the app's e1RM trajectory/PR-book track over
-   the whole phase, and rotating a tracked lift would keep resetting that
-   history for no benefit. Only the accessory slots — the ones marked
-   'ROTATE:<pool>' in TEMPLATES above — rotate, on a block boundary defined by
-   HYPER_MESO_WEEKS. [H1][H2]
-
-   HYPER_MESO_WEEKS sits inside the standard 4-6 week mesocycle range used in
-   the periodization literature [H2]; verify the exact figure against current
-   sources before treating it as more precise than "within that range." */
-const HYPER_MESO_WEEKS = 5;
+   Mesocycle: HYPER_MESO_WEEKS = 4 (3 loading weeks + deload), twice, then a
+   transition week. Anchor lifts — squat, bench, rdl, pullup, ohp, bbcurl,
+   overheadext — are literal ids in the templates and never rotate [H9]. */
+const HYPER_MESO_WEEKS = 4;
 const HYPER_POOLS = {
-  chestAcc:   ['incline', 'dbflye', 'dip'],
-  backAcc:    ['csrow', 'dbrow', 'cablerow'],
-  bicepsAcc:  ['hammercurl', 'inclinecurl'],
-  tricepsAcc: ['overheadext', 'skullcrusher'],
+  chestAcc:   ['cableflye', 'dbflye', 'incline'],     // block 1 cable flye, block 2 DB flye (incline is fixed on Upper B)
+  backAcc:    ['cablerow', 'dbrow', 'csrow'],         // block 1 cable row, block 2 DB row (csrow is fixed on Upper A)
+  bicepsAcc:  ['hammercurl', 'preachercurl'],
+  tricepsAcc: ['skullcrusher', 'dip'],
 };
-/* Fixed weekly order — legs (reusing maintLower unchanged) sits mid-week
-   between the two heaviest days. Referenced by app.js's hypertrophy
-   maintenanceCard variant to offer the next session in sequence. */
-const HYPER_ORDER = ['hyperChestTri', 'hyperBackBi', 'maintLower', 'hyperShoulderArms', 'hyperChestBack'];
+/* The five lifting templates of a block week, Mon→Sat order (HYPER_WEEK is
+   the dated layout; this is the list the block retro reports against). */
+const HYPER_ORDER = ['hypLowerA', 'hypUpperA', 'hypLowerB', 'hypUpperB', 'hypArms'];
+/* Volume ramp inside a mesocycle [H1]: item indexes that gain one set in
+   block week 1, 2, 3. Week HYPER_MESO_WEEKS is the deload (sets halved). */
+const HYPER_RAMP = [[], [0, 1], [0, 1, 2, 3]];
+function hyperWeekInBlock(startISO, dateISO) { return (weeksSince(startISO, dateISO) % HYPER_MESO_WEEKS) + 1; }
 
 /* Whole weeks elapsed between two ISO dates. Pure — both dates are inputs,
    never read from the clock — so rotation is exactly reproducible in tests. */
 function weeksSince(startISO, todayISO) {
   const [sy, sm, sd] = startISO.split('-').map(Number);
   const [ty, tm, td] = todayISO.split('-').map(Number);
-  const start = new Date(sy, sm - 1, sd);
-  const t = new Date(ty, tm - 1, td);
+  // UTC, not local midnight: a daylight-saving change inside the span (the
+  // first Sunday of October, mid-block) makes "7 days" 6.96 local days and
+  // floor() lands a week early — which silently delayed the volume ramp and
+  // the accessory rotation by a week. Calendar days have no DST in UTC.
+  const start = Date.UTC(sy, sm - 1, sd);
+  const t = Date.UTC(ty, tm - 1, td);
   return Math.max(0, Math.floor((t - start) / (7 * 86400000)));
 }
 /* Which pool member is "live" for a given date. blockWeeks defaults to
@@ -850,12 +960,20 @@ function hyperExId(pool, startISO, todayISO, blockWeeks) {
 function materializeTemplate(tplId, dateISO, mesoStartISO) {
   const tpl = TEMPLATES[tplId];
   if (!tpl) return null;
-  const items = tpl.items.map(([exId, sets, reps]) => {
+  // Block volume periodisation lives here so the day preview, the warm-up
+  // (plannedLoads) and the session itself all agree: +1 set on the first two
+  // lifts in week 2, the first four in week 3, everything halved in the
+  // deload week [H1][H10]. Non-hyper templates pass through untouched.
+  const wk = tpl.hyper ? hyperWeekInBlock(mesoStartISO, dateISO) : 0;
+  const deload = tpl.hyper && wk === HYPER_MESO_WEEKS;
+  const bump = new Set(tpl.hyper && !deload ? (HYPER_RAMP[wk - 1] || []) : []);
+  const items = tpl.items.map(([exId, sets, reps], i) => {
     if (typeof exId === 'string' && exId.startsWith('ROTATE:')) {
       const pool = HYPER_POOLS[exId.slice(7)];
       exId = hyperExId(pool, mesoStartISO, dateISO);
     }
-    return [exId, sets, reps];
+    const n = deload ? Math.max(1, Math.ceil(sets / 2)) : sets + (bump.has(i) ? 1 : 0);
+    return [exId, n, reps];
   });
   return { title: tpl.title, est: tpl.est, items };
 }
@@ -1084,23 +1202,23 @@ function hyperPhaseLabel(weekN) {
 }
 const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow down';
 const HYPER_WEEK = {
-  0: { kind: 'lift', tpl: 'hyperChestTri' },
-  1: { kind: 'lift', tpl: 'hyperBackBi' },
+  0: { kind: 'lift', tpl: 'hypLowerA' },
+  1: { kind: 'lift', tpl: 'hypUpperA' },
   2: { kind: 'run', title: 'Easy Run + Mobility', sub: EASY_RUN_SUB + ' · then the week\'s mobility session', mobility: true },
-  3: { kind: 'lift', tpl: 'maintLower' },
-  4: { kind: 'lift', tpl: 'hyperShoulderArms' },
-  5: { kind: 'lift', tpl: 'hyperChestBack' },
+  3: { kind: 'lift', tpl: 'hypLowerB' },
+  4: { kind: 'lift', tpl: 'hypUpperB' },
+  5: { kind: 'lift', tpl: 'hypArms' },
   6: { kind: 'run', title: 'Easy Run', sub: '45–60 min conversational. Or rest — the run is the day that moves, not a lift.' },
 };
 /* Transition week: three lifts, three runs, mobility kept — the running
    build wants a body that has run three times a week before it asks for
-   a hard day. */
+   a hard day. Base (week-1) volume, no ramp. */
 const TRANSITION_WEEK = {
-  0: { kind: 'lift', tpl: 'hyperChestTri' },
+  0: { kind: 'lift', tpl: 'hypUpperA' },
   1: { kind: 'run', title: 'Easy Run', sub: '40 min conversational' },
-  2: { kind: 'lift', tpl: 'maintLower' },
+  2: { kind: 'lift', tpl: 'hypLowerA' },
   3: { kind: 'run', title: 'Easy Run + Mobility', sub: '40 min conversational · then the week\'s mobility session', mobility: true },
-  4: { kind: 'lift', tpl: 'hyperBackBi' },
+  4: { kind: 'lift', tpl: 'hypUpperB' },
   5: { kind: 'rest', title: 'Rest' },
   6: { kind: 'run', title: 'Long Run', sub: '60 min easy — the first long-ish run since the race, no pace target' },
 };
@@ -1490,7 +1608,7 @@ function e1rm(weight, reps, rpe) {
    and program.js stays a plain classic script. See tools/test-progression.js. */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    EXERCISES, TEMPLATES, STRETCHES, MUSCLE_MAP, RACES, PHASE_POLICY,
+    EXERCISES, TEMPLATES, STRETCHES, MUSCLE_MAP, RACES, PHASE_POLICY, INSIGHTS, HOWTO, HYPER_RAMP, hyperWeekInBlock,
     WEIGHT_STEP_DEFAULT, WEIGHT_STEP_CHOICES, STRETCH_SETUP_SECS,
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,

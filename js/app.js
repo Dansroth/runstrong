@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -132,6 +132,11 @@ const MIGRATIONS = {
     if (s.maintenance && s.maintenance.active && s.maintenance.program === 'hypertrophy') s.maintenance.active = false;
     s.schemaVersion = 14; return s;
   },
+  // 14 → 15: the hypertrophy block's program itself (v34) — new balanced
+  // templates (hypLowerA/UpperA/LowerB/UpperB/Arms) replace the v27
+  // chest-and-arms ones on the calendar, so the stored program is rebuilt.
+  // Nothing else changes shape; history untouched.
+  14: (s) => { s.program = buildProgram(); s.schemaVersion = 15; return s; },
 };
 
 function migrate(s) {
@@ -185,7 +190,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v33';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v34';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -220,6 +225,13 @@ function phaseLabel(date) {
   const w = weekFor(date);
   if (!w) return date < ST.program.startDate ? 'Pre-program' : 'Program complete';
   return `Week ${w.num} — ${w.phase}`;
+}
+/* The exercise-insight heading. "Why this helps your half" is honest in a
+   race block; in the hypertrophy block the lifts are growth lifts and their
+   copy says so, so the heading must not claim otherwise. */
+function whyLabel(date) {
+  const key = ST.maintenance.active ? 'maint' : phaseKeyFromLabel((weekFor(date || today()) || {}).phase);
+  return key === 'hypertrophy' || key === 'hyperDeload' || key === 'maint' ? 'Why this exercise' : 'Why this helps your half';
 }
 
 /* full history for an exercise variant: [{date, sets:[...]}] oldest→newest, completed sessions only */
@@ -456,11 +468,9 @@ function buildSession(date, tplId, downgrade) {
   // passes through unchanged, so this is safe for every tplId.
   const tpl = materializeTemplate(tplId, date, mesoAnchor(ST.maintenance));
   const ctx = progressionCtx(date, downgrade);
-  // Hypertrophy deload week: the plan halves the sets, load stays (see
-  // PHASE_POLICY.hyperDeload). Applied before any readiness downgrade.
-  const deloadWeek = ctx.phase === 'hyperDeload';
-  const exercises = tpl.items.map(([exId, sets0, reps]) => {
-    const sets = deloadWeek ? Math.max(1, Math.ceil(sets0 / 2)) : sets0;
+  // Block volume (weekly ramp, deload halving) is already applied by
+  // materializeTemplate; only the readiness downgrade is decided here.
+  const exercises = tpl.items.map(([exId, sets, reps]) => {
     const n = downgrade === 'red' ? Math.max(1, Math.round(sets * 0.6))
             : downgrade ? Math.max(1, sets - 1) : sets;
     const presc = nextPrescription(exId, exHistory(exId, date), ST.settings.step, reps, ctx);
@@ -759,7 +769,7 @@ function vHome() {
       : `<div class="card action">
           <div class="card-kicker">${day.optional ? 'Optional today' : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min</div>
           <div class="card-title">${esc(day.title)}</div>${day.sub ? `<div class="card-sub">${esc(day.sub)}</div>` : ''}
-          <div class="card-sub" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${TEMPLATES[day.tpl].items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
+          <div class="card-sub" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${materializeTemplate(day.tpl, t, mesoAnchor(ST.maintenance)).items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button></div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
     const mr = mergedRunFor(t);
@@ -1707,7 +1717,7 @@ function vSession() {
           ${howtoOpen ? `<div class="ex-why-body"><ol class="ex-steps">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
         </button>` : ''}
         ${ex.why ? `<button class="ex-why ${whyOpen ? 'open' : ''}" aria-expanded="${whyOpen}" onclick="whyOpen=!whyOpen;render()">
-          <span class="ex-why-t">🎯 Why this helps your half ${whyOpen ? '▾' : '▸'}</span>
+          <span class="ex-why-t">🎯 ${whyLabel(s.date)} ${whyOpen ? '▾' : '▸'}</span>
           ${whyOpen ? `<div class="ex-why-body">${isTaperPhase(s.date) ? esc(ex.taperWhy || TAPER_WHY) + '<br><span class="dim">' + esc(ex.why) + '</span>' : esc(ex.why)}</div>` : ''}
         </button>` : ''}
         ${ex.swaps.length && !e.sets.some(t => t.done) ? `<button class="mini swap" onclick="openSwap()">⇄ swap exercise</button>` : ''}
@@ -2621,7 +2631,7 @@ function vExDetail() {
   <main>
     ${ex.steps ? `<div class="card"><div class="card-kicker">📋 How to</div>
       <ol class="ex-steps" style="color:var(--fg)">${ex.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>` : ''}
-    ${ex.why ? `<div class="card"><div class="card-kicker">🎯 Why this helps your half</div>
+    ${ex.why ? `<div class="card"><div class="card-kicker">🎯 ${whyLabel(view.date)}</div>
       <div class="card-sub" style="color:var(--fg)">${esc(ex.why)}</div>
       ${ex.deep ? `<div class="card-sub" style="margin-top:8px">${esc(ex.deep)}</div>` : ''}</div>` : ''}
     ${svgChart(pts)}
@@ -2953,7 +2963,7 @@ function liftTrajectories() {
    the ones that never rotate, so they're the only ones with a continuous
    trend worth reading (see HYPER_POOLS in program.js). A lighter bar than
    liftTrajectories()'s 3+ sessions: a phase can legitimately be young. */
-const HYPER_ANCHORS = ['bench', 'pullup', 'ohp', 'bbcurl', 'pushdown'];
+const HYPER_ANCHORS = ['squat', 'bench', 'rdl', 'pullup', 'ohp', 'bbcurl', 'overheadext'];
 function hyperTrajectories() {
   const since = HYPER_START;
   const out = [];

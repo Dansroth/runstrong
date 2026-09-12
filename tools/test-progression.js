@@ -354,6 +354,83 @@ group('off-season calendar: recovery week + 9-week hypertrophy block, no gaps');
   for (const w of prog.weeks) for (const d of w.days) if (d.kind === 'lift') ok(`${d.date} template "${d.tpl}" exists`, !!TEMPLATES[d.tpl]);
 }
 
+/* ===================================================================
+   6d. the hypertrophy block's numbers (HYPERTROPHY BLOCK header)
+   =================================================================== */
+group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
+{
+  const { HYPER_START, HYPER_WEEK, MUSCLE_MAP, buildOffseason } = P;
+  const MAJOR = ['quads', 'hams', 'glutes', 'chest', 'back', 'shoulders', 'biceps', 'triceps'];
+  // per-muscle weekly hard sets for a given calendar week of the block
+  const weekSets = weekOffset => {
+    const monday = dadd(HYPER_START, weekOffset * 7);
+    const sets = {};
+    const perDay = {};
+    for (let i = 0; i < 7; i++) {
+      const plan = HYPER_WEEK[i];
+      if (!plan || plan.kind !== 'lift') continue;
+      const mat = materializeTemplate(plan.tpl, dadd(monday, i), HYPER_START);
+      for (const [exId, n] of mat.items) for (const m of MUSCLE_MAP[exId]) {
+        sets[m] = (sets[m] || 0) + n;
+        (perDay[m] = perDay[m] || new Set()).add(i);
+      }
+    }
+    return { sets, perDay };
+  };
+  const w1 = weekSets(0), w3 = weekSets(2), w4 = weekSets(3), w5 = weekSets(4), w7 = weekSets(6);
+  for (const m of MAJOR) {
+    ok(`${m}: ≥10 hard sets in block week 1 [H1]`, (w1.sets[m] || 0) >= 10, `${w1.sets[m]}`);
+    // 13 not 14: direct sets only — pull-ups/rows/presses train arms hard
+    // but carry no arm tag, so the arm counts here understate real volume
+    ok(`${m}: ≥13 hard sets by block week 3 [H1]`, (w3.sets[m] || 0) >= 13, `${w3.sets[m]}`);
+    ok(`${m}: block-2 week 3 is at least as high`, (w7.sets[m] || 0) >= 13, `${w7.sets[m]}`);
+    ok(`${m}: deload week is ≤60% of week 3 [H10]`, (w4.sets[m] || 0) <= (w3.sets[m] || 0) * 0.6, `${w4.sets[m]} vs ${w3.sets[m]}`);
+    ok(`${m}: trained on ≥2 days a week [H2]`, (w1.perDay[m] || new Set()).size >= 2, `${[...(w1.perDay[m] || [])]}`);
+    ok(`${m}: still ≥2 days in block 2`, (w5.perDay[m] || new Set()).size >= 2);
+  }
+  ok('calves: ≥8 sets a week', (w1.sets.calves || 0) >= 8, `${w1.sets.calves}`);
+  ok('nothing runs away: no muscle over 24 sets even in week 3 (junk-volume guard)', Object.values(w3.sets).every(n => n <= 24), JSON.stringify(w3.sets));
+  // rest: compounds 120-150 s, isolation 45-90 s [H5]
+  const COMPOUND = new Set(['squat', 'legpress', 'hacksquat', 'frontsquat', 'bench', 'incline', 'dbbench', 'ohp', 'dbshoulder', 'pullup', 'latpull', 'rdl', 'trapbar', 'hipthrust', 'dip']);
+  const inBlock = new Set();
+  for (const tp of HYPER_ORDER) for (const [id] of TEMPLATES[tp].items) {
+    if (String(id).startsWith('ROTATE:')) for (const m of HYPER_POOLS[id.slice(7)]) inBlock.add(m); else inBlock.add(id);
+  }
+  for (const id of inBlock) {
+    const r = EXERCISES[id].rest;
+    if (COMPOUND.has(id)) ok(`${id} (compound) rests ≥ 90 s [H5]`, r >= 90, `${r}s`);
+    else ok(`${id} (accessory/isolation) rests 45-90 s [H5]`, r >= 45 && r <= 90, `${r}s`);
+  }
+  // reps: compounds 5-10, isolation 10-15 [H3]
+  for (const tp of HYPER_ORDER) for (const [id, , reps] of TEMPLATES[tp].items) {
+    const ex = String(id).startsWith('ROTATE:') ? null : EXERCISES[id];
+    if (ex && COMPOUND.has(id)) ok(`${tp}/${id}: compound reps 5-10 [H3]`, reps >= 5 && reps <= 10, `${reps}`);
+    else if (ex) ok(`${tp}/${id}: isolation reps 10-15 [H3]`, reps >= 10 && reps <= 15, `${reps}`);
+  }
+  // every exercise the block can schedule has the full contract
+  const { INSIGHTS, HOWTO } = P;
+  for (const id of inBlock) {
+    const ex = EXERCISES[id];
+    ok(`${id}: has name/group/mode/rest/cue`, !!(ex.name && ex.group && ex.mode && ex.rest && ex.cue));
+    ok(`${id}: has an INSIGHTS why/deep`, !!(INSIGHTS[id] && INSIGHTS[id].why && INSIGHTS[id].deep));
+    ok(`${id}: has HOWTO steps`, !!(HOWTO[id] && HOWTO[id].steps && HOWTO[id].steps.length >= 3));
+    ok(`${id}: every swap is a real exercise`, (ex.swaps || []).every(s => !!EXERCISES[s]));
+    ok(`${id}: MUSCLE_MAP tags are in the vocabulary`, MUSCLE_MAP[id].every(m => ['quads', 'glutes', 'hams', 'calves', 'adductors', 'hipflex', 'chest', 'back', 'shoulders', 'core', 'biceps', 'triceps'].includes(m)));
+  }
+  for (const id of ['latraise', 'reardelt', 'cableflye', 'preachercurl', 'legcurl', 'legext']) {
+    ok(`${id}: new isolation lift sits at rpe [8,9] [H4]`, JSON.stringify(EXERCISES[id].rpe) === '[8,9]');
+    ok(`${id}: has a swap that needs no machine`, EXERCISES[id].swaps.some(s => !(EXERCISES[s].equip || []).includes('machine')));
+  }
+  // the honest-voice rule: no new lift claims to help the half
+  for (const id of ['latraise', 'reardelt', 'cableflye', 'preachercurl', 'legcurl', 'legext']) {
+    ok(`${id}: insight does not claim running benefit`, !/your half|your stride|running economy/i.test(INSIGHTS[id].why));
+  }
+  // the calendar actually schedules the block templates
+  const off = buildOffseason();
+  const blockWeeks = off.filter(w => /hypertrophy/i.test(w.phase));
+  ok('every hypertrophy week schedules exactly HYPER_ORDER', blockWeeks.every(w => JSON.stringify(w.days.filter(d => d.kind === 'lift').map(d => d.tpl)) === JSON.stringify(HYPER_ORDER)));
+}
+
 group('the weekly mobility routine covers the whole body');
 {
   const { mobilityRoutine, MOBILITY_MINS, STRETCH_AREAS } = P;
@@ -440,28 +517,60 @@ group('hypertrophy phase — periodized exercise rotation');
   eq('a mid-block date does not advance the pick', hyperExId(pool, start, dadd(start, 3), 5), hyperExId(pool, start, start, 5));
 
   ok('HYPER_MESO_WEEKS sits in the standard 4-6 week mesocycle range', HYPER_MESO_WEEKS >= 4 && HYPER_MESO_WEEKS <= 6, `${HYPER_MESO_WEEKS}`);
+  eq('HYPER_MESO_WEEKS is 4 — 3 loading weeks + a deload, twice inside the 9-week block', HYPER_MESO_WEEKS, 4);
   ok('every day in HYPER_ORDER is a real template', HYPER_ORDER.every(tp => !!TEMPLATES[tp]));
-  eq('HYPER_ORDER runs 5 days — one per hypertrophy-phase session/week', HYPER_ORDER.length, 5);
-  eq('legs (maintLower) appears exactly once in the weekly rotation', HYPER_ORDER.filter(tp => tp === 'maintLower').length, 1);
+  eq('HYPER_ORDER runs 5 days — one per lifting session/week', HYPER_ORDER.length, 5);
+  ok('every HYPER_ORDER template is flagged hyper (opted into the volume ramp)', HYPER_ORDER.every(tp => TEMPLATES[tp].hyper === true));
+  eq('HYPER_ORDER is exactly the lifts HYPER_WEEK schedules', JSON.stringify(HYPER_ORDER), JSON.stringify(Object.values(P.HYPER_WEEK).filter(p => p.kind === 'lift').map(p => p.tpl)));
   for (const pool of Object.values(HYPER_POOLS)) {
     ok(`rotation pool [${pool}] has at least 2 members (or rotation is a no-op)`, pool.length >= 2);
     ok(`every member of [${pool}] is a real exercise`, pool.every(id => !!EXERCISES[id]));
   }
 
-  const REF_MESO_START = '2026-10-11';
-  const REF_DATE = '2026-11-01';
-  for (const tp of ['hyperChestTri', 'hyperBackBi', 'hyperShoulderArms', 'hyperChestBack']) {
+  const REF_MESO_START = P.HYPER_START;
+  const REF_DATE = P.HYPER_START;   // block week 1: base volume
+  for (const tp of HYPER_ORDER) {
     const mat = materializeTemplate(tp, REF_DATE, REF_MESO_START);
     eq(`${tp}: materialized item count matches the template`, mat.items.length, TEMPLATES[tp].items.length);
     ok(`${tp}: no ROTATE sentinel survives materialization`, mat.items.every(([id]) => !String(id).startsWith('ROTATE:')));
     ok(`${tp}: every resolved exId is a real exercise`, mat.items.every(([id]) => !!EXERCISES[id]));
     eq(`${tp}: title/est pass through unchanged`, mat.title + '|' + mat.est, TEMPLATES[tp].title + '|' + TEMPLATES[tp].est);
+    eq(`${tp}: week 1 is base volume`, JSON.stringify(mat.items.map(i => i[1])), JSON.stringify(TEMPLATES[tp].items.map(i => i[1])));
+  }
+  // the volume ramp [H1] and the deload [H10], read off the calendar date
+  {
+    const base = TEMPLATES.hypLowerA.items.map(i => i[1]);
+    const wk2 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 7), REF_MESO_START).items.map(i => i[1]);
+    const wk3 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 14), REF_MESO_START).items.map(i => i[1]);
+    const wk4 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 21), REF_MESO_START).items.map(i => i[1]);
+    const wk5 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[1]);
+    const sum = a => a.reduce((x, y) => x + y, 0);
+    eq('week 2 adds one set to each of the first two lifts', sum(wk2), sum(base) + 2);
+    eq('week 3 adds one set to each of the first four lifts', sum(wk3), sum(base) + 4);
+    ok('week 4 (deload) roughly halves the sets', sum(wk4) <= Math.ceil(sum(base) / 2) + 2 && sum(wk4) < sum(base) * 0.6, `${sum(wk4)} vs ${sum(base)}`);
+    ok('the deload never zeroes a lift', wk4.every(n => n >= 1));
+    eq('week 5 (block 2, week 1) is back to base volume', sum(wk5), sum(base));
+    eq('the deload leaves reps alone (intensity kept)', JSON.stringify(materializeTemplate('hypLowerA', dadd(P.HYPER_START, 21), REF_MESO_START).items.map(i => i[2])), JSON.stringify(TEMPLATES.hypLowerA.items.map(i => i[2])));
+    eq('the transition week (block week 9) is base volume', sum(materializeTemplate('hypLowerA', dadd(P.HYPER_START, 56), REF_MESO_START).items.map(i => i[1])), sum(base));
+  }
+  // rotation flips on the 4-week boundary, and fixed lifts don't collide with the rotating slot
+  {
+    const b1 = materializeTemplate('hypUpperA', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
+    const b2 = materializeTemplate('hypUpperA', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
+    ok('block 1 and block 2 resolve a different chest accessory', b1[1] !== b2[1], `${b1[1]} / ${b2[1]}`);
+    ok('the rotating chest slot never duplicates the fixed incline press on Upper B in the same week', ![b1[1], b2[1]].includes('incline'));
+    const ub1 = materializeTemplate('hypUpperB', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
+    const ub2 = materializeTemplate('hypUpperB', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
+    ok('the rotating back slot never duplicates the fixed chest-supported row on Upper A', ![ub1[1], ub2[1]].includes('csrow'));
   }
   // anchor lifts must never be behind a ROTATE sentinel — they're what the
-  // app's e1RM trajectory tracks across the whole phase
-  const anchors = { hyperChestTri: 'bench', hyperBackBi: 'pullup', hyperShoulderArms: 'ohp' };
+  // app's e1RM trajectory tracks across the whole block
+  const anchors = { hypLowerA: 'squat', hypUpperA: 'bench', hypLowerB: 'rdl', hypUpperB: 'pullup', hypArms: 'bbcurl' };
   for (const [tp, anchor] of Object.entries(anchors)) {
     ok(`${tp}: anchor lift "${anchor}" is a literal exId in the raw template, not a pool`, TEMPLATES[tp].items.some(([id]) => id === anchor));
+  }
+  for (const anchor of ['squat', 'bench', 'rdl', 'pullup', 'ohp', 'bbcurl', 'overheadext']) {
+    ok(`anchor "${anchor}" is in no rotation pool`, !Object.values(HYPER_POOLS).some(pool => pool.includes(anchor)));
   }
 
   // a template with no ROTATE sentinel must resolve identically to the raw template
