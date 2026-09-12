@@ -7,6 +7,8 @@
    this array (finalRace()/nextRace() in app.js), never a literal key. */
 const RACES = [
   { key: 'geelong', name: 'Geelong Half', tag: 'A race', date: '2026-09-20' },
+  // TODO(user): real race name once entered — the date is fixed, the name is a placeholder
+  { key: 'feb2027', name: 'February Half', tag: 'A race', date: '2027-02-21' },
 ];
 
 const PROGRAM_START = '2026-08-13'; // Thursday — partial intro week 1
@@ -1014,6 +1016,8 @@ Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat
 
 Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 tapers into Geelong — the A race and the last race of the block, now that Melbourne is off the calendar.
 
+**After Geelong:** a recovery week, then a nine-week hypertrophy block (five lifts, two easy runs and a mobility session a week — see the Insights tab's block report), then from 30 November a twelve-week build to the February half on the same skeleton: three base weeks (strides and hills), a down week, three build weeks (tempo and intervals), a down week, two peak weeks with the longest run (21 km) three weeks out, then the same taper shape as Geelong. The long run climbs in roughly 10% steps and drops to about 70% in the down weeks.
+
 **The taper rule:** cut the volume, keep the intensity. The tapering research (Bosquet 2007 meta-analysis) backs a 41–60% volume cut with paces and loads untouched over 8–14 days — we have 8, so it starts with the Sunday long run before race week (12–14 km, not 20) and lands at a 30–40% running cut for the final week. Lifting goes deeper than that on purpose: two short sessions Mon/Tue with the heavy work still heavy, then nothing — strength holds for 2–3 weeks without training, so the gym has nothing to gain and freshness to lose. Missed sessions from peak week stay missed; making them up now is the classic taper mistake. The app stops suggesting load increases in taper weeks instead of making the sessions feel easy.`;
 
 /* ---- date helpers (local time) ---- */
@@ -1245,11 +1249,79 @@ function buildOffseason() {
   return weeks;
 }
 
+/* =====================================================================
+   RUN BUILD — 12 weeks to a half marathon, anchored on the race date
+   =====================================================================
+   Same skeleton that carried the Geelong block (WHY_SCHEDULE: Wed hard,
+   Fri easy, Sun long; lifts Mon/Tue/Thu/Sat with Thursday the heavy lower
+   day), generalised: give it a race Sunday and it lays out the 12 weeks
+   ending on that day.
+     wk 1-3   Base      2 → 3 lifts, strides and hills on Wednesday
+     wk 4     Down week 3 lifts, long run ~70%, load held (PHASE_POLICY.down)
+     wk 5-7   Build     4 lifts, tempo / intervals
+     wk 8     Down week
+     wk 9-10  Peak      4 lifts, peak load, HM-pace long-run work
+     wk 11    Taper     4 short lifts, volume ~40% of peak, loads kept [T1]
+     wk 12    Race week primer Mon, sharpener Wed, easy + strides Fri, race
+   Long run in real kilometres, roughly 10% steps, down weeks ~70%, the
+   longest run (21 km) three weeks out, then the [T1] taper shape the
+   Geelong week established. Mobility stays once a week (on the Friday
+   easy run) because it is a standing feature, not a block feature.
+   ===================================================================== */
+const RUN_BUILD_WEEKS = 12;
+const RUN_BUILD_PLAN = [
+  /* wk1 */  { phase: 'Base — 3 runs, 2 lifts', lifts: { 0: 'lowerA', 3: 'upperA' }, long: 12, wed: 'Easy 35 min + 6 × 20 s strides — turnover, not effort' },
+  /* wk2 */  { phase: 'Base — 3 lifts', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 13, wed: 'Easy 40 min + 6 × 20 s strides' },
+  /* wk3 */  { phase: 'Base — 3 lifts', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 14, wed: 'Hills: 15 min easy → 6 × 45 s uphill hard, jog down → 10 min easy' },
+  /* wk4 */  { phase: 'Down week', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 10, wed: 'Easy 30 min + 4 × 20 s strides — the down week is the plan working' },
+  /* wk5 */  { phase: 'Build', lifts: null, long: 16, wed: 'Tempo: 15 min easy → 20 min at half-marathon pace → 10 min easy' },
+  /* wk6 */  { phase: 'Build', lifts: null, long: 17.5, wed: 'Intervals: 5 × 1 km at 10 km pace, 2 min jog between' },
+  /* wk7 */  { phase: 'Build', lifts: null, long: 19, wed: 'Tempo: 2 × 15 min at half-marathon pace, 3 min easy between' },
+  /* wk8 */  { phase: 'Down week', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 13, wed: 'Easy 30 min + 4 × 20 s strides' },
+  /* wk9 */  { phase: 'Build — peak load', lifts: null, long: 21, wed: 'HM pace: 3 × 3 km at goal pace, 3 min easy between' },
+  /* wk10 */ { phase: 'Build — peak load', lifts: null, long: 17, longSub: '17 km with the last 8 km at goal half pace — the dress rehearsal', wed: 'Intervals: 6 × 1 km at 10 km pace, 90 s jog between' },
+  /* wk11 */ { phase: 'Taper', lifts: { 0: 'lowerTaperA', 1: 'upperTaperA', 3: 'lowerTaperB', 5: 'upperTaperB' }, long: 13, longSub: '12–14 km easy, last 3 km at goal half pace — the taper starts here', wed: 'Sharpener: 15 min easy → 5 × 2 min at goal half pace / 2 min float → 10 min easy' },
+  /* wk12 */ { phase: 'race week', lifts: null, long: null, wed: 'Sharpener (short): 10 min easy → 4 × 90 s at goal half pace / 2 min float → 10 min easy' },
+];
+function buildRunBuild(raceISO, raceKey) {
+  const weeks = [];
+  const startMonday = dadd(raceISO, -(RUN_BUILD_WEEKS * 7 - 1));
+  const race = RACES.find(r => r.key === raceKey);
+  const NORM = { 0: 'lowerA', 1: 'upperA', 3: 'lowerB', 5: 'upperB' };
+  for (let w = 0; w < RUN_BUILD_WEEKS; w++) {
+    const p = RUN_BUILD_PLAN[w];
+    const monday = dadd(startMonday, w * 7);
+    const isRaceWeek = w === RUN_BUILD_WEEKS - 1;
+    const lifts = p.lifts === null && !isRaceWeek ? NORM : (p.lifts || {});
+    const layout = {};
+    for (const [i, tpl] of Object.entries(lifts)) layout[i] = { kind: 'lift', tpl };
+    layout[2] = { kind: 'run', title: 'Hard Run', sub: p.wed };
+    if (isRaceWeek) {
+      layout[0] = { kind: 'lift', tpl: 'primer' };
+      layout[1] = { kind: 'mobility', title: 'Mobility only', sub: 'Nothing heavy within 5 days — easy stretch + rollout' };
+      layout[3] = { kind: 'mobility', title: 'Mobility only', sub: 'Nothing heavy within 3 days of the race — easy stretch + rollout' };
+      layout[4] = { kind: 'run', title: 'Easy Run', sub: '25–30 min easy + 4 × 20 s relaxed strides. Short on purpose.' };
+      layout[5] = { kind: 'rest', title: 'Rest / shake-out', sub: 'Optional 15 min shake-out + 3 strides. Feet up. Carbs up.' };
+      layout[6] = { kind: 'race', race: raceKey };
+    } else {
+      layout[4] = { kind: 'run', title: 'Easy Run + Mobility', sub: '30–45 min recovery pace · then the week\'s mobility session', mobility: true };
+      layout[6] = { kind: 'run', title: 'Long Run', sub: p.longSub || `${p.long} km easy — conversational the whole way` };
+    }
+    const phase = isRaceWeek ? `${race.name.split(' ')[0]} race week` : p.phase;
+    weeks.push({
+      phase, monday,
+      days: Array.from({ length: 7 }, (_, i) => dayFromPlan(dadd(monday, i), layout[i] || { kind: 'rest', title: 'Rest' })),
+    });
+  }
+  return weeks;
+}
+
 /* The whole calendar, numbered continuously. ST.program stores the result
    (see the migrations in app.js), so any change here needs a migration
    that rebuilds it — sessions/runs/routines are keyed by date and survive. */
 function buildProgram() {
-  const weeks = buildRaceBlock().concat(buildOffseason());
+  const feb = RACES.find(r => r.key === 'feb2027');
+  const weeks = buildRaceBlock().concat(buildOffseason(), buildRunBuild(feb.date, feb.key));
   weeks.forEach((w, i) => { w.num = i + 1; });
   return { startDate: PROGRAM_START, weeks };
 }
@@ -1399,6 +1471,10 @@ const PHASE_POLICY = {
   // [H10 in the OFF-SEASON header], so nothing is cut twice and nothing is
   // pushed. Distinct from 'deload' above, which also cuts load 10%.
   hyperDeload: { label: 'deload week', rpeAdj: -1, allowUp: false, hold: 'Deload: sets halved by the plan, load stays put — come back fresh for the next block.' },
+  // Run-build down week: running volume drops ~30%, lifting drops a day; the
+  // loads themselves are held rather than cut — it is a running recovery
+  // week, not a gym deload.
+  down:     { label: 'down week', rpeAdj: -0.5, allowUp: false, hold: 'Down week: volume cut by the plan, load stays put — build again next week.' },
 };
 function phasePolicy(key) { return PHASE_POLICY[key] || PHASE_POLICY.build; }
 
@@ -1411,6 +1487,8 @@ function phaseKeyFromLabel(label) {
   if (/recovery week/.test(s)) return 'deload';
   if (/hypertrophy.*deload/.test(s)) return 'hyperDeload';
   if (/hypertrophy|transition/.test(s)) return 'hypertrophy';
+  if (/down week/.test(s)) return 'down';
+  if (/base/.test(s)) return 'build';
   if (/maintenance/.test(s)) return 'maint';
   if (/race week/.test(s)) return 'raceweek';
   if (/taper/.test(s)) return 'taper';            // 'Taper' and 'Geelong mini-taper'
@@ -1615,6 +1693,7 @@ if (typeof module !== 'undefined' && module.exports) {
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, RUN_BUILD_START, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
+    RUN_BUILD_WEEKS, RUN_BUILD_PLAN, buildRunBuild,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,

@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 16;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -22,7 +22,7 @@ function defaultState() {
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     strava: { clientId: '', clientSecret: '', tokenUrl: '', auth: null, activities: {}, lastSync: null, includeOther: false },
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
-    races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
+    races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, feb2027: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
     maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     soreLog: [],           // [{date, areas: [STRETCH_AREAS ids]}] — from the on-demand stretch picker
@@ -137,6 +137,15 @@ const MIGRATIONS = {
   // chest-and-arms ones on the calendar, so the stored program is rebuilt.
   // Nothing else changes shape; history untouched.
   14: (s) => { s.program = buildProgram(); s.schemaVersion = 15; return s; },
+  // 15 → 16: the February 2027 half joins RACES and the calendar gains the
+  // 12-week run build (buildRunBuild). Additive: one new race record, the
+  // program rebuilt. Geelong's record and result are untouched.
+  15: (s) => {
+    s.races = s.races || {};
+    s.races.feb2027 = s.races.feb2027 || { checklist: {}, result: null, feel: null, note: '', projAtRace: null };
+    s.program = buildProgram();
+    s.schemaVersion = 16; return s;
+  },
 };
 
 function migrate(s) {
@@ -190,7 +199,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v34';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v35';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2726,6 +2735,10 @@ function buildWeeklySummary(monday) {
     'Hypertrophy — block 2 deload': 'sets halved, loads kept — last deload before running comes back',
     'Hypertrophy': '5 lifts, 2 easy runs, 1 mobility session — sets creep up each week',
     'Transition': 'three lifts, three easy runs — the body relearns running before the build asks anything of it',
+    'Base': 'three runs a week again, strides and hills — the aerobic base before the hard work',
+    'Down week': 'long run drops to ~70%, one lift fewer — absorb the last three weeks',
+    'Taper': 'volume keeps dropping while intensity stays crisp — race legs loading',
+    'February race week': 'almost nothing in the gym: the work is done',
   };
   // longest matching key wins, so 'Hypertrophy — block 1 deload' beats 'Hypertrophy'
   const phaseKey = p => Object.keys(PHASE_FOCUS).sort((a, b) => b.length - a.length).find(k => (p || '').startsWith(k));
@@ -3165,7 +3178,7 @@ function insightsBody() {
   const trajLine = !traj.length ? 'Log each lift 3+ times and its trajectory appears here.'
     : traj[0].pct >= 5 ? `${traj[0].name} leads the pack, up ${traj[0].pct}% in estimated strength.${traj[traj.length - 1].pct < 0 ? ` ${traj[traj.length - 1].name} is the laggard (${traj[traj.length - 1].pct}%) — worth a look.` : ''}`
     : 'Strength is roughly holding across the board — during a running block, holding IS winning.';
-  const retroReady = daysUntil(finalRace().date) < 0 || ST.maintenance.active;
+  const retroReady = RACES.some(r => daysUntil(r.date) < 0) || ST.maintenance.active;
   // On a fresh install (or right after a reset) every one of these sections
   // independently rendered its own "not enough data" card — a wall of four
   // empty placeholders before anything real ever appears. If literally
