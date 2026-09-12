@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -151,6 +151,11 @@ const MIGRATIONS = {
   // by date, applied on read (planWeeks) so a rebuilt program never loses a
   // swap. History untouched.
   16: (s) => { s.planOverrides = s.planOverrides || {}; s.schemaVersion = 17; return s; },
+  // 17 → 18: every hypertrophy session gains rotating slots (lower days,
+  // shoulder press), the run build's lifting becomes maintenance
+  // (maint* templates, 2-3 a week), and the February race gets its real
+  // name. Stored program rebuilt; swaps and history untouched.
+  17: (s) => { s.program = buildProgram(); s.schemaVersion = 18; return s; },
 };
 
 function migrate(s) {
@@ -204,7 +209,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v37';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v38';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -259,8 +264,8 @@ function phaseLabel(date) {
    race block; in the hypertrophy block the lifts are growth lifts and their
    copy says so, so the heading must not claim otherwise. */
 function whyLabel(date) {
-  const key = ST.maintenance.active ? 'maint' : phaseKeyFromLabel((weekFor(date || today()) || {}).phase);
-  return key === 'hypertrophy' || key === 'hyperDeload' || key === 'maint' ? 'Why this exercise' : 'Why this helps your half';
+  const key = phaseKeyFromLabel((weekFor(date || today()) || {}).phase);
+  return key === 'hypertrophy' || key === 'hyperDeload' ? 'Why this exercise' : 'Why this helps your half';
 }
 
 /* full history for an exercise variant: [{date, sets:[...]}] oldest→newest, completed sessions only */
@@ -1493,7 +1498,7 @@ function offerRecoveryMode() {
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
     <div class="wksum-li">• <b>Recovery week</b> — ${esc(fmtDate(RECOVERY_MONDAY))} to ${esc(fmtDate(dadd(RECOVERY_MONDAY, 6)))}. Walk, eat, sleep; an optional light session Thursday; an easy jog Sunday if the legs say yes.</div>
     <div class="wksum-li">• <b>Hypertrophy block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(hyperEnd))}. Five lifts, two easy runs and one mobility session a week, in two 4-week blocks with a deload at the end of each, then a transition week that brings running back to three days.</div>
-    <div class="wksum-li">• <b>Run build</b> — from ${esc(fmtDate(RUN_BUILD_START))}, twelve weeks to the February half.</div>
+    <div class="wksum-li">• <b>Run build</b> — from ${esc(fmtDate(RUN_BUILD_START))}, twelve weeks to ${esc(finalRace().name)}. Lifting drops to maintenance there: two or three short sessions a week.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
     <button class="linkbtn" onclick="closeModal()">Close</button></div>`;
@@ -2897,10 +2902,12 @@ function buildWeeklySummary(monday) {
     'Hypertrophy — block 2 deload': 'sets halved, loads kept — last deload before running comes back',
     'Hypertrophy': '5 lifts, 2 easy runs, 1 mobility session — sets creep up each week',
     'Transition': 'three lifts, three easy runs — the body relearns running before the build asks anything of it',
-    'Base': 'three runs a week again, strides and hills — the aerobic base before the hard work',
+    'Base': 'three runs a week again, strides and hills — the aerobic base before the hard work; lifting just holds',
+    'Build — strength maintenance': 'tempo and intervals arrive; three short lifts a week hold what the block built',
+    'Peak': 'the longest runs of the build — lifting stays maintenance, running is the point',
     'Down week': 'long run drops to ~70%, one lift fewer — absorb the last three weeks',
     'Taper': 'volume keeps dropping while intensity stays crisp — race legs loading',
-    'February race week': 'almost nothing in the gym: the work is done',
+    'Carman\'s race week': 'almost nothing in the gym: the work is done',
   };
   // longest matching key wins, so 'Hypertrophy — block 1 deload' beats 'Hypertrophy'
   const phaseKey = p => Object.keys(PHASE_FOCUS).sort((a, b) => b.length - a.length).find(k => (p || '').startsWith(k));
@@ -3310,7 +3317,7 @@ window.showRetro = function () {
 /* on-demand report for the CURRENT hypertrophy phase — showRetro() above is
    a one-shot look back at the finished 9-week race block, this is an
    ongoing "how's it going" for a phase that has no end date */
-const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory' };
+const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory', quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift', calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', shoulderAcc: 'Shoulder press' };
 window.showHyperRetro = function () {
   const since = HYPER_START;
   const mesoStart = mesoAnchor(ST.maintenance);

@@ -393,7 +393,25 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
   ok('calves: ≥8 sets a week', (w1.sets.calves || 0) >= 8, `${w1.sets.calves}`);
   ok('nothing runs away: no muscle over 24 sets even in week 3 (junk-volume guard)', Object.values(w3.sets).every(n => n <= 24), JSON.stringify(w3.sets));
   // rest: compounds 120-150 s, isolation 45-90 s [H5]
-  const COMPOUND = new Set(['squat', 'legpress', 'hacksquat', 'frontsquat', 'bench', 'incline', 'dbbench', 'ohp', 'dbshoulder', 'pullup', 'latpull', 'rdl', 'trapbar', 'hipthrust', 'dip']);
+  const COMPOUND = new Set(['squat', 'legpress', 'hacksquat', 'frontsquat', 'bench', 'incline', 'dbbench', 'ohp', 'dbshoulder', 'landmine', 'pullup', 'latpull', 'rdl', 'trapbar', 'hipthrust', 'dip']);
+  // exercise selection changes every block [H9]: every session has a rotating
+  // slot, and every pool resolves differently in block 2 than in block 1
+  for (const tp of HYPER_ORDER) ok(`${tp} has at least one rotating slot`, TEMPLATES[tp].items.some(([id]) => String(id).startsWith('ROTATE:')));
+  for (const [pool, members] of Object.entries(HYPER_POOLS)) {
+    const b1 = P.hyperExId(members, HYPER_START, HYPER_START), b2 = P.hyperExId(members, HYPER_START, dadd(HYPER_START, 28));
+    ok(`${pool}: block 2 (${b2}) differs from block 1 (${b1})`, b1 !== b2);
+    ok(`${pool}: is referenced by a template`, HYPER_ORDER.some(tp => TEMPLATES[tp].items.some(([id]) => id === 'ROTATE:' + pool)));
+  }
+  {
+    // count the lifts that differ between a block-1 week and a block-2 week
+    let changed = 0, total = 0;
+    for (const tp of HYPER_ORDER) {
+      const a = materializeTemplate(tp, HYPER_START, HYPER_START).items.map(i => i[0]);
+      const b = materializeTemplate(tp, dadd(HYPER_START, 28), HYPER_START).items.map(i => i[0]);
+      a.forEach((id, i) => { total++; if (id !== b[i]) changed++; });
+    }
+    ok(`at least a third of the block's lifts change between blocks (${changed} of ${total})`, changed * 3 >= total);
+  }
   const inBlock = new Set();
   for (const tp of HYPER_ORDER) for (const [id] of TEMPLATES[tp].items) {
     if (String(id).startsWith('ROTATE:')) for (const m of HYPER_POOLS[id.slice(7)]) inBlock.add(m); else inBlock.add(id);
@@ -461,22 +479,30 @@ group('run build: 12 race-anchored weeks with a real long-run progression');
   // phases resolve
   for (const w of build) ok(`"${w.phase}" resolves to a real policy`, !!PHASE_POLICY[phaseKeyFromLabel(w.phase)], phaseKeyFromLabel(w.phase));
   eq('down weeks use the down policy (load held)', phaseKeyFromLabel(build[3].phase) + '/' + phaseKeyFromLabel(build[7].phase), 'down/down');
-  eq('base weeks progress like build weeks', phaseKeyFromLabel(build[0].phase), 'build');
-  eq('peak weeks get the peak policy', phaseKeyFromLabel(build[8].phase) + '/' + phaseKeyFromLabel(build[9].phase), 'peak/peak');
+  // lifting is MAINTENANCE through the run build, by request — base, build
+  // and peak weeks all hold strength rather than push it
+  eq('base weeks lift under the maintenance policy', phaseKeyFromLabel(build[0].phase), 'maint');
+  eq('build weeks lift under the maintenance policy', [4, 5, 6].map(i => phaseKeyFromLabel(build[i].phase)).join('/'), 'maint/maint/maint');
+  eq('peak weeks lift under the maintenance policy', phaseKeyFromLabel(build[8].phase) + '/' + phaseKeyFromLabel(build[9].phase), 'maint/maint');
   eq('week 11 is the taper', phaseKeyFromLabel(build[10].phase), 'taper');
   eq('week 12 is race week', phaseKeyFromLabel(build[11].phase), 'raceweek');
   eq('the down policy never allows a load increase', PHASE_POLICY.down.allowUp, false);
+  ok('the maintenance policy holds at target rather than pushing', PHASE_POLICY.maint.atTargetHold === true && PHASE_POLICY.maint.maxUpPct <= 4);
   // lifts per phase
   const liftsOf = w => w.days.filter(d => d.kind === 'lift').length;
   eq('base week 1: 2 lifts', liftsOf(build[0]), 2);
   eq('base weeks 2-3: 3 lifts', liftsOf(build[1]) + '/' + liftsOf(build[2]), '3/3');
-  eq('down weeks: 3 lifts', liftsOf(build[3]) + '/' + liftsOf(build[7]), '3/3');
-  eq('build and peak weeks: 4 lifts', [4, 5, 6, 8, 9].map(i => liftsOf(build[i])).join(''), '44444');
-  ok('build weeks use the proven templates', [4, 5, 6].every(i => JSON.stringify(build[i].days.filter(d => d.kind === 'lift').map(d => d.tpl)) === JSON.stringify(['lowerA', 'upperA', 'lowerB', 'upperB'])));
-  eq('taper week uses the taper templates', JSON.stringify(build[10].days.filter(d => d.kind === 'lift').map(d => d.tpl)), JSON.stringify(['lowerTaperA', 'upperTaperA', 'lowerTaperB', 'upperTaperB']));
+  eq('down weeks: 2 lifts', liftsOf(build[3]) + '/' + liftsOf(build[7]), '2/2');
+  eq('build and peak weeks: 3 lifts', [4, 5, 6, 8, 9].map(i => liftsOf(build[i])).join(''), '33333');
+  ok('build weeks use the maintenance templates', [1, 2, 4, 5, 6, 8, 9].every(i => JSON.stringify(build[i].days.filter(d => d.kind === 'lift').map(d => d.tpl)) === JSON.stringify(['maintFull', 'maintUpper', 'maintLower'])));
+  ok('no hypertrophy template survives into the run build', build.every(w => w.days.every(d => !(d.tpl && TEMPLATES[d.tpl].hyper))));
+  ok('every maintenance session is ~40 min or less', ['maintFull', 'maintUpper', 'maintLower'].every(tp => TEMPLATES[tp].est <= 42));
+  eq('taper week: two short taper sessions', JSON.stringify(build[10].days.filter(d => d.kind === 'lift').map(d => d.tpl)), JSON.stringify(['upperTaperA', 'lowerTaperA']));
   eq('race week: primer only', JSON.stringify(build[11].days.filter(d => d.kind === 'lift').map(d => d.tpl)), JSON.stringify(['primer']));
   ok('no lift within 3 days of the race', build[11].days.filter(d => d.kind === 'lift').every(d => dadd(d.date, 3) < feb.date));
-  ok('Thursday is the heavy lower day in build weeks (WHY_SCHEDULE)', [4, 5, 6, 8, 9].every(i => build[i].days[3].tpl === 'lowerB'));
+  ok('Thursday is the lower day in build weeks (WHY_SCHEDULE)', [4, 5, 6, 8, 9].every(i => build[i].days[3].tpl === 'maintLower'));
+  ok('the race is Carman\'s Classic', /Carman/.test(feb.name));
+  ok('race-week label carries the race name', /Carman/.test(build[11].phase), build[11].phase);
   // runs
   for (const w of build) {
     const runs = w.days.filter(d => d.kind === 'run' || d.kind === 'race').length;

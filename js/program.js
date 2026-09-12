@@ -7,8 +7,7 @@
    this array (finalRace()/nextRace() in app.js), never a literal key. */
 const RACES = [
   { key: 'geelong', name: 'Geelong Half', tag: 'A race', date: '2026-09-20' },
-  // TODO(user): real race name once entered — the date is fixed, the name is a placeholder
-  { key: 'feb2027', name: 'February Half', tag: 'A race', date: '2027-02-21' },
+  { key: 'feb2027', name: 'Carman\'s Classic Half Marathon', tag: 'A race', date: '2027-02-21' },
 ];
 
 const PROGRAM_START = '2026-08-13'; // Thursday — partial intro week 1
@@ -241,6 +240,13 @@ const HOWTO = {
   glutebridge: { steps: ['Lie on your back, bar over your hips, knees bent, feet flat.', 'Feet a little closer to your hips than a hip thrust — shins near-vertical at lockout.', 'Drive your hips up to full extension, squeezing hard at the top.', 'Lower with control back to the floor between reps.'] },
   pushup:     { steps: ['Hands on two dumbbells (or blocks), set slightly wider than shoulder width.', 'Body in one straight line from head to heels.', 'Lower your chest below the level of your hands — the deficit is the point.', 'Press back up without letting your hips sag or pike.'] },
   bandpull:   { steps: ['Hold the band at chest height, arms straight out in front, shoulder-width grip.', 'Pull the band apart by driving your shoulder blades together.', 'Keep your arms straight throughout — the movement comes from the shoulder blades, not the elbows.', 'Control the return; don\'t let the band snap your hands back in.'] },
+  hacksquat:   { steps: ['Shoulders under the pads, back flat on the sled, feet mid-platform about shoulder width.', 'Unlock and lower under control until your thighs pass parallel.', 'Drive through the whole foot, knees tracking over your toes.', 'Stop just short of locking out at the top — keep tension on the quads.'] },
+  lpcalf:      { steps: ['Sit in the leg press, balls of your feet on the bottom edge of the platform, legs straight.', 'Let the platform push your heels back for a full stretch.', 'Press through the balls of your feet as high as you can, pause a beat.', 'Lower slowly; keep the knees straight so the calves, not the quads, do the work.'] },
+  slcalf:      { steps: ['Stand on one foot on a step, holding something for balance, a dumbbell in the other hand if you have one.', 'Lower the heel all the way down for a full stretch.', 'Rise as high as you can onto the ball of the foot, pause at the top.', 'Slow on the way down — all reps on one leg, then switch.'] },
+  bkcalfpress: { steps: ['Sit in the leg press with your knees bent to about 90°, balls of your feet on the platform edge.', 'Keep the knee bend fixed — the bent knee is what makes this soleus work.', 'Press through the balls of your feet, pause at the top.', 'Lower slowly into a full stretch before the next rep.'] },
+  revlunge:    { steps: ['Stand tall, dumbbells at your sides.', 'Step one foot back and lower until the back knee grazes the floor, front shin near vertical.', 'Drive through the front heel to stand, bringing the back foot forward.', 'All reps on one leg, then switch — or alternate if balance is the limiter.'] },
+  stepup:      { steps: ['Face a box or bench about knee height, dumbbells at your sides.', 'Put one whole foot on the box and drive through that heel to stand up on it.', 'Don\'t push off the bottom foot — the top leg does all of it.', 'Step down under control, same leg leading each rep, then switch.'] },
+  landmine:    { steps: ['Bar in a landmine (or wedged in a corner), end of the bar held at your shoulder, half-kneeling or standing.', 'Brace the core, then press the bar up and forward until your arm is straight.', 'Lower under control back to the shoulder.', 'Weight is the plates only — the angled path is easier on cranky shoulders than a straight overhead press.'] },
   legpress:    { steps: ['Feet mid-platform, about shoulder width, back and hips flat against the pad.', 'Unlock, then lower the sled until your knees are near your chest — as deep as your hips stay down.', 'Drive through the whole foot, knees tracking over your toes.', 'Stop just short of locking the knees at the top.'] },
   cablerow:    { steps: ['Sit tall at the low pulley, feet braced, slight bend in the knees.', 'Pull the handle to your lower ribs, elbows driving back past your sides.', 'Squeeze the shoulder blades together for a beat.', 'Let the weight pull your arms long again under control — no rounding forward.'] },
   dbshoulder:  { steps: ['Sit or stand tall, dumbbells at shoulder height, palms forward or slightly turned in.', 'Brace, then press both up until your arms are straight overhead.', 'Lower under control to just below ear height.', 'Weight is per dumbbell; keep the ribs down, no leaning back.'] },
@@ -830,14 +836,18 @@ const TEMPLATES = {
      the first four, week 4 halves everything. Evidence: HYPERTROPHY BLOCK
      header below. Order inside a session: compounds first, then the
      long-length isolation work, calves/core last. */
-  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 55, items: [['squat', 4, 6], ['legpress', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['calfstand', 4, 12]] },
+  // Every session carries at least one ROTATE slot so the exercise selection
+  // actually changes each block [H9]; the seven anchors and the two lifts
+  // with no real alternative in the library (leg extension, seated curl)
+  // stay fixed.
+  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 55, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12]] },
   hypUpperA: { title: 'Upper A · Push', hyper: true, est: 55, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10]] },
-  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 55, items: [['rdl', 4, 8], ['hipthrust', 3, 10], ['legcurl', 3, 12], ['bss', 3, 10], ['calfseat', 4, 15]] },
+  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 55, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 4, 15]] },
   hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 55, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 3, 12], ['incline', 4, 10], ['reardelt', 3, 15]] },
   // Arms first while fresh — they are the reason this day exists; the delt
   // work sits after so the ramp lands on arms, not on a shoulder count that
   // pressing already feeds.
-  hypArms:   { title: 'Arms & Shoulders', hyper: true, est: 50, items: [['bbcurl', 4, 10], ['pushdown', 3, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:tricepsAcc', 3, 12], ['latraise', 4, 15], ['dbshoulder', 3, 10], ['hangraise', 2, 12]] },
+  hypArms:   { title: 'Arms & Shoulders', hyper: true, est: 50, items: [['bbcurl', 4, 10], ['pushdown', 3, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:tricepsAcc', 3, 12], ['latraise', 4, 15], ['ROTATE:shoulderAcc', 3, 10], ['hangraise', 2, 12]] },
 };
 
 /* =====================================================================
@@ -921,11 +931,19 @@ const TEMPLATES = {
    transition week. Anchor lifts — squat, bench, rdl, pullup, ohp, bbcurl,
    overheadext — are literal ids in the templates and never rotate [H9]. */
 const HYPER_MESO_WEEKS = 4;
+/* Pool order = block order: index 0 in block 1 (weeks 1-4), index 1 in
+   block 2 (weeks 5-8), index 2 (or back to 0) in the transition week. */
 const HYPER_POOLS = {
-  chestAcc:   ['cableflye', 'dbflye', 'incline'],     // block 1 cable flye, block 2 DB flye (incline is fixed on Upper B)
-  backAcc:    ['cablerow', 'dbrow', 'csrow'],         // block 1 cable row, block 2 DB row (csrow is fixed on Upper A)
-  bicepsAcc:  ['hammercurl', 'preachercurl'],
-  tricepsAcc: ['skullcrusher', 'dip'],
+  chestAcc:    ['cableflye', 'dbflye', 'incline'],     // block 1 cable flye, block 2 DB flye (incline is fixed on Upper B)
+  backAcc:     ['cablerow', 'dbrow', 'csrow'],         // block 1 cable row, block 2 DB row (csrow is fixed on Upper A)
+  bicepsAcc:   ['hammercurl', 'preachercurl'],
+  tricepsAcc:  ['skullcrusher', 'dip'],
+  quadAcc:     ['legpress', 'hacksquat'],              // the second quad compound after the squat
+  gluteAcc:    ['hipthrust', 'glutebridge', 'slhipthrust'],
+  unilateral:  ['bss', 'revlunge', 'stepup'],
+  calfStand:   ['calfstand', 'slcalf', 'lpcalf'],      // straight-knee (gastroc) slot on Lower A
+  calfSeat:    ['calfseat', 'bkcalfpress'],            // bent-knee (soleus) slot on Lower B
+  shoulderAcc: ['dbshoulder', 'landmine'],
 };
 /* The five lifting templates of a block week, Mon→Sat order (HYPER_WEEK is
    the dated layout; this is the list the block retro reports against). */
@@ -1016,7 +1034,7 @@ Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat
 
 Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 tapers into Geelong — the A race and the last race of the block, now that Melbourne is off the calendar.
 
-**After Geelong:** a recovery week, then a nine-week hypertrophy block (five lifts, two easy runs and a mobility session a week — see the Insights tab's block report), then from 30 November a twelve-week build to the February half on the same skeleton: three base weeks (strides and hills), a down week, three build weeks (tempo and intervals), a down week, two peak weeks with the longest run (21 km) three weeks out, then the same taper shape as Geelong. The long run climbs in roughly 10% steps and drops to about 70% in the down weeks.
+**After Geelong:** a recovery week, then a nine-week hypertrophy block (five lifts, two easy runs and a mobility session a week — see the Progress page's block report; the accessory lifts change every four-week block so the stimulus keeps changing), then from 30 November a twelve-week build to the February half on the same running skeleton: three base weeks (strides and hills), a down week, three build weeks (tempo and intervals), a down week, two peak weeks with the longest run (21 km) three weeks out, then the same taper shape as Geelong. The long run climbs in roughly 10% steps and drops to about 70% in the down weeks. **Lifting is maintenance from here** — two or three short sessions a week that hold what the block built; running is the point.
 
 **The taper rule:** cut the volume, keep the intensity. The tapering research (Bosquet 2007 meta-analysis) backs a 41–60% volume cut with paces and loads untouched over 8–14 days — we have 8, so it starts with the Sunday long run before race week (12–14 km, not 20) and lands at a 30–40% running cut for the final week. Lifting goes deeper than that on purpose: two short sessions Mon/Tue with the heavy work still heavy, then nothing — strength holds for 2–3 weeks without training, so the gym has nothing to gain and freshness to lose. Missed sessions from peak week stay missed; making them up now is the classic taper mistake. The app stops suggesting load increases in taper weeks instead of making the sessions feel easy.`;
 
@@ -1269,25 +1287,34 @@ function buildOffseason() {
    easy run) because it is a standing feature, not a block feature.
    ===================================================================== */
 const RUN_BUILD_WEEKS = 12;
+/* Lifting during the run build is MAINTENANCE, by request: the hypertrophy
+   block is where the gym was the point; from here running is. Two or three
+   ~40 min maintenance sessions (TEMPLATES.maint*) under PHASE_POLICY.maint
+   (small capped increases, hold at target) — enough to keep what the block
+   built without competing with the key runs. Thursday keeps the lower
+   session (clear of both key runs, per WHY_SCHEDULE); the full-body day
+   sits on Monday after the long run, where the old light lower day lived. */
+const MAINT_2 = { 1: 'maintUpper', 3: 'maintLower' };
+const MAINT_3 = { 0: 'maintFull', 1: 'maintUpper', 3: 'maintLower' };
 const RUN_BUILD_PLAN = [
-  /* wk1 */  { phase: 'Base — 3 runs, 2 lifts', lifts: { 0: 'lowerA', 3: 'upperA' }, long: 12, wed: 'Easy 35 min + 6 × 20 s strides — turnover, not effort' },
-  /* wk2 */  { phase: 'Base — 3 lifts', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 13, wed: 'Easy 40 min + 6 × 20 s strides' },
-  /* wk3 */  { phase: 'Base — 3 lifts', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 14, wed: 'Hills: 15 min easy → 6 × 45 s uphill hard, jog down → 10 min easy' },
-  /* wk4 */  { phase: 'Down week', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 10, wed: 'Easy 30 min + 4 × 20 s strides — the down week is the plan working' },
-  /* wk5 */  { phase: 'Build', lifts: null, long: 16, wed: 'Tempo: 15 min easy → 20 min at half-marathon pace → 10 min easy' },
-  /* wk6 */  { phase: 'Build', lifts: null, long: 17.5, wed: 'Intervals: 5 × 1 km at 10 km pace, 2 min jog between' },
-  /* wk7 */  { phase: 'Build', lifts: null, long: 19, wed: 'Tempo: 2 × 15 min at half-marathon pace, 3 min easy between' },
-  /* wk8 */  { phase: 'Down week', lifts: { 0: 'lowerA', 1: 'upperA', 3: 'lowerB' }, long: 13, wed: 'Easy 30 min + 4 × 20 s strides' },
-  /* wk9 */  { phase: 'Build — peak load', lifts: null, long: 21, wed: 'HM pace: 3 × 3 km at goal pace, 3 min easy between' },
-  /* wk10 */ { phase: 'Build — peak load', lifts: null, long: 17, longSub: '17 km with the last 8 km at goal half pace — the dress rehearsal', wed: 'Intervals: 6 × 1 km at 10 km pace, 90 s jog between' },
-  /* wk11 */ { phase: 'Taper', lifts: { 0: 'lowerTaperA', 1: 'upperTaperA', 3: 'lowerTaperB', 5: 'upperTaperB' }, long: 13, longSub: '12–14 km easy, last 3 km at goal half pace — the taper starts here', wed: 'Sharpener: 15 min easy → 5 × 2 min at goal half pace / 2 min float → 10 min easy' },
+  /* wk1 */  { phase: 'Base — strength maintenance', lifts: MAINT_2, long: 12, wed: 'Easy 35 min + 6 × 20 s strides — turnover, not effort' },
+  /* wk2 */  { phase: 'Base — strength maintenance', lifts: MAINT_3, long: 13, wed: 'Easy 40 min + 6 × 20 s strides' },
+  /* wk3 */  { phase: 'Base — strength maintenance', lifts: MAINT_3, long: 14, wed: 'Hills: 15 min easy → 6 × 45 s uphill hard, jog down → 10 min easy' },
+  /* wk4 */  { phase: 'Down week', lifts: MAINT_2, long: 10, wed: 'Easy 30 min + 4 × 20 s strides — the down week is the plan working' },
+  /* wk5 */  { phase: 'Build — strength maintenance', lifts: MAINT_3, long: 16, wed: 'Tempo: 15 min easy → 20 min at half-marathon pace → 10 min easy' },
+  /* wk6 */  { phase: 'Build — strength maintenance', lifts: MAINT_3, long: 17.5, wed: 'Intervals: 5 × 1 km at 10 km pace, 2 min jog between' },
+  /* wk7 */  { phase: 'Build — strength maintenance', lifts: MAINT_3, long: 19, wed: 'Tempo: 2 × 15 min at half-marathon pace, 3 min easy between' },
+  /* wk8 */  { phase: 'Down week', lifts: MAINT_2, long: 13, wed: 'Easy 30 min + 4 × 20 s strides' },
+  /* wk9 */  { phase: 'Peak — strength maintenance', lifts: MAINT_3, long: 21, wed: 'HM pace: 3 × 3 km at goal pace, 3 min easy between' },
+  /* wk10 */ { phase: 'Peak — strength maintenance', lifts: MAINT_3, long: 17, longSub: '17 km with the last 8 km at goal half pace — the dress rehearsal', wed: 'Intervals: 6 × 1 km at 10 km pace, 90 s jog between' },
+  /* wk11 */ { phase: 'Taper', lifts: { 1: 'upperTaperA', 3: 'lowerTaperA' }, long: 13, longSub: '12–14 km easy, last 3 km at goal half pace — the taper starts here', wed: 'Sharpener: 15 min easy → 5 × 2 min at goal half pace / 2 min float → 10 min easy' },
   /* wk12 */ { phase: 'race week', lifts: null, long: null, wed: 'Sharpener (short): 10 min easy → 4 × 90 s at goal half pace / 2 min float → 10 min easy' },
 ];
 function buildRunBuild(raceISO, raceKey) {
   const weeks = [];
   const startMonday = dadd(raceISO, -(RUN_BUILD_WEEKS * 7 - 1));
   const race = RACES.find(r => r.key === raceKey);
-  const NORM = { 0: 'lowerA', 1: 'upperA', 3: 'lowerB', 5: 'upperB' };
+  const NORM = MAINT_3;
   for (let w = 0; w < RUN_BUILD_WEEKS; w++) {
     const p = RUN_BUILD_PLAN[w];
     const monday = dadd(startMonday, w * 7);
@@ -1551,10 +1578,12 @@ function phaseKeyFromLabel(label) {
   if (/hypertrophy.*deload/.test(s)) return 'hyperDeload';
   if (/hypertrophy|transition/.test(s)) return 'hypertrophy';
   if (/down week/.test(s)) return 'down';
-  if (/base/.test(s)) return 'build';
-  if (/maintenance/.test(s)) return 'maint';
   if (/race week/.test(s)) return 'raceweek';
-  if (/taper/.test(s)) return 'taper';            // 'Taper' and 'Geelong mini-taper'
+  if (/taper/.test(s)) return 'taper';            // 'Taper' and 'Geelong taper'
+  // 'Base/Build/Peak — strength maintenance': the run build's lifting holds,
+  // it does not build — so this must win over the base/build/peak words.
+  if (/maintenance/.test(s)) return 'maint';
+  if (/base/.test(s)) return 'build';
   if (/recover|rebuild/.test(s)) return 'rebuild';
   if (/intro/.test(s)) return 'intro';
   if (/peak/.test(s)) return 'peak';
