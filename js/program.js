@@ -975,7 +975,29 @@ function daysUntil(iso) { const [y, m, d] = iso.split('-').map(Number); const t 
    Sessions missed in peak week are NOT made up: a missed session eight
    days out is gone, and adding it to the taper is the classic error [T1].
    ===================================================================== */
-function buildProgram() {
+/* A day-plan → the stored day shape. Shared by every block builder so a
+   lift/run/race/mobility/rest day always looks the same in ST.program. Extra
+   flags pass through: `optional` (doesn't count against adherence),
+   `mobility` (a run day that also carries the week's mobility session). */
+function dayFromPlan(date, plan) {
+  const day = { date, kind: plan.kind };
+  if (plan.kind === 'lift') {
+    day.tpl = plan.tpl;
+    day.title = plan.title || TEMPLATES[plan.tpl].title;
+    if (plan.sub) day.sub = plan.sub;
+  } else if (plan.kind === 'race') {
+    const r = RACES.find(x => x.key === plan.race);
+    day.title = '🏁 ' + r.name;
+    day.sub = r.tag + ' — the one it was all for. Replaces the long run.';
+  } else {
+    day.title = plan.title; day.sub = plan.sub;
+  }
+  if (plan.optional) day.optional = true;
+  if (plan.mobility) day.mobility = true;
+  return day;
+}
+
+function buildRaceBlock() {
   const weeks = [];
   const phases = [
     'Intro — conservative loads', 'Build', 'Build', 'Build — peak load',
@@ -1021,22 +1043,142 @@ function buildProgram() {
       // A layout entry always wins (a race replaces the long run, a cut long run
       // replaces the default one); a race week has no default lifts at all.
       const plan = (layout && layout[i]) || (raceWeek ? null : norm[i]) || RUN[i] || { kind: 'rest', title: 'Rest' };
-      const day = { date, kind: plan.kind };
-      if (plan.kind === 'lift') {
-        day.tpl = plan.tpl;
-        day.title = TEMPLATES[plan.tpl].title;
-      } else if (plan.kind === 'race') {
-        const r = RACES.find(x => x.key === plan.race);
-        day.title = '🏁 ' + r.name;
-        day.sub = r.tag + ' — the one it was all for. Replaces the long run.';
-      } else {
-        day.title = plan.title; day.sub = plan.sub;
-      }
-      days.push(day);
+      days.push(dayFromPlan(date, plan));
     }
     weeks.push({ num: w + 2, phase: phases[w], monday, days });
   }
+  return weeks;
+}
+
+/* =====================================================================
+   OFF-SEASON — recovery week + hypertrophy block (post-Geelong)
+   =====================================================================
+   Geelong (2026-09-20) is the last race until the February 2027 half. The
+   weeks between are a dated calendar like the race block, not a free-form
+   "maintenance mode": the Plan tab shows them, Home reads them through
+   dayFor(), adherence and streaks count them, and (later) days can be
+   swapped between each other like any other day.
+
+   • Recovery week, Mon 21 → Sun 27 Sep. RECOVERY_WEEK's copy laid onto real
+     days: walk/eat/sleep, then mobility, an optional very light session on
+     day 4, an easy jog on day 7 if the legs say yes.
+   • Hypertrophy block, Mon 28 Sep → Sun 29 Nov (HYPER_WEEKS = 9): two
+     4-week mesocycles (3 loading weeks + 1 deload each) and a transition
+     week that eases running back to three days before the run build
+     starts on RUN_BUILD_START. HYPER_WEEK is the weekly layout — 5 lifts,
+     2 easy runs, 1 mobility session (carried on the Wednesday run day so
+     the week keeps a real rest day). Templates and the evidence for the
+     lifting itself live in the HYPERTROPHY PHASE section above.
+   ===================================================================== */
+const RECOVERY_MONDAY = '2026-09-21';
+const HYPER_START = '2026-09-28';       // Monday of block week 1; also the accessory-rotation anchor
+const HYPER_WEEKS = 9;                  // 4 + 4 + transition
+const RUN_BUILD_START = '2026-11-30';   // Monday of the 12-week build to the February half
+/* Phase label per block week (1-based). phaseKeyFromLabel() maps these to
+   PHASE_POLICY: loading weeks → 'hypertrophy', deloads → 'hyperDeload'. */
+function hyperPhaseLabel(weekN) {
+  if (weekN === HYPER_WEEKS) return 'Transition — into the run build';
+  const block = weekN <= 4 ? 1 : 2;
+  const inBlock = ((weekN - 1) % 4) + 1;
+  return inBlock === 4 ? `Hypertrophy — block ${block} deload` : `Hypertrophy — block ${block} · week ${inBlock}`;
+}
+const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow down';
+const HYPER_WEEK = {
+  0: { kind: 'lift', tpl: 'hyperChestTri' },
+  1: { kind: 'lift', tpl: 'hyperBackBi' },
+  2: { kind: 'run', title: 'Easy Run + Mobility', sub: EASY_RUN_SUB + ' · then the week\'s mobility session', mobility: true },
+  3: { kind: 'lift', tpl: 'maintLower' },
+  4: { kind: 'lift', tpl: 'hyperShoulderArms' },
+  5: { kind: 'lift', tpl: 'hyperChestBack' },
+  6: { kind: 'run', title: 'Easy Run', sub: '45–60 min conversational. Or rest — the run is the day that moves, not a lift.' },
+};
+/* Transition week: three lifts, three runs, mobility kept — the running
+   build wants a body that has run three times a week before it asks for
+   a hard day. */
+const TRANSITION_WEEK = {
+  0: { kind: 'lift', tpl: 'hyperChestTri' },
+  1: { kind: 'run', title: 'Easy Run', sub: '40 min conversational' },
+  2: { kind: 'lift', tpl: 'maintLower' },
+  3: { kind: 'run', title: 'Easy Run + Mobility', sub: '40 min conversational · then the week\'s mobility session', mobility: true },
+  4: { kind: 'lift', tpl: 'hyperBackBi' },
+  5: { kind: 'rest', title: 'Rest' },
+  6: { kind: 'run', title: 'Long Run', sub: '60 min easy — the first long-ish run since the race, no pace target' },
+};
+const RECOVERY_LAYOUT = {
+  0: { kind: 'rest', title: 'Walk, eat, sleep', sub: 'The race is still in your legs. Nothing else today.' },
+  1: { kind: 'rest', title: 'Walk, eat, sleep', sub: 'Still nothing. Recovery is the training.' },
+  2: { kind: 'mobility', title: 'Mobility · 20 min', sub: 'Easy movement, nothing forced — or a gentle spin if you feel like moving' },
+  3: { kind: 'lift', tpl: 'recoverySession', title: 'Recovery · Move & Loosen (optional)', sub: 'Light movement, zero grinding. Skip guilt-free.', optional: true },
+  4: { kind: 'rest', title: 'Rest', sub: 'Optional easy jog if the legs feel genuinely fresh' },
+  5: { kind: 'rest', title: 'Rest', sub: 'Tomorrow: an easy run if you want one' },
+  6: { kind: 'run', title: 'Easy Run', sub: '30–40 min easy — skip guilt-free if the legs say no' },
+};
+function buildOffseason() {
+  const weeks = [];
+  const mk = (monday, phase, layout) => ({
+    phase, monday,
+    days: Array.from({ length: 7 }, (_, i) => dayFromPlan(dadd(monday, i), layout[i] || { kind: 'rest', title: 'Rest' })),
+  });
+  weeks.push(mk(RECOVERY_MONDAY, 'Recovery week', RECOVERY_LAYOUT));
+  for (let n = 1; n <= HYPER_WEEKS; n++) {
+    const monday = dadd(HYPER_START, (n - 1) * 7);
+    weeks.push(mk(monday, hyperPhaseLabel(n), n === HYPER_WEEKS ? TRANSITION_WEEK : HYPER_WEEK));
+  }
+  return weeks;
+}
+
+/* The whole calendar, numbered continuously. ST.program stores the result
+   (see the migrations in app.js), so any change here needs a migration
+   that rebuilds it — sessions/runs/routines are keyed by date and survive. */
+function buildProgram() {
+  const weeks = buildRaceBlock().concat(buildOffseason());
+  weeks.forEach((w, i) => { w.num = i + 1; });
   return { startDate: PROGRAM_START, weeks };
+}
+
+/* Which mesocycle-start date the accessory rotation counts from. The
+   calendar's block start once the off-season is live; the legacy
+   maintenance-mode start if that fallback was chosen instead. */
+function mesoAnchor(maint) {
+  return (maint && maint.active && maint.mesoStart) || HYPER_START;
+}
+
+/* The weekly mobility session: a full-body routine from the existing stretch
+   library (no second library), every area covered, sized so each area gets a
+   real dose — see [S3]/AREA_TARGET_SECS in areaStretchRoutine(). Pure. */
+const MOBILITY_MINS = 25;
+function mobilityRoutine(mins) {
+  const budget = (mins || MOBILITY_MINS) * 60;
+  const list = []; let total = 0;
+  const used = new Set();
+  const add = st => {
+    const d = stretchDur(st);
+    if (total + d > budget + 20) return false;
+    list.push({ ...st }); total += d; used.add(st.id);
+    return true;
+  };
+  // Round-robin over body areas rather than areaStretchRoutine()'s
+  // "everything relevant, best match first": with every tag in play that
+  // fills 25 minutes before it reaches the last areas (arms), which is the
+  // opposite of full-body. One stretch per area per round, best match first,
+  // rounds until the budget is spent — every area is covered by the end of
+  // round one (~10 min), later rounds deepen the dose evenly.
+  const perArea = STRETCH_AREAS.map(a => STRETCHES
+    .map((st, i) => ({ st, score: st.muscles.filter(m => a.muscles.includes(m)).length, i }))
+    .filter(x => x.score > 0)
+    .sort((x, y) => y.score - x.score || x.i - y.i)
+    .map(x => x.st));
+  for (let round = 0; round < 4; round++) {
+    let addedAny = false;
+    for (const cands of perArea) {
+      const st = cands.find(s => !used.has(s.id));
+      if (!st) continue;
+      if (!add(st)) return { list, total };
+      addedAny = true;
+    }
+    if (!addedAny) break;
+  }
+  return { list, total };
 }
 
 /* =====================================================================
@@ -1134,12 +1276,23 @@ const PHASE_POLICY = {
   // are what make that real; upMult sits between build's 1.0 and maint's 0.5
   // because this phase has no fixed end date to peak toward.
   hypertrophy: { label: 'hypertrophy phase', rpeAdj: 0, allowUp: true, upMult: 0.75, maxUpPct: 6, atTargetHold: false },
+  // Hypertrophy deload week: the PLAN halves the sets (buildSession), the load
+  // stays where it was — a deload manages fatigue, it is not a growth tool
+  // [H10 in the OFF-SEASON header], so nothing is cut twice and nothing is
+  // pushed. Distinct from 'deload' above, which also cuts load 10%.
+  hyperDeload: { label: 'deload week', rpeAdj: -1, allowUp: false, hold: 'Deload: sets halved by the plan, load stays put — come back fresh for the next block.' },
 };
 function phasePolicy(key) { return PHASE_POLICY[key] || PHASE_POLICY.build; }
 
-/* week.phase string (set by buildProgram) → policy key. */
+/* week.phase string (set by buildProgram) → policy key. Order matters: the
+   more specific tests come first ('Hypertrophy — block 1 deload' must not
+   fall through to 'hypertrophy'; 'Recovery week' is a deload, not a
+   rebuild). */
 function phaseKeyFromLabel(label) {
   const s = String(label || '').toLowerCase();
+  if (/recovery week/.test(s)) return 'deload';
+  if (/hypertrophy.*deload/.test(s)) return 'hyperDeload';
+  if (/hypertrophy|transition/.test(s)) return 'hypertrophy';
   if (/maintenance/.test(s)) return 'maint';
   if (/race week/.test(s)) return 'raceweek';
   if (/taper/.test(s)) return 'taper';            // 'Taper' and 'Geelong mini-taper'
@@ -1342,7 +1495,9 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPrescription, roundToStep, phaseKeyFromLabel, targetRPEForPhase,
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
-    warmupPlan, e1rm, buildProgram, PLATE_SET, platesPerSide,
+    warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
+    RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, RUN_BUILD_START, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
+    mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,

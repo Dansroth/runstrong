@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -121,6 +121,17 @@ const MIGRATIONS = {
     if (s.races) delete s.races.melbourne;
     s.schemaVersion = 13; return s;
   },
+  // 13 → 14: the off-season is a dated calendar (recovery week + hypertrophy
+  // block, see buildOffseason in program.js), so the program is rebuilt to
+  // run through 2026-11-29. Anyone who had started the old free-form
+  // hypertrophy maintenance mode is moved onto the calendar (active → false);
+  // the balanced 3-a-week fallback keeps working as a legacy mode. History
+  // (sessions/runs/routines, keyed by date) is untouched.
+  13: (s) => {
+    s.program = buildProgram();
+    if (s.maintenance && s.maintenance.active && s.maintenance.program === 'hypertrophy') s.maintenance.active = false;
+    s.schemaVersion = 14; return s;
+  },
 };
 
 function migrate(s) {
@@ -174,7 +185,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v32';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v33';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -431,7 +442,7 @@ function computeGuidance(date, sore, fat) {
    maintenance mode. The load side of periodisation is decided by this key. */
 function progressionCtx(date, downgrade) {
   if (downgrade) return { phase: 'deload' };
-  if (ST.maintenance.active) return { phase: inRecoveryWeek() ? 'deload' : (ST.maintenance.program === 'hypertrophy' ? 'hypertrophy' : 'maint') };
+  if (ST.maintenance.active) return { phase: inRecoveryWeek() ? 'deload' : 'maint' };   // legacy balanced fallback
   const w = weekFor(date);
   return { phase: phaseKeyFromLabel(w && w.phase) };
 }
@@ -443,9 +454,13 @@ function buildSession(date, tplId, downgrade) {
   // materializeTemplate resolves hypertrophy-phase 'ROTATE:<pool>' sentinels
   // into real exIds for this date; every other template has no sentinel and
   // passes through unchanged, so this is safe for every tplId.
-  const tpl = materializeTemplate(tplId, date, ST.maintenance.mesoStart);
+  const tpl = materializeTemplate(tplId, date, mesoAnchor(ST.maintenance));
   const ctx = progressionCtx(date, downgrade);
-  const exercises = tpl.items.map(([exId, sets, reps]) => {
+  // Hypertrophy deload week: the plan halves the sets, load stays (see
+  // PHASE_POLICY.hyperDeload). Applied before any readiness downgrade.
+  const deloadWeek = ctx.phase === 'hyperDeload';
+  const exercises = tpl.items.map(([exId, sets0, reps]) => {
+    const sets = deloadWeek ? Math.max(1, Math.ceil(sets0 / 2)) : sets0;
     const n = downgrade === 'red' ? Math.max(1, Math.round(sets * 0.6))
             : downgrade ? Math.max(1, sets - 1) : sets;
     const presc = nextPrescription(exId, exHistory(exId, date), ST.settings.step, reps, ctx);
@@ -615,7 +630,11 @@ function navBar() {
 
 function raceCountdowns() {
   if (ST.maintenance.active) return ''; // race clocks retired
-  return `<div class="races">` + RACES.map(r => {
+  // A run race stays on the header for two weeks (result next to the clock),
+  // then the calendar moves on. Unrun races always show.
+  const live = RACES.filter(r => daysUntil(r.date) >= -14 || !ST.races[r.key].result);
+  if (!live.length) return '';
+  return `<div class="races">` + live.map(r => {
     const d = daysUntil(r.date);
     const st = ST.races[r.key];
     const txt = st.result ? `✓ ${st.result}` : d > 0 ? `${d} day${d === 1 ? '' : 's'}` : d === 0 ? 'TODAY 🏁' : 'done ✓';
@@ -657,6 +676,12 @@ function activityDates() {
   const set = new Set();
   for (const id in ST.sessions) if (ST.sessions[id].status === 'done') set.add(ST.sessions[id].date);
   for (const d in mergedRunsAll()) set.add(d);
+  // a scheduled mobility session is a training day too (off-season weeks
+  // plan one); an ad-hoc cool-down on a rest day is not
+  for (const d in (ST.routines || {})) {
+    const day = dayFor(d);
+    if (day && (day.kind === 'mobility' || day.mobility) && routineDone(d, 'stretch')) set.add(d);
+  }
   return set;
 }
 function currentStreak() {
@@ -707,7 +732,7 @@ function streakHeatmap() {
 function vHome() {
   const t = today();
   const day = dayFor(t);
-  const phase = ST.maintenance.active ? (inRecoveryWeek() ? 'Recovery week' : (ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance')) : phaseLabel(t);
+  const phase = ST.maintenance.active ? (inRecoveryWeek() ? 'Recovery week' : 'Maintenance') : phaseLabel(t);
   let card = '';
   const active = ST.activeSessionId && ST.sessions[ST.activeSessionId];
   if (ST.maintenance.active && !(active && active.status === 'active')) {
@@ -732,8 +757,8 @@ function vHome() {
     card = done
       ? `<div class="card"><div class="card-kicker">Done today ✓</div><div class="card-title">${esc(day.title)}</div><button class="btn" onclick="event.stopPropagation();go('summary',{sid:'${t}'})">View summary</button></div>`
       : `<div class="card action">
-          <div class="card-kicker">Today's lift · ~${TEMPLATES[day.tpl].est} min</div>
-          <div class="card-title">${esc(day.title)}</div>
+          <div class="card-kicker">${day.optional ? 'Optional today' : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min</div>
+          <div class="card-title">${esc(day.title)}</div>${day.sub ? `<div class="card-sub">${esc(day.sub)}</div>` : ''}
           <div class="card-sub" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${TEMPLATES[day.tpl].items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button></div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
@@ -743,7 +768,11 @@ function vHome() {
        one that's next, so "Log this run" never gets pushed down the screen.
        The warm-up is mobility only: no jog, no strides. */
     const prepBtn = `<button class="btn" onclick="startRunPrep('${t}')">🔥 ${routineDone(t, 'prep') ? 'Warm up again' : `Warm up — ${runPrepMins(day)} min`}</button>`;
-    const coolBtn = `<button class="btn big" onclick="offerRunStretch('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Stretch again' : 'Cool down'}</button>`;
+    /* A run day flagged `mobility` carries the week's mobility session: the
+       cool-down slot becomes the full-body routine instead of the run-only one. */
+    const coolBtn = day.mobility
+      ? `<button class="btn big" onclick="startMobility('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Mobility done ✓ — again?' : `Mobility session — ${MOBILITY_MINS} min`}</button>`
+      : `<button class="btn big" onclick="offerRunStretch('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Stretch again' : 'Cool down'}</button>`;
     const logged = mr
       ? `<div class="run-logged">✓ ${mr.src !== 'manual' ? `<span class="svbadge ${mr.src}">${mr.src}</span> ${esc(mr.name || 'Run')} — ` : ''}${mr.km} km · ${mr.min} min · ${paceStr(mr.km, mr.min) || ''}${mr.hr ? ` · ${mr.hr} bpm` : ''}${mr.feel ? ` · felt ${mr.feel}` : ''}${mr.note ? ` · 📝 ${esc(mr.note)}` : ''}</div>
          ${coolBtn}<button class="mini" onclick="openRunLog('${t}')">${mr.feel ? 'edit' : 'add feel'}</button>`
@@ -752,7 +781,14 @@ function vHome() {
         : `${prepBtn}<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
     const raceHere = day.kind === 'race' ? RACES.find(r => r.date === t) : null;
     const raceBtn = raceHere && !ST.races[raceHere.key].result ? `<button class="btn big" onclick="openRaceResult('${raceHere.key}')" style="margin-top:8px">🏁 Log official result</button>` : '';
-    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">No lifting today — running is the priority.</div>${logged}${raceBtn}</div>`;
+    // the mobility session is its own thing — reachable whether or not the run is logged yet
+    const mobBtn = day.mobility && !mr ? coolBtn : '';
+    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : day.mobility ? "Today's run + mobility" : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">${day.mobility ? 'No lifting today — an easy run, then the week\'s mobility session.' : 'No lifting today — running is the priority.'}</div>${logged}${mobBtn}${raceBtn}</div>`;
+  } else if (day.kind === 'mobility') {
+    const done = routineDone(t, 'stretch');
+    card = `<div class="card ${done ? '' : 'action'}"><div class="card-kicker">${done ? 'Done today ✓' : `Mobility · ~${MOBILITY_MINS} min`}</div>
+      <div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div>
+      <button class="btn ${done ? '' : 'primary'} big" onclick="startMobility('${t}')">🧘 ${done ? 'Go again' : 'Start mobility session'}</button></div>`;
   } else {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
@@ -1407,24 +1443,30 @@ window.saveRaceResult = function (key) {
   toast(`${raceInfo(key).name}: ${t} logged. ${st.projAtRace ? 'Projection was ' + st.projAtRace + '.' : ''} 🎉`);
   if (key === finalRace().key) offerRecoveryMode();
 };
+/* Shown once the final race result is logged (and from the result card /
+   "Program complete" card). The off-season is already on the calendar —
+   this sheet just says so, and keeps the old free-form 3-a-week maintenance
+   reachable as a fallback for anyone who wants no calendar at all. */
 function offerRecoveryMode() {
   const m = $('#modal');
+  const hyperEnd = dadd(RUN_BUILD_START, -1);
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
-    <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. One guided recovery week either way, then pick what's next:</p>
-    ${RECOVERY_WEEK.map(l => `<div class="wksum-li">• ${esc(l)}</div>`).join('')}
-    <button class="btn primary big" onclick="startMaintenance('balanced')" style="margin-top:12px">Start recovery week → maintenance</button>
-    <div class="dim small" style="margin:2px 0 0">3 flexible workouts a week, no race clock.</div>
-    <button class="btn big" onclick="startMaintenance('hypertrophy')" style="margin-top:10px">Start recovery week → hypertrophy phase</button>
-    <div class="dim small" style="margin:2px 0 0">5 sessions a week, chest & arms priority, legs and back stay real too.</div>
-    <button class="linkbtn" onclick="closeModal()">Not yet</button></div>`;
+    <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
+    <div class="wksum-li">• <b>Recovery week</b> — ${esc(fmtDate(RECOVERY_MONDAY))} to ${esc(fmtDate(dadd(RECOVERY_MONDAY, 6)))}. Walk, eat, sleep; an optional light session Thursday; an easy jog Sunday if the legs say yes.</div>
+    <div class="wksum-li">• <b>Hypertrophy block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(hyperEnd))}. Five lifts, two easy runs and one mobility session a week, in two 4-week blocks with a deload at the end of each, then a transition week that brings running back to three days.</div>
+    <div class="wksum-li">• <b>Run build</b> — from ${esc(fmtDate(RUN_BUILD_START))}, twelve weeks to the February half.</div>
+    <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
+    <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
+    <button class="linkbtn" onclick="closeModal()">Close</button></div>`;
   m.classList.add('open');
 }
-window.startMaintenance = function (program) {
-  ST.maintenance = { active: true, startedOn: today(), program: program || 'balanced', mesoStart: today() };
+/* Legacy fallback: free-form balanced maintenance (3 sessions a week, any
+   order, no calendar). The hypertrophy block is calendar-driven now and no
+   longer a 'program' flavour here. */
+window.startMaintenance = function () {
+  ST.maintenance = { active: true, startedOn: today(), program: 'balanced', mesoStart: today() };
   save(); closeModal(); go('home');
-  toast(ST.maintenance.program === 'hypertrophy'
-    ? 'Hypertrophy phase on: recovery first, then 5 sessions a week — chest & arms lead, legs and back stay real.'
-    : 'Maintenance mode on: recovery first, then 3 workouts a week, your pace.');
+  toast('Maintenance mode on: 3 workouts a week, your pace. The calendar is back in Settings whenever you want it.');
 };
 function inRecoveryWeek() {
   if (!ST.maintenance.active || !ST.maintenance.startedOn) return false;
@@ -1438,7 +1480,6 @@ function maintenanceCard() {
       <div class="card-sub">${esc(RECOVERY_WEEK[Math.min(dayN <= 2 ? 0 : dayN === 3 ? 1 : dayN === 4 ? 2 : dayN <= 6 ? 3 : 4, 4)])}</div>
       ${dayN >= 3 && !(ST.sessions[t] && ST.sessions[t].status === 'done') ? `<button class="btn big" onclick="openReadiness('${t}','recoverySession')">Optional: Recovery workout (~25 min)</button>` : ''}</div>`;
   }
-  if (ST.maintenance.program === 'hypertrophy') return maintenanceCardHyper(t);
   // regular maintenance: 3 sessions per calendar week (Mon-Sun), any order, any day
   const dow = new Date(t + 'T12:00').getDay();
   const monday = dadd(t, -( (dow + 6) % 7 ));
@@ -1456,31 +1497,6 @@ function maintenanceCard() {
     `<div class="card-sub">All 3 workouts done this week. 🎉 Anything more is bonus.</div>`}
   </div>`;
 }
-/* Hypertrophy-phase variant: a fixed 5-day weekly order (HYPER_ORDER) rather
-   than the balanced mode's 3-of-N round robin, since every one of the 5 is
-   meant to happen every week, not compete for a shrinking pool of slots.
-   Running gets a light, unenforced suggestion here — no scheduled days, no
-   periodization, just a visible weekly target (see HYPERTROPHY_PROMPT.md's
-   "running-maintenance" decision). */
-const HYPER_RUN_TARGET = 2;
-function maintenanceCardHyper(t) {
-  const dow = new Date(t + 'T12:00').getDay();
-  const monday = dadd(t, -((dow + 6) % 7));
-  const weekEnd = dadd(monday, 6);
-  const doneThisWeek = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= monday && s.date <= weekEnd);
-  const doneTpls = doneThisWeek.map(s => s.tpl);
-  const allDone = HYPER_ORDER.every(tp => doneTpls.includes(tp));
-  const next = HYPER_ORDER.find(tp => !doneTpls.includes(tp));
-  const doneToday = ST.sessions[t] && ST.sessions[t].status === 'done';
-  const runsThisWeek = Object.keys(mergedRunsAll()).filter(d => d >= monday && d <= weekEnd).length;
-  return `<div class="card action"><div class="card-kicker">Hypertrophy phase · ${doneThisWeek.length}/5 this week</div>
-    ${doneToday ? `<div class="card-sub">Done today ✓ — rest, or go again tomorrow.</div>`
-      : allDone ? `<div class="card-sub">All 5 done this week. 🎉 Anything more is bonus.</div>`
-      : `<button class="btn big primary" onclick="openReadiness('${t}','${next}')" style="margin-top:4px">${esc(TEMPLATES[next].title)} · ~${TEMPLATES[next].est} min</button>`}
-    <div class="card-sub dim" style="margin-top:10px">🏃 ${runsThisWeek} of ${HYPER_RUN_TARGET} easy runs logged this week — no schedule, just a target to hold your aerobic base.</div>
-  </div>`;
-}
-
 /* ---------- readiness check ---------- */
 window.openReadiness = function (date, tpl) {
   ensureAudio();
@@ -2154,7 +2170,7 @@ function routineDone(date, kind) {
 function startLiftPrep(date, tpl, readiness, downgrade, guidance, mins) {
   closeModal();
   const m = mins || PREP_MINS_LIFT;
-  const r = prepRoutine(plannedLoads(tpl, date, ST.maintenance.mesoStart), m, { soreBias: !!(readiness && readiness.sore >= 4) });
+  const r = prepRoutine(plannedLoads(tpl, date, mesoAnchor(ST.maintenance)), m, { soreBias: !!(readiness && readiness.sore >= 4) });
   startRoutine({
     list: r.list, kind: 'prep', title: '🔥 Warm-up',
     endLabel: 'skip the rest — start the workout',
@@ -2186,6 +2202,20 @@ window.offerRunStretch = function (date) {
     <button class="btn big" onclick="startRunStretch('${date}',10)">Long — ~${est(10)} min</button>
     <button class="linkbtn" onclick="closeModal()">Not now</button></div>`;
   m.classList.add('open');
+};
+/* The weekly mobility session — a scheduled `kind: 'mobility'` day, or the
+   `mobility` flag on a run day. Full body from the existing stretch library
+   (mobilityRoutine in program.js), logged like any other routine so streaks,
+   the Plan tab and the block retro can count it. */
+window.startMobility = function (date) {
+  closeModal();
+  const r = mobilityRoutine(MOBILITY_MINS);
+  startRoutine({
+    list: r.list, kind: 'stretch', title: '🧘 Mobility',
+    endLabel: 'end mobility — back to today',
+    markComplete: () => markRoutine(date, 'stretch', MOBILITY_MINS, r.list.length),
+    onDone: () => go('home'),
+  });
 };
 window.startRunStretch = function (date, mins) {
   closeModal();
@@ -2360,14 +2390,14 @@ function sessionPRs(s) {
 function adherence() {
   const t = today();
   if (ST.maintenance.active) {
-    // maintenance: 3/week (balanced) or 5/week (hypertrophy) since start
-    const perWeek = ST.maintenance.program === 'hypertrophy' ? HYPER_ORDER.length : 3;
+    // legacy maintenance: 3 flexible sessions a week since start
+    const perWeek = 3;
     const weeks = Math.max(1, Math.ceil((new Date(t) - new Date(ST.maintenance.startedOn || t)) / (7 * 86400000)));
     const done = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= (ST.maintenance.startedOn || t)).length;
     return { done, planned: weeks * perWeek, streak: null };
   }
   const days = [];
-  for (const wk of ST.program.weeks) for (const d of wk.days) if (d.kind === 'lift' && d.date <= t) days.push(d.date);
+  for (const wk of ST.program.weeks) for (const d of wk.days) if (d.kind === 'lift' && !d.optional && d.date <= t) days.push(d.date);
   const done = days.filter(d => ST.sessions[d] && ST.sessions[d].status === 'done').length;
   let streak = 0;
   for (let i = days.length - 1; i >= 0; i--) {
@@ -2464,7 +2494,8 @@ function vSchedule() {
         const runLogged = isRun && !!merged;
         const runSkipped = isRun && !merged && ST.runs[d.date] && ST.runs[d.date].skipped;
         const extraRun = !isRun && merged && merged.src !== 'manual';   // synced run on a non-plan day (Runna ≠ plan)
-        const icon = d.kind === 'run' ? '🏃' : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
+        const mobDone = (d.kind === 'mobility' || d.mobility) && routineDone(d.date, 'stretch');
+        const icon = d.kind === 'run' ? (d.mobility ? '🏃🧘' : '🏃') : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
         if (done) action = `<button class="mini" onclick="event.stopPropagation();go('summary',{sid:'${d.date}'})">view</button>`;
         else if (isRun && d.date <= t) action = `<button class="mini" onclick="event.stopPropagation();openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
@@ -2473,7 +2504,7 @@ function vSchedule() {
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}"${rowClick}>
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${extraRun ? '🏃' : icon}</span>
-          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge '+merged.src+'">'+merged.src+'</span>' : esc(d.title || 'Rest')}${done || runLogged ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
+          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge '+merged.src+'">'+merged.src+'</span>' : esc(d.title || 'Rest')}${done || runLogged || (mobDone && !isRun) ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
           ${action}
         </div>`;
       }).join('')}
@@ -2602,7 +2633,7 @@ function vExDetail() {
 function vDayPreview() {
   const tplId = view.tpl;
   const date = view.date || today();
-  const tpl = materializeTemplate(tplId, date, ST.maintenance.mesoStart);
+  const tpl = materializeTemplate(tplId, date, mesoAnchor(ST.maintenance));
   if (!tpl) return vSchedule();
   return `<header class="top slim"><button class="backbtn" aria-label="Back to Plan" onclick="go('schedule')">‹</button><h1 class="phase">${esc(tpl.title)}</h1></header>
   <main>
@@ -2622,7 +2653,7 @@ function buildWeeklySummary(monday) {
   const wk = ST.program.weeks.find(w => w.days[0].date === monday) || weekFor(monday);
   const inWeek = d => d >= monday && d <= sunday;
   const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && inWeek(s.date));
-  const planned = ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? HYPER_ORDER.length : 3) : wk ? wk.days.filter(d => d.kind === 'lift').length : 4;
+  const planned = ST.maintenance.active ? 3 : wk ? wk.days.filter(d => d.kind === 'lift' && !d.optional).length : 4;
   // strength movement vs LAST week
   const prevMon = dadd(monday, -7), prevSun = dadd(monday, -1);
   const topIn = (exId, from, to) => {
@@ -2680,16 +2711,22 @@ function buildWeeklySummary(monday) {
     'Intro': 'settling into the pattern', 'Build': 'the heaviest work of the block lives here',
     'Build — peak load': 'the peak — after this it only gets lighter',
     'Geelong taper': 'volume drops, intensity stays crisp — race legs loading, that\'s the plan working, not slacking',
+    'Recovery week': 'walk, eat, sleep — the race is still in your legs',
+    'Hypertrophy — block 1 deload': 'sets halved, loads kept — fatigue out, then block 2',
+    'Hypertrophy — block 2 deload': 'sets halved, loads kept — last deload before running comes back',
+    'Hypertrophy': '5 lifts, 2 easy runs, 1 mobility session — sets creep up each week',
+    'Transition': 'three lifts, three easy runs — the body relearns running before the build asks anything of it',
   };
-  const phaseKey = p => Object.keys(PHASE_FOCUS).find(k => (p || '').startsWith(k.split(' —')[0]));
-  const nextFocus = nextWk ? (PHASE_FOCUS[phaseKey(nextWk.phase)] || nextWk.phase) : 'race day — go get it';
+  // longest matching key wins, so 'Hypertrophy — block 1 deload' beats 'Hypertrophy'
+  const phaseKey = p => Object.keys(PHASE_FOCUS).sort((a, b) => b.length - a.length).find(k => (p || '').startsWith(k));
+  const nextFocus = nextWk ? (PHASE_FOCUS[phaseKey(nextWk.phase)] || nextWk.phase) : 'the calendar ends here — time to plan the next block';
   // a note of yours from the week
   let note = null;
   for (const s of doneSessions) for (const e of s.exercises) for (const t of e.sets) if (t.note && (!note || t.note.length > note.length)) note = t.note;
   for (const d of Object.keys(ST.runs)) if (inWeek(d) && ST.runs[d].note && (!note || ST.runs[d].note.length > note.length)) note = ST.runs[d].note;
-  return { weekOf: monday, phase: ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance') : wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
+  return { weekOf: monday, phase: ST.maintenance.active ? 'Maintenance' : wk ? `Week ${wk.num} — ${wk.phase}` : 'off-plan week',
     nextPhase: ST.maintenance.active ? null : nextWk ? `Week ${nextWk.num} — ${nextWk.phase}` : null,
-    nextFocus: ST.maintenance.active ? (ST.maintenance.program === 'hypertrophy' ? 'hypertrophy phase — chest & arms priority, 5 sessions a week' : 'maintenance — 3 workouts a week, your pace') : nextFocus,
+    nextFocus: ST.maintenance.active ? 'maintenance — 3 workouts a week, your pace' : nextFocus,
     raceWeeks: Math.max(0, Math.ceil(raceDays / 7)), raceName: race.name,
     sessionsDone: doneSessions.length, planned, improvements, prs,
     hrvPts, hrvAvg: hrvAvg != null ? Math.round(hrvAvg) : null, hrvBase: base.ready ? Math.round(base.mean) : null,
@@ -2918,7 +2955,7 @@ function liftTrajectories() {
    liftTrajectories()'s 3+ sessions: a phase can legitimately be young. */
 const HYPER_ANCHORS = ['bench', 'pullup', 'ohp', 'bbcurl', 'pushdown'];
 function hyperTrajectories() {
-  const since = ST.maintenance.startedOn || today();
+  const since = HYPER_START;
   const out = [];
   for (const exId of HYPER_ANCHORS) {
     const hist = exHistory(exId).filter(h => h.date >= since);
@@ -3153,10 +3190,10 @@ function insightsBody() {
     `}
 
     ${retroReady ? `<div class="section-label">The block</div>
-      <div class="card"><div class="card-sub">Nine weeks, two races — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}
+      <div class="card"><div class="card-sub">Six weeks, one race — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}
 
-    ${ST.maintenance.active && ST.maintenance.program === 'hypertrophy' ? `<div class="section-label">The hypertrophy phase</div>
-      <div class="card"><div class="card-sub">Chest and arms lead, legs and back held steady — how it's actually going.</div><button class="btn primary big" onclick="showHyperRetro()">🏋️ Phase, in numbers</button></div>` : ''}`;
+    ${today() >= HYPER_START && !ST.maintenance.active ? `<div class="section-label">The hypertrophy block</div>
+      <div class="card"><div class="card-sub">Five lifts, two easy runs, one mobility session a week — how it's actually going.</div><button class="btn primary big" onclick="showHyperRetro()">🏋️ Block, in numbers</button></div>` : ''}`;
 }
 /* one-shot post-block report */
 window.showRetro = function () {
@@ -3189,27 +3226,31 @@ window.showRetro = function () {
    ongoing "how's it going" for a phase that has no end date */
 const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory' };
 window.showHyperRetro = function () {
-  const since = ST.maintenance.startedOn || today();
-  const mesoStart = ST.maintenance.mesoStart || since;
-  const weeksIn = weeksSince(mesoStart, today()) + 1;
-  const blockNum = Math.floor(weeksSince(mesoStart, today()) / HYPER_MESO_WEEKS) + 1;
+  const since = HYPER_START;
+  const mesoStart = mesoAnchor(ST.maintenance);
+  const t = today();
+  const weeksIn = Math.min(HYPER_WEEKS, weeksSince(since, t) + 1);
+  const blockNum = Math.floor(weeksSince(mesoStart, t) / HYPER_MESO_WEEKS) + 1;
   const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= since);
   const byTpl = {};
   for (const s of doneSessions) byTpl[s.tpl] = (byTpl[s.tpl] || 0) + 1;
-  const dayLines = HYPER_ORDER.map(tp => `${TEMPLATES[tp].title}: ${byTpl[tp] || 0}`);
+  const weekTpls = [...new Set(Object.values(HYPER_WEEK).filter(p => p.kind === 'lift').map(p => p.tpl))];
+  const dayLines = weekTpls.map(tp => `${TEMPLATES[tp].title}: ${byTpl[tp] || 0}`);
   const traj = hyperTrajectories();
   const lifters = traj.map(x => `${x.name}: ${x.pct >= 0 ? '+' : ''}${x.pct}% e1RM`);
-  const totTon = Math.round(tonnageIn(since, today()) / 100) / 10;
+  const totTon = Math.round(tonnageIn(since, t) / 100) / 10;
   const runsInPhase = Object.keys(mergedRunsAll()).filter(d => d >= since).length;
-  const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, today())].name}`);
+  const runsPlanned = ST.program.weeks.filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => d.kind === 'run' && d.date <= t).length, 0);
+  const mobilityDone = Object.keys(ST.routines || {}).filter(d => d >= since && routineDone(d, 'stretch') && (dayFor(d) || {}).mobility).length;
+  const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, t)].name}`);
   const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><h2>🏋️ Hypertrophy phase, in numbers</h2>
-    <div class="dim small" style="margin-bottom:10px">Week ${weeksIn} of this phase · rotation block ${blockNum} (accessories rotate every ${HYPER_MESO_WEEKS} weeks)</div>
-    <div class="wksum-sec"><div class="wksum-h">📅 Sessions this phase</div>${dayLines.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
+  m.innerHTML = `<div class="sheet"><h2>🏋️ Hypertrophy block, in numbers</h2>
+    <div class="dim small" style="margin-bottom:10px">Week ${weeksIn} of ${HYPER_WEEKS} · rotation block ${blockNum} (accessories rotate every ${HYPER_MESO_WEEKS} weeks)</div>
+    <div class="wksum-sec"><div class="wksum-h">📅 Sessions this block</div>${dayLines.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
     <div class="wksum-sec"><div class="wksum-h">🏋️ Anchor lifts (est. 1RM change)</div>
       ${lifters.length ? lifters.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('') : '<div class="wksum-li dim">Not enough repeat sessions yet to compare.</div>'}</div>
     <div class="wksum-sec"><div class="wksum-h">🔄 Currently rotating in</div>${rotation.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
-    <div class="wksum-sec"><div class="wksum-h">🏃 Running maintenance</div><div class="wksum-li">${runsInPhase} run${runsInPhase === 1 ? '' : 's'} logged this phase — no schedule, just showing up</div></div>
+    <div class="wksum-sec"><div class="wksum-h">🏃 Easy running · 🧘 mobility</div><div class="wksum-li">${runsInPhase} of ${runsPlanned} planned run${runsPlanned === 1 ? '' : 's'} logged · ${mobilityDone} mobility session${mobilityDone === 1 ? '' : 's'} done</div></div>
     <div class="wksum-sec"><div class="wksum-h">📦 Totals</div><div class="wksum-li">${doneSessions.length} gym sessions · ${totTon} t lifted</div></div>
     <button class="btn primary big" onclick="closeModal()">Close</button></div>`;
   m.classList.add('open');
@@ -3241,15 +3282,10 @@ function vSettings() {
     ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span>${toggleBtn(ST.settings.equip[k], `ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()`)}</div>`).join('')}
     <div class="section-label">Mode</div>
     ${ST.maintenance.active
-      ? `<div class="dim small" style="margin-bottom:8px">${ST.maintenance.program === 'hypertrophy' ? 'Hypertrophy phase' : 'Maintenance mode'} is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: ${ST.maintenance.program === 'hypertrophy' ? '5 sessions a week — chest & arms priority, legs and back stay real' : '3 flexible gym workouts a week'}, no race clock.</div>
-         <div class="set-row"><span>Focus</span><select onchange="ST.maintenance.program=this.value; if(this.value==='hypertrophy' && !ST.maintenance.mesoStart) ST.maintenance.mesoStart=today(); save();render()">
-           <option value="balanced" ${ST.maintenance.program !== 'hypertrophy' ? 'selected' : ''}>Balanced</option>
-           <option value="hypertrophy" ${ST.maintenance.program === 'hypertrophy' ? 'selected' : ''}>Hypertrophy — chest & arms</option>
-         </select></div>
-         <button class="btn big" onclick="if(confirm('Switch back to the race program view?')){ST.maintenance={active:false,startedOn:null,program:'balanced',mesoStart:null};save();render();}">Back to program mode</button>`
-      : `<div class="dim small" style="margin-bottom:8px">After the last race the app offers this choice automatically — or start it any time here.</div>
-         <button class="btn big" onclick="if(confirm('Start maintenance mode? The race program view is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance('balanced')">Start maintenance mode</button>
-         <button class="btn big" onclick="if(confirm('Start the hypertrophy phase? The race program view is replaced by 5 sessions a week — chest & arms priority. You can switch back here any time.'))startMaintenance('hypertrophy')">Start hypertrophy phase</button>`}
+      ? `<div class="dim small" style="margin-bottom:8px">Maintenance mode is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: 3 flexible gym workouts a week, no calendar, no race clock.</div>
+         <button class="btn big" onclick="if(confirm('Back to the calendar? Today\\'s plan takes over from the flexible workouts.')){ST.maintenance={active:false,startedOn:null,program:'balanced',mesoStart:null};save();render();}">Back to the calendar</button>`
+      : `<div class="dim small" style="margin-bottom:8px">The calendar runs the race block, the recovery week, the hypertrophy block (${fmtDate(HYPER_START)} → ${fmtDate(dadd(RUN_BUILD_START, -1))}) and the February build. Today: ${esc(phaseLabel(today()))}.</div>
+         <button class="btn big" onclick="if(confirm('Switch to maintenance mode? The calendar is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance('balanced')">Switch to 3 flexible workouts (no calendar)</button>`}
     <div class="section-label">Run sync</div>
     <div class="dim small" style="margin-bottom:8px">Import your runs from <b>Garmin Connect</b> (free): on connect.garmin.com go to Activities → All Activities → Export CSV, then load the file here. Re-imports skip runs it already knows.</div>
     <button class="btn primary big" onclick="document.getElementById('garminpick').click()">📥 Import Garmin CSV</button>
