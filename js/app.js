@@ -204,7 +204,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v36';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v37';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2632,75 +2632,158 @@ window.showWhy = function () {
    strength trajectory, aerobic verdict, cause-and-effect). They were separate
    "History" and "Trends" tabs, which split the same question ("how is my squat
    going?") across two places that both deep-linked to the same detail screen. */
-let progressTab = 'log';   // remembered across navigations within a session
-window.setProgressTab = function (t) { progressTab = t; view = { name: 'progress', tab: t }; render(); window.scrollTo(0, 0); };
-function vProgress() {
-  const tab = view.tab || progressTab;
-  progressTab = tab;
-  const seg = `<div class="seg" role="tablist">
-    <button class="seg-btn ${tab === 'log' ? 'sel' : ''}" role="tab" aria-selected="${tab === 'log'}" onclick="setProgressTab('log')">📈 Log</button>
-    <button class="seg-btn ${tab === 'insights' ? 'sel' : ''}" role="tab" aria-selected="${tab === 'insights'}" onclick="setProgressTab('insights')">📊 Insights</button>
-  </div>`;
-  return `<header class="top"><h1 class="phase">Progress</h1>${seg}</header>
-  <main>${tab === 'log' ? logBody() : insightsBody()}</main>${navBar()}`;
+/* ---------- Progress ----------
+   One page, four sections — Strength, Running, Recovery, Milestones — each
+   a headline number, one chart and at most three lines, with everything
+   else behind a "Details" disclosure or the existing detail views
+   (vExDetail, showWeeklySummary, showRetro, showHyperRetro). It used to be
+   two segments and ~20 items with the EF chart drawn twice; the old
+   Log/Insights names survive only as deep-link aliases (setProgressTab).
+   Order is phase-aware: Strength first in the hypertrophy block, Running
+   first in a race build. A section with no data collapses to one dim line,
+   never an empty chart. Nothing was deleted on the computation side —
+   liftTrajectories, the explorers, efVerdict… only where they render. */
+window.setProgressTab = function () { view = { name: 'progress' }; render(); window.scrollTo(0, 0); };
+const PROGRESS_WEEKS = 10;   // bars shown: the last 10 weeks up to the current one
+/* The last PROGRESS_WEEKS rows of weeklyLoad() up to the current week —
+   28 calendar weeks of bars is unreadable on a phone. */
+function recentLoad() {
+  const t = today();
+  const all = weeklyLoad();
+  let idx = all.findIndex(w => t >= w.monday && t <= dadd(w.monday, 6));
+  if (idx < 0) idx = all.length - 1;
+  return { rows: all.slice(Math.max(0, idx - PROGRESS_WEEKS + 1), idx + 1), cur: all[idx] || null, prev: all[idx - 1] || null };
 }
-
-/* ---------- Progress · Log (was the History tab) ---------- */
-function logBody() {
-  // weekly volume
-  const weekVols = planWeeks().map(wk => {
-    let vol = 0, sessions = 0;
-    for (const d of wk.days) {
-      const s = ST.sessions[d.date];
-      if (!s || s.status !== 'done') continue;
-      sessions++;
-      for (const e of s.exercises) {
-        const ex = EXERCISES[e.exId];
-        if (ex.mode !== 'reps') continue;
-        for (const t of e.sets.filter(x => x.done)) vol += (t.weight || 0) * (t.reps || 0) * (ex.perSide ? 2 : 1);
-      }
-    }
-    return { wk: wk.num, vol, sessions };
-  });
-  const maxV = Math.max(1, ...weekVols.map(v => v.vol));
-  // exercises with history
+function barChart(rows, key, fmt, cls) {
+  const max = Math.max(1, ...rows.map(r => r[key]));
+  return `<div class="volchart">${rows.map(r => `<div class="volcol"><div class="volbar ${cls || ''}" style="height:${Math.max(2, 100 * r[key] / max)}%"></div><div class="voln">${r[key] ? fmt(r[key]) : ''}</div><div class="voll">W${r.wk}</div></div>`).join('')}</div>`;
+}
+const vs = (cur, prev, unit) => prev == null || !prev ? '' : ` <span class="dim small">vs ${prev}${unit} last week</span>`;
+function secStrength(load) {
+  const safe = (fn, fb) => { try { return fn(); } catch (e) { return fb; } };
   const withHist = Object.keys(EXERCISES).filter(id => exHistory(id).length > 0);
-  // running progress (merged: Strava is source of truth, manual entries fill gaps + carry feel)
+  if (!withHist.length) return `<div class="section-label">🏋️ Strength</div><div class="dim small sec-empty">Your first logged lift starts this section.</div>`;
+  const traj = safe(liftTrajectories, []);
+  const prsL = safe(liftPRBook, []);
+  const movers = traj.slice(0, 3);
+  const cur = load.cur ? load.cur.tonnes : 0;
+  return `<div class="section-label">🏋️ Strength</div>
+    <div class="card">
+      <div class="headline">${cur} t <span class="headline-sub">lifted this week</span>${vs(cur, load.prev && load.prev.tonnes, ' t')}</div>
+      ${barChart(load.rows, 'tonnes', v => v.toFixed(1))}
+      ${movers.length ? `<div class="tj-wrap">${trajBars(movers)}</div><div class="dim small">Estimated 1RM, early sessions vs recent — tap a lift for its chart.</div>` : `<div class="dim small">Log each lift 3+ times and its trajectory appears here.</div>`}
+      <details class="disc"><summary>All lifts, PR book ›</summary>
+        ${prsL.length ? `<div class="prb-h">🏆 PR book</div>` + prsL.map(p => `<div class="prb-row" onclick="go('exdetail',{ex:'${p.exId}',back:'insights'})">
+          <span class="prb-name">${esc(p.name)}</span><span class="prb-val">${p.maxW} kg × ${p.wReps}</span>
+          <span class="prb-sub">${p.maxE > 0 ? `e1RM ${p.maxE.toFixed(1)} · ${fmtDate(p.eDate)}` : fmtDate(p.wDate)}</span></div>`).join('') : ''}
+        ${traj.length > 3 ? `<div class="prb-h" style="margin-top:12px">Every trajectory</div><div class="tj-wrap">${trajBars(traj)}</div>` : ''}
+        <div class="prb-h" style="margin-top:12px">Every lift you've logged</div>
+        ${withHist.map(id => { const h = exHistory(id); const top = Math.max(...h[h.length - 1].sets.map(t => t.weight || 0));
+          return `<button class="exlist-row" onclick="go('exdetail',{ex:'${id}',back:'log'})"><span>${esc(EXERCISES[id].name)}</span><span class="dim">${h.length} session${h.length > 1 ? 's' : ''} · last ${top} kg</span><span>›</span></button>`; }).join('')}
+      </details>
+    </div>`;
+}
+function secRunning(load) {
   const mergedAll = mergedRunsAll();
   const runPts = Object.keys(mergedAll).map(d => {
     const r = mergedAll[d]; const day = dayFor(d);
     const type = day && day.kind === 'race' ? 'race' : runKind(d, r);
     return { date: d, km: r.km, min: r.min, hr: r.hr, feel: r.feel, splits: r.splits || [], type, src: r.src, name: r.name, pace: r.km && r.min ? r.min * 60 / r.km : null };
   }).filter(p => p.pace);
-  const weekKms = planWeeks().map(wk => {
-    let km = 0;
-    for (const d of wk.days) { const r = mergedAll[d.date]; if (r) km += r.km || 0; }
-    return { wk: wk.num, km };
-  });
-  const maxKm = Math.max(1, ...weekKms.map(v => v.km));
+  if (!runPts.length) return `<div class="section-label">🏃 Running</div><div class="dim small sec-empty">Log or sync a run and this section fills in.</div>`;
+  const rb = (() => { try { return runBests(); } catch (e) { return null; } })();
+  const last = runPts[runPts.length - 1];
   const typeIcon = t => t === 'Hard Run' ? '⚡' : t === 'Long Run' ? '🛣️' : t === 'race' ? '🏁' : '🏃';
-  return `
-    <div class="dim small" style="margin:-4px 0 10px">${esc(phaseLabel(today()))}</div>
-    ${vFitness()}
-    <div class="section-label">🏃 Running — weekly km</div>
-    <div class="volchart">${weekKms.map(v => `<div class="volcol"><div class="volbar runbar" style="height:${Math.max(2, 100 * v.km / maxKm)}%"></div><div class="voln">${v.km ? v.km.toFixed(0) : ''}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
-    <div class="section-label">Pace trend (min/km — up = faster)</div>
-    ${runPaceChart(runPts)}
-    ${runPts.length ? `<div class="section-label">Run log</div>` + runPts.slice().reverse().map(p =>
-      `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}${p.src !== 'manual' ? ' <span class="svbadge ' + p.src + '">' + p.src + '</span>' : ''}</b>
-       <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''}${p.feel ? ` · felt ${p.feel}` : ''}</span>
-       ${p.splits.length ? `<div class="notesum">splits: ${p.splits.map(fmtSplit).join(' · ')}</div>` : ''}</div>`).join('') : ''}
-    ${ST.weeklySummaries.length ? `<div class="section-label">📒 Weekly summaries</div>` + ST.weeklySummaries.slice().reverse().map((s, i) =>
-      `<button class="exlist-row" onclick='showWeeklySummary(ST.weeklySummaries[${ST.weeklySummaries.length - 1 - i}], true)'><span>${esc(s.phase)}</span><span class="dim">week of ${fmtDate(s.weekOf)}</span><span>›</span></button>`).join('') : ''}
-    <div class="section-label">🏋️ Lifting — weekly volume (tonnes)</div>
-    <div class="volchart">${weekVols.map(v => `<div class="volcol"><div class="volbar" style="height:${Math.max(2, 100 * v.vol / maxV)}%"></div><div class="voln">${(v.vol / 1000).toFixed(1)}</div><div class="voll">W${v.wk}</div></div>`).join('')}</div>
-    <div class="section-label">Every lift you've logged</div>
-    ${withHist.length ? withHist.map(id => {
-      const h = exHistory(id);
-      const last = h[h.length - 1];
-      const top = Math.max(...last.sets.map(t => t.weight || 0));
-      return `<button class="exlist-row" onclick="go('exdetail',{ex:'${id}',back:'log'})"><span>${esc(EXERCISES[id].name)}</span><span class="dim">${h.length} session${h.length > 1 ? 's' : ''} · last ${top} kg</span><span>›</span></button>`;
-    }).join('') : `<div class="card"><div class="card-sub">No workouts logged yet. Charts appear here after your first session.</div></div>`}`;
+  const cur = load.cur ? load.cur.km : 0;
+  return `<div class="section-label">🏃 Running</div>
+    <div class="card">
+      <div class="headline">${cur} km <span class="headline-sub">this week</span>${vs(cur, load.prev && load.prev.km, ' km')}</div>
+      ${barChart(load.rows, 'km', v => v.toFixed(0), 'runbar')}
+      <div class="sumrow"><span>Last run: ${typeIcon(last.type)} ${fmtDate(last.date)} — ${last.km} km · ${paceStr(last.km, last.min)}${last.feel ? ` · felt ${last.feel}` : ''}</span></div>
+      ${rb ? `<div class="sumrow"><span>Longest ${rb.longest.km} km (${fmtDate(rb.longest.date)}) · biggest week ${rb.bigWeek.km} km</span></div>` : ''}
+      <details class="disc"><summary>Pace trend, run bests, run log ›</summary>
+        <div class="prb-h">Pace trend (min/km — up = faster)</div>
+        ${runPaceChart(runPts)}
+        ${rb ? `<div class="prb-h" style="margin-top:12px">🏆 Run bests</div>` + rb.buckets.map(b => `<div class="prb-row"><span class="prb-name">${esc(b.label)}</span><span class="prb-val">${b.pace}</span><span class="prb-sub">${b.km} km · ${fmtDate(b.date)}</span></div>`).join('') : ''}
+        <div class="prb-h" style="margin-top:12px">Run log</div>
+        ${runPts.slice().reverse().map(p => `<div class="sumrow"><b>${typeIcon(p.type)} ${fmtDate(p.date)} — ${esc(p.type === 'race' ? 'RACE' : p.type)}${p.src !== 'manual' ? ' <span class="svbadge ' + p.src + '">' + p.src + '</span>' : ''}</b>
+          <span>${p.km} km · ${p.min} min · ${paceStr(p.km, p.min)}${p.hr ? ` · ${p.hr} bpm` : ''}${p.feel ? ` · felt ${p.feel}` : ''}</span>
+          ${p.splits.length ? `<div class="notesum">splits: ${p.splits.map(fmtSplit).join(' · ')}</div>` : ''}</div>`).join('')}
+      </details>
+    </div>`;
+}
+function secRecovery(load) {
+  const safe = (fn, fb) => { try { return fn(); } catch (e) { return typeof fb === 'function' ? fb(e) : fb; } };
+  const es = fitnessEntries();
+  const t = today();
+  const vo2Dates = Object.keys(ST.fitness.vo2).sort();
+  const vo2 = vo2Dates.length ? ST.fitness.vo2[vo2Dates[vo2Dates.length - 1]] : null;
+  const vo2Btn = `<button class="mini" style="margin-left:8px" onclick="updateVo2()">VO₂: ${vo2 ?? '—'} ✎</button>`;
+  const hrvPts = es.filter(e => e.hrv != null);
+  const ef = safe(efVerdict, { ready: false, n: 0, pts: [] });
+  const explErr = e => ({ ready: false, line: `This one hit an error (${e.message}) — the rest of the page still works.` });
+  const explorers = [
+    { icon: '🔻', title: 'Do red days pay off?', s: safe(redDayStory, explErr) },
+    { icon: '🔁', title: 'Big weeks → next-week recovery', s: safe(loadHrvLag, explErr) },
+    { icon: '🏃', title: 'Do long runs hurt your lifting?', s: safe(runInterference, explErr) },
+    { icon: '⚖️', title: 'Same weight, less effort?', s: safe(rpeDrift, explErr) },
+  ];
+  if (hrvPts.length < 2 && !ef.pts.length) return `<div class="section-label">💓 Recovery ${vo2Btn}</div><div class="dim small sec-empty">Two morning check-ins (HRV + resting HR) start this section. Prompts appear on training days.</div>`;
+  const b = hrvBaseline(dadd(t, 1));
+  const latest = es[es.length - 1];
+  let headline, headSub;
+  if (!b.ready) { headline = `${latest && latest.hrv != null ? latest.hrv + ' ms' : '—'}`; headSub = `baseline building · ${Math.min(b.n ?? es.length, 5)} of 5 mornings`; }
+  else {
+    const dev = latest.hrv - b.mean;
+    headline = `${latest.hrv} ms`;
+    headSub = Math.abs(dev) <= Math.max(0.75 * b.sd, 4) ? `HRV in your normal range (baseline ${b.mean.toFixed(0)})` : dev > 0 ? `HRV above baseline (+${dev.toFixed(0)})` : `HRV below baseline (${dev.toFixed(0)})`;
+  }
+  const lines = [];
+  const dip = recoveryDip();
+  if (dip) lines.push(`⚠ ${dip} — worth an easier day; your call.`);
+  const ramp = loadRampFlag();
+  if (ramp) lines.push(`⚠ ${ramp}`);
+  if (ef.ready) lines.push(`🫀 ${ef.line}`);
+  const loadLine = load.rows.filter(w => w.km + w.tonnes > 0).slice(-3).map(w => `W${w.wk}: ${w.km} km + ${w.tonnes} t`).join(' · ');
+  return `<div class="section-label">💓 Recovery ${vo2Btn}</div>
+    <div class="card">
+      <div class="headline">${headline} <span class="headline-sub">${esc(headSub)}</span></div>
+      ${hrvChart(es, t)}
+      ${lines.slice(0, 3).map(l => `<div class="sumrow"><span style="color:var(--fg)">${l}</span></div>`).join('')}
+      <details class="disc"><summary>Aerobic engine, cause & effect ›</summary>
+        <div class="prb-h">Aerobic engine</div>
+        ${ef.ready ? `${efChart(ef.pts)}<div class="dim small">${esc(ef.line)}</div>` : `<div class="dim small">Needs ${6 - ef.n} more runs with heart rate to read the engine trend (have ${ef.n}).</div>`}
+        ${loadLine ? `<div class="prb-h" style="margin-top:12px">Weekly load</div><div class="dim small">${loadLine}${stravaConnected() ? '' : ' · connect Strava in Settings for automatic run data'}</div>` : ''}
+        <div class="prb-h" style="margin-top:12px">Cause & effect</div>
+        ${explorers.map(x => `<div class="sumrow ${x.s.ready ? '' : 'dim'}"><b>${x.icon} ${esc(x.title)}</b><span>${esc(x.s.line)}</span></div>`).join('')}
+      </details>
+    </div>`;
+}
+function secMilestones() {
+  const safe = (fn, fb) => { try { return fn(); } catch (e) { return fb; } };
+  const proj = safe(raceProjection, null);
+  const next = RACES.find(r => daysUntil(r.date) >= 0);
+  const raceLine = next ? `🏁 ${next.name} in ${daysUntil(next.date)} day${daysUntil(next.date) === 1 ? '' : 's'}${proj ? ` — projected <b>${proj.range}</b> from your last ${proj.nLongs} long run${proj.nLongs === 1 ? '' : 's'}. A range, honestly.` : ' — a projection appears after your first 12 km+ long run with a time.'}` : '';
+  const retroReady = RACES.some(r => daysUntil(r.date) < 0) || ST.maintenance.active;
+  const hyperReady = today() >= HYPER_START && !ST.maintenance.active;
+  return `<div class="section-label">💡 Milestones</div>
+    <div class="card insight"><div class="card-kicker">Insight of the week</div><div class="card-sub">${safe(topInsight, 'Insights are having a moment — the rest of the page still works.')}</div>
+      ${raceLine ? `<div class="sumrow"><span>${raceLine}</span></div>` : ''}
+      ${retroReady || hyperReady || ST.weeklySummaries.length ? `<details class="disc"><summary>Reports and weekly summaries ›</summary>
+        ${retroReady ? `<button class="btn big" onclick="showRetro()">📜 Geelong block, in numbers</button>` : ''}
+        ${hyperReady ? `<button class="btn big" onclick="showHyperRetro()">🏋️ Hypertrophy block, in numbers</button>` : ''}
+        ${ST.weeklySummaries.length ? `<div class="prb-h" style="margin-top:12px">📒 Weekly summaries</div>` + ST.weeklySummaries.slice().reverse().map((s, i) =>
+          `<button class="exlist-row" onclick='showWeeklySummary(ST.weeklySummaries[${ST.weeklySummaries.length - 1 - i}], true)'><span>${esc(s.phase)}</span><span class="dim">week of ${fmtDate(s.weekOf)}</span><span>›</span></button>`).join('') : ''}
+      </details>` : ''}
+    </div>`;
+}
+function vProgress() {
+  const load = recentLoad();
+  const key = ST.maintenance.active ? 'maint' : phaseKeyFromLabel((weekFor(today()) || {}).phase);
+  const liftFirst = key === 'hypertrophy' || key === 'hyperDeload' || key === 'maint';
+  const first = liftFirst ? [secStrength(load), secRunning(load)] : [secRunning(load), secStrength(load)];
+  return `<header class="top"><h1 class="phase">Progress</h1><div class="dim small">${esc(phaseLabel(today()))}</div></header>
+  <main>${first.join('')}${secRecovery(load)}${secMilestones()}</main>${navBar()}`;
 }
 
 function vExDetail() {
@@ -2895,47 +2978,6 @@ function maybeWeeklySummary() {
 }
 
 /* ---------- Fitness section (HRV / RHR / VO2 / efficiency / projection) ---------- */
-function vFitness() {
-  const es = fitnessEntries();
-  const t = today();
-  const b = hrvBaseline(dadd(t, 1));   // baseline including today's entry history
-  const latest = es[es.length - 1];
-  const vo2Dates = Object.keys(ST.fitness.vo2).sort();
-  const vo2 = vo2Dates.length ? ST.fitness.vo2[vo2Dates[vo2Dates.length - 1]] : null;
-  const efs = efSeries();
-  const proj = raceProjection();
-  // insights lines
-  const lines = [];
-  if (!b.ready) lines.push(`Baseline building — ${Math.min(b.n ?? es.length, 5)} of 5 mornings logged so far. Conclusions come after ~2 weeks of check-ins.`);
-  else if (latest) {
-    const dev = latest.hrv - b.mean;
-    lines.push(`Latest HRV ${latest.hrv} ms vs ${b.mean.toFixed(0)} ms baseline (${dev >= 0 ? '+' : ''}${dev.toFixed(0)}) — ${Math.abs(dev) <= Math.max(0.75 * b.sd, 4) ? 'in your normal range' : dev > 0 ? 'above baseline' : 'below baseline'}.`);
-  }
-  const dip = recoveryDip();
-  if (dip) lines.push(`⚠ ${dip} — worth an easier day; your call.`);
-  if (efs.length >= 6) {
-    const half = Math.floor(efs.length / 2);
-    const m1 = efs.slice(0, half).reduce((a, e) => a + e.ef, 0) / half;
-    const m2 = efs.slice(half).reduce((a, e) => a + e.ef, 0) / (efs.length - half);
-    const pct = 100 * (m2 - m1) / m1;
-    lines.push(`Aerobic efficiency ${pct >= 1 ? 'up ' + pct.toFixed(1) + '% across the block — faster at the same heart rate. The engine is growing.' : pct <= -1 ? 'down ' + Math.abs(pct).toFixed(1) + '% — watch fatigue, fuelling, sleep.' : 'holding steady across the block.'}`);
-  } else if (efs.length) lines.push(`Aerobic efficiency: ${efs.length} run${efs.length === 1 ? '' : 's'} with HR logged — trend appears after ~6.`);
-  if (proj) {
-    for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0) lines.push(`${r.name} (${d}d): projected <b>${proj.range}</b> from your last ${proj.nLongs} long run${proj.nLongs === 1 ? '' : 's'}${vo2 ? ' + VO₂ ' + vo2 : ''}. A range, honestly — race day picks the number.`); }
-  } else lines.push('Race projection unlocks after your first logged long run (12 km+ with time).');
-  // weekly combined load (runs + lifting)
-  const loads = weeklyLoad().filter(w => w.km + w.tonnes > 0);
-  if (loads.length >= 2) {
-    const recent = loads.slice(-3).map(w => `W${w.wk}: ${w.km}km + ${w.tonnes}t`).join(' · ');
-    lines.push(`Weekly load — ${recent}${stravaConnected() ? '' : ' (connect Strava in Settings for automatic run data)'}`);
-  }
-  const ramp = loadRampFlag();
-  if (ramp) lines.push(`⚠ ${ramp}`);
-  return `<div class="section-label">💓 Fitness — HRV · VO₂ max <button class="mini" style="margin-left:8px" onclick="updateVo2()">VO₂: ${vo2 ?? '—'} ✎</button></div>
-    ${hrvChart(es, t)}
-    ${efs.length >= 2 ? efChart(efs) : ''}
-    ${lines.map(l => `<div class="sumrow"><span style="color:var(--fg)">${l}</span></div>`).join('')}`;
-}
 /* HRV chart: daily dots + rolling baseline band (mean ± max(0.75·SD, 4ms)) */
 function hrvChart(es, t) {
   const pts = es.filter(e => e.hrv != null).slice(-42);
@@ -3238,64 +3280,6 @@ function trajBars(traj) {
     <div class="tj-track"><div class="tj-bar ${x.pct >= 0 ? 'up' : 'down'}" style="width:${Math.min(100, Math.abs(x.pct) / maxAbs * 100)}%"></div></div>
     <div class="tj-pct ${x.pct >= 0 ? 'up' : 'down'}">${x.pct >= 0 ? '+' : ''}${x.pct}%</div>
   </div>`).join('');
-}
-/* ---------- Progress · Insights (was the Trends tab) ---------- */
-function insightsBody() {
-  // every section computes independently — one bad analysis must not kill the tab
-  const safe = (fn, fallback) => { try { return fn(); } catch (e) { return typeof fallback === 'function' ? fallback(e) : fallback; } };
-  const traj = safe(liftTrajectories, []);
-  const prsL = safe(liftPRBook, []);
-  const rb = safe(runBests, null);
-  const ef = safe(efVerdict, { ready: false, n: 0, pts: [] });
-  const explErr = e => ({ ready: false, line: `This one hit an error (${e.message}) — the rest of the tab still works.` });
-  const explorers = [
-    { icon: '🔻', title: 'Do red days pay off?', s: safe(redDayStory, explErr) },
-    { icon: '🔁', title: 'Big weeks → next-week recovery', s: safe(loadHrvLag, explErr) },
-    { icon: '🏃', title: 'Do long runs hurt your lifting?', s: safe(runInterference, explErr) },
-    { icon: '⚖️', title: 'Same weight, less effort?', s: safe(rpeDrift, explErr) },
-  ];
-  const trajLine = !traj.length ? 'Log each lift 3+ times and its trajectory appears here.'
-    : traj[0].pct >= 5 ? `${traj[0].name} leads the pack, up ${traj[0].pct}% in estimated strength.${traj[traj.length - 1].pct < 0 ? ` ${traj[traj.length - 1].name} is the laggard (${traj[traj.length - 1].pct}%) — worth a look.` : ''}`
-    : 'Strength is roughly holding across the board — during a running block, holding IS winning.';
-  const retroReady = RACES.some(r => daysUntil(r.date) < 0) || ST.maintenance.active;
-  // On a fresh install (or right after a reset) every one of these sections
-  // independently rendered its own "not enough data" card — a wall of four
-  // empty placeholders before anything real ever appears. If literally
-  // nothing is ready yet, say so once and skip the wall; the moment any one
-  // section has real data, everything reverts to its normal per-section form.
-  const allEmpty = !traj.length && !prsL.length && !rb && !ef.ready && explorers.every(x => !x.s.ready);
-  return `
-    <div class="card insight"><div class="card-kicker">💡 Insight of the week</div><div class="card-sub">${safe(topInsight, 'Insights are having a moment — the rest of the tab still works.')}</div></div>
-
-    ${allEmpty ? `<div class="card"><div class="card-kicker">📊 Building up</div><div class="card-sub">Strength trajectories, a PR book, your aerobic engine trend and the cause-and-effect explorers all need a few real sessions before they have anything to say. Keep logging — this tab fills itself in.</div></div>` : `
-    <div class="section-label">Strength trajectory</div>
-    <div class="card"><div class="card-sub" style="margin-bottom:10px">${esc(trajLine)}</div>
-      ${traj.length ? `<div class="tj-wrap">${trajBars(traj)}</div><div class="dim small" style="margin-top:6px">Estimated 1-rep max, early sessions vs recent. Tap a lift for its full chart.</div>` : ''}</div>
-
-    <div class="section-label">PR book</div>
-    <div class="card">${prsL.length ? `<div class="prb-h">🏋️ Lifts</div>` + prsL.map(p => `<div class="prb-row" onclick="go('exdetail',{ex:'${p.exId}',back:'insights'})">
-        <span class="prb-name">${esc(p.name)}</span>
-        <span class="prb-val">${p.maxW} kg × ${p.wReps}</span>
-        <span class="prb-sub">${p.maxE > 0 ? `e1RM ${p.maxE.toFixed(1)} · ${fmtDate(p.eDate)}` : fmtDate(p.wDate)}</span></div>`).join('')
-      : `<div class="card-sub">Your first logged lift starts the book.</div>`}
-    ${rb ? `<div class="prb-h" style="margin-top:12px">🏃 Runs</div>
-      ${rb.buckets.map(b => `<div class="prb-row"><span class="prb-name">${esc(b.label)}</span><span class="prb-val">${b.pace}</span><span class="prb-sub">${b.km} km · ${fmtDate(b.date)}</span></div>`).join('')}
-      <div class="prb-row"><span class="prb-name">Longest run</span><span class="prb-val">${rb.longest.km} km</span><span class="prb-sub">${fmtDate(rb.longest.date)}</span></div>
-      <div class="prb-row"><span class="prb-name">Biggest week</span><span class="prb-val">${rb.bigWeek.km} km</span><span class="prb-sub">wk of ${fmtDate(rb.bigWeek.monday)}</span></div>` : ''}</div>
-
-    <div class="section-label">Aerobic engine</div>
-    ${ef.ready ? `${efChart(ef.pts)}<div class="card"><div class="card-sub">${esc(ef.line)}</div></div>`
-      : `<div class="card"><div class="card-sub">Needs ${6 - ef.n} more runs with heart rate to read the engine trend (have ${ef.n}).</div></div>`}
-
-    <div class="section-label">Cause & effect</div>
-    ${explorers.map(x => `<div class="card explorer ${x.s.ready ? '' : 'dim-card'}"><div class="card-kicker">${x.icon} ${esc(x.title)}</div><div class="card-sub">${esc(x.s.line)}</div></div>`).join('')}
-    `}
-
-    ${retroReady ? `<div class="section-label">The block</div>
-      <div class="card"><div class="card-sub">Six weeks, one race — what actually changed.</div><button class="btn primary big" onclick="showRetro()">📜 Block retrospective</button></div>` : ''}
-
-    ${today() >= HYPER_START && !ST.maintenance.active ? `<div class="section-label">The hypertrophy block</div>
-      <div class="card"><div class="card-sub">Five lifts, two easy runs, one mobility session a week — how it's actually going.</div><button class="btn primary big" onclick="showHyperRetro()">🏋️ Block, in numbers</button></div>` : ''}`;
 }
 /* one-shot post-block report */
 window.showRetro = function () {
