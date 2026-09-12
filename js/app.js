@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -25,6 +25,7 @@ function defaultState() {
     races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, feb2027: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
     maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
+    planOverrides: {},     // date → day plan — days swapped in the Plan tab (see planWeeks)
     soreLog: [],           // [{date, areas: [STRETCH_AREAS ids]}] — from the on-demand stretch picker
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
@@ -146,6 +147,10 @@ const MIGRATIONS = {
     s.program = buildProgram();
     s.schemaVersion = 16; return s;
   },
+  // 16 → 17: swapping days in the Plan tab. Additive: planOverrides{}, keyed
+  // by date, applied on read (planWeeks) so a rebuilt program never loses a
+  // swap. History untouched.
+  16: (s) => { s.planOverrides = s.planOverrides || {}; s.schemaVersion = 17; return s; },
 };
 
 function migrate(s) {
@@ -182,7 +187,7 @@ let ST = loadState();
 function save() {
   // Every mutation funnels through here, which makes it the honest place to drop
   // the derived caches — they are rebuilt lazily on the next read.
-  invalidateExHistory(); invalidateMergedRuns(); invalidateActivityIndex();
+  invalidateExHistory(); invalidateMergedRuns(); invalidateActivityIndex(); invalidatePlan();
   // Unlike loadState(), this used to have no guard at all: a quota-exceeded
   // device or a private-browsing storage restriction would throw straight out
   // of whatever handler called save() — nearly every mutating handler in the
@@ -199,7 +204,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v35';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v36';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -223,8 +228,23 @@ function announce(msg) {
   setTimeout(() => { el.textContent = msg; }, 50);
 }
 
+/* The calendar as the user sees it: the generated program with any swapped
+   days applied. Every reader goes through this (or weekFor/dayFor), never
+   planWeeks() directly, so a swap shows up everywhere at once. Cached
+   per render; save() and render() drop it. */
+var _planCache = null;   // var, not let: loadState() → save() clears this before the line runs
+function planWeeks() {
+  if (!_planCache) _planCache = applyOverrides(ST.program['weeks'], ST.planOverrides || {});
+  return _planCache;
+}
+function invalidatePlan() { _planCache = null; }
+/* The day as the generator laid it out, ignoring swaps. */
+function originalDay(date) {
+  const w = ST.program['weeks'].find(w => date >= w.days[0].date && date <= w.days[w.days.length - 1].date);
+  return w ? w.days.find(d => d.date === date) : null;
+}
 function weekFor(date) {
-  return ST.program.weeks.find(w => date >= w.days[0].date && date <= w.days[w.days.length - 1].date) || null;
+  return planWeeks().find(w => date >= w.days[0].date && date <= w.days[w.days.length - 1].date) || null;
 }
 function dayFor(date) {
   const w = weekFor(date);
@@ -596,7 +616,7 @@ function render() {
   // 'history' and 'trends' stay mapped as aliases of the merged Progress tab so any
   // older deep link (or a stale service-worker page) still lands somewhere sensible.
   const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, daypreview: vDayPreview, settings: vSettings, stretch: vStretch, progress: vProgress, history: vProgress, trends: vProgress };
-  invalidateMergedRuns(); invalidateExHistory();   // one build per render, never a stale one
+  invalidateMergedRuns(); invalidateExHistory(); invalidatePlan();   // one build per render, never a stale one
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   // a crashing view must never leave the app silently frozen — show what broke instead
   try {
@@ -1193,7 +1213,7 @@ function longRunPattern() {
 /* weekly combined load: run km + strength tonnes, ramp flag vs 4-week average */
 function weeklyLoad() {
   const merged = mergedRunsAll();
-  return ST.program.weeks.map(wk => {
+  return planWeeks().map(wk => {
     let km = 0, vol = 0;
     for (const d of wk.days) {
       const r = merged[d.date]; if (r) km += r.km || 0;
@@ -1368,7 +1388,7 @@ function raceProjection() {
 function unloggedRuns() {
   const t = today();
   const out = [];
-  for (const wk of ST.program.weeks) for (const d of wk.days) {
+  for (const wk of planWeeks()) for (const d of wk.days) {
     if ((d.kind === 'run' || d.kind === 'race') && d.date <= t && !ST.runs[d.date]) out.push(d.date);
   }
   return out;
@@ -2416,7 +2436,7 @@ function adherence() {
     return { done, planned: weeks * perWeek, streak: null };
   }
   const days = [];
-  for (const wk of ST.program.weeks) for (const d of wk.days) if (d.kind === 'lift' && !d.optional && d.date <= t) days.push(d.date);
+  for (const wk of planWeeks()) for (const d of wk.days) if (d.kind === 'lift' && !d.optional && d.date <= t) days.push(d.date);
   const done = days.filter(d => ST.sessions[d] && ST.sessions[d].status === 'done').length;
   let streak = 0;
   for (let i = days.length - 1; i >= 0; i--) {
@@ -2501,9 +2521,9 @@ function vSchedule() {
   return `<header class="top"><h1 class="phase">${esc(phaseLabel(t))}</h1>${raceCountdowns()}
     <div class="dim small" style="margin-top:6px">💪 ${ad.done} of ${ad.planned} workouts${ad.streak != null && ad.streak >= 2 ? ` · 🔥 ${ad.streak}-workout streak` : ''}</div></header>
   <main>
-  ${ST.program.weeks.map(wk => `
+  ${planWeeks().map(wk => `
     <div class="wk ${w && wk.num === w.num ? 'cur' : ''}">
-      <div class="wk-head"><b>Week ${wk.num}</b><span>${esc(wk.phase)}</span></div>
+      <div class="wk-head"><b>Week ${wk.num}</b><span>${esc(wk.phase)}</span>${wk.days.some(d => ST.planOverrides && ST.planOverrides[d.date]) ? `<button class="mini" onclick="resetWeek('${wk.days[0].date}')">reset week</button>` : ''}</div>
       ${wk.days.map(d => {
         const s = ST.sessions[d.date];
         const done = s && s.status === 'done';
@@ -2516,14 +2536,16 @@ function vSchedule() {
         const mobDone = (d.kind === 'mobility' || d.mobility) && routineDone(d.date, 'stretch');
         const icon = d.kind === 'run' ? (d.mobility ? '🏃🧘' : '🏃') : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
+        const moved = !!(ST.planOverrides && ST.planOverrides[d.date]);
         if (done) action = `<button class="mini" onclick="event.stopPropagation();go('summary',{sid:'${d.date}'})">view</button>`;
         else if (isRun && d.date <= t) action = `<button class="mini" onclick="event.stopPropagation();openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
+        else if (!swapLockReason(d, t, isLoggedDate)) action = `<button class="mini" aria-label="Move ${esc(d.title || 'Rest')} to another day" onclick="event.stopPropagation();openMove('${d.date}')">move</button>`;
         const isLift = d.kind === 'lift' && !done;
         const rowClick = isLift ? ` onclick="go('daypreview',{tpl:'${d.tpl}',date:'${d.date}'})"` : '';
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}"${rowClick}>
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${extraRun ? '🏃' : icon}</span>
-          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge '+merged.src+'">'+merged.src+'</span>' : esc(d.title || 'Rest')}${done || runLogged || (mobDone && !isRun) ? ' <b class="done-tick">✓</b>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
+          <span class="wk-title">${extraRun ? esc(merged.name || 'Run') + ' <span class="svbadge '+merged.src+'">'+merged.src+'</span>' : esc(d.title || 'Rest')}${done || runLogged || (mobDone && !isRun) ? ' <b class="done-tick">✓</b>' : ''}${moved ? ' <span class="tag-moved">moved</span>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}${merged.src === 'strava' && runLogged ? ' ⚡' : ''}</span>` : ''}</span>
           ${action}
         </div>`;
       }).join('')}
@@ -2539,6 +2561,63 @@ function vSchedule() {
   <button class="linkbtn" onclick="showWhy()">Why this plan?</button>
   </main>${navBar()}`;
 }
+
+/* ---------- swapping days (Plan tab) ---------- */
+/* A date is "logged" once anything happened on it — a lift (done or in
+   progress), a run (manual or synced), a warm-up or a stretch. Those days
+   stay where they are; the record and the plan must keep agreeing. */
+function isLoggedDate(d) {
+  const s = ST.sessions[d];
+  if (s && (s.status === 'done' || s.status === 'active')) return true;
+  if (mergedRunFor(d)) return true;
+  const r = ST.routines && ST.routines[d];
+  return !!(r && ((r.stretch && r.stretch.completed) || (r.prep && r.prep.completed)));
+}
+window.openMove = function (date) {
+  const t = today();
+  const day = dayFor(date), w = weekFor(date);
+  const lock = swapLockReason(day, t, isLoggedDate);
+  if (lock) { toast(`Can't move that — ${lock}.`); return; }
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>Move ${esc(day.title || 'Rest')}</h2>
+    <div class="dim small" style="margin-bottom:12px;line-height:1.5">${esc(fmtDate(date))}. Pick the day to trade places with — both days swap, nothing is lost. The plan will warn you if the new order puts leg work before a key run.</div>
+    ${w.days.filter(d => d.date !== date).map(d => {
+      const l = swapLockReason(d, t, isLoggedDate);
+      return `<button class="exlist-row" ${l ? 'disabled style="opacity:.5"' : `onclick="doSwap('${date}','${d.date}')"`}><span>${esc(fmtDate(d.date))}</span><span class="dim">${esc(d.title || 'Rest')}${l ? ' · ' + esc(l) : ''}</span><span>${l ? '' : '›'}</span></button>`;
+    }).join('')}
+    <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  m.classList.add('open');
+};
+window.doSwap = function (a, b, force) {
+  const w = weekFor(a);
+  const dayA = dayFor(a), dayB = dayFor(b);
+  if (!w || !dayA || !dayB || weekFor(b) !== w) { toast('Swaps stay inside one week.'); return; }
+  const ov = swapDays(dayA, dayB);
+  const after = w.days.map(d => ov[d.date] || d);
+  const warnings = swapWarnings(after);
+  if (warnings.length && !force) {
+    const m = $('#modal');
+    m.innerHTML = `<div class="sheet"><h2>Worth knowing</h2>
+      ${warnings.map(x => `<div class="notice" style="margin-top:8px">⚠️ ${esc(x)}</div>`).join('')}
+      <div class="dim small" style="margin:12px 0 4px">Your call — the plan just says why it was laid out the way it was.</div>
+      <button class="btn primary big" onclick="doSwap('${a}','${b}',true)">Swap anyway</button>
+      <button class="linkbtn" onclick="closeModal()">Leave it</button></div>`;
+    m.classList.add('open');
+    return;
+  }
+  ST.planOverrides = ST.planOverrides || {};
+  for (const [date, plan] of Object.entries(ov)) {
+    // a swap that lands a day back on its generated plan is no longer an override
+    if (samePlan(originalDay(date), plan)) delete ST.planOverrides[date]; else ST.planOverrides[date] = plan;
+  }
+  save(); closeModal(); render();
+  toast(`${dayA.title || 'Rest'} ↔ ${dayB.title || 'Rest'} swapped.`);
+};
+window.resetWeek = function (monday) {
+  if (!ST.planOverrides) return;
+  for (let i = 0; i < 7; i++) delete ST.planOverrides[dadd(monday, i)];
+  save(); render(); toast('Week back to the plan.');
+};
 
 window.showWhy = function () {
   const m = $('#modal');
@@ -2569,7 +2648,7 @@ function vProgress() {
 /* ---------- Progress · Log (was the History tab) ---------- */
 function logBody() {
   // weekly volume
-  const weekVols = ST.program.weeks.map(wk => {
+  const weekVols = planWeeks().map(wk => {
     let vol = 0, sessions = 0;
     for (const d of wk.days) {
       const s = ST.sessions[d.date];
@@ -2593,7 +2672,7 @@ function logBody() {
     const type = day && day.kind === 'race' ? 'race' : runKind(d, r);
     return { date: d, km: r.km, min: r.min, hr: r.hr, feel: r.feel, splits: r.splits || [], type, src: r.src, name: r.name, pace: r.km && r.min ? r.min * 60 / r.km : null };
   }).filter(p => p.pace);
-  const weekKms = ST.program.weeks.map(wk => {
+  const weekKms = planWeeks().map(wk => {
     let km = 0;
     for (const d of wk.days) { const r = mergedAll[d.date]; if (r) km += r.km || 0; }
     return { wk: wk.num, km };
@@ -2669,7 +2748,7 @@ function vDayPreview() {
 /* ================= Sunday weekly summary ================= */
 function buildWeeklySummary(monday) {
   const sunday = dadd(monday, 6);
-  const wk = ST.program.weeks.find(w => w.days[0].date === monday) || weekFor(monday);
+  const wk = planWeeks().find(w => w.days[0].date === monday) || weekFor(monday);
   const inWeek = d => d >= monday && d <= sunday;
   const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && inWeek(s.date));
   const planned = ST.maintenance.active ? 3 : wk ? wk.days.filter(d => d.kind === 'lift' && !d.optional).length : 4;
@@ -2723,7 +2802,7 @@ function buildWeeklySummary(monday) {
   const merged = mergedRunsAll();
   const runKm = Object.keys(merged).filter(inWeek).reduce((a, d) => a + (merged[d].km || 0), 0);
   // phase context
-  const nextWk = wk ? ST.program.weeks.find(w => w.num === wk.num + 1) : null;
+  const nextWk = wk ? planWeeks().find(w => w.num === wk.num + 1) : null;
   const race = nextRace();
   const raceDays = daysUntil(race.date);
   const PHASE_FOCUS = {
@@ -3263,7 +3342,7 @@ window.showHyperRetro = function () {
   const lifters = traj.map(x => `${x.name}: ${x.pct >= 0 ? '+' : ''}${x.pct}% e1RM`);
   const totTon = Math.round(tonnageIn(since, t) / 100) / 10;
   const runsInPhase = Object.keys(mergedRunsAll()).filter(d => d >= since).length;
-  const runsPlanned = ST.program.weeks.filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => d.kind === 'run' && d.date <= t).length, 0);
+  const runsPlanned = planWeeks().filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => d.kind === 'run' && d.date <= t).length, 0);
   const mobilityDone = Object.keys(ST.routines || {}).filter(d => d >= since && routineDone(d, 'stretch') && (dayFor(d) || {}).mobility).length;
   const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, t)].name}`);
   const m = $('#modal');

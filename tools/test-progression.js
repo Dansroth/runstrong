@@ -505,6 +505,67 @@ group('run build: 12 race-anchored weeks with a real long-run progression');
   eq('the Geelong race week is byte-for-byte the v32 layout', JSON.stringify(race[5].days.map(d => d.kind + ':' + (d.tpl || ''))), JSON.stringify(['lift:lowerTaperB', 'lift:upperTaperA', 'run:', 'mobility:', 'run:', 'mobility:', 'race:']));
 }
 
+/* ===================================================================
+   6f. swapping days (PLAN OVERRIDES header)
+   =================================================================== */
+group('plan overrides: swaps are symmetric, locks hold, warnings fire on the right fixtures');
+{
+  const { applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings, buildRaceBlock } = P;
+  const weeks = buildRaceBlock();
+  const wk3 = weeks[2];   // a plain build week: Mon lowerA, Tue upperA, Wed hard, Thu lowerB, Fri easy, Sat upperB, Sun long
+  const at = (w, i) => w.days[i];
+  // template classification
+  ok('lowerA is a lower template', isLowerTpl('lowerA'));
+  ok('lowerB is a lower template', isLowerTpl('lowerB'));
+  ok('upperA is not', !isLowerTpl('upperA'));
+  ok('hypLowerA is lower', isLowerTpl('hypLowerA'));
+  ok('hypArms is not', !isLowerTpl('hypArms'));
+  ok('a ROTATE slot does not break classification', !isLowerTpl('hypUpperA'));
+  // swap mechanics
+  const ov = swapDays(at(wk3, 0), at(wk3, 1));
+  eq('the swap yields exactly two overrides', Object.keys(ov).length, 2);
+  eq('Monday now holds Tuesday\'s plan', ov[at(wk3, 0).date].tpl, 'upperA');
+  eq('Tuesday now holds Monday\'s plan', ov[at(wk3, 1).date].tpl, 'lowerA');
+  eq('each override carries its own date', ov[at(wk3, 0).date].date + '|' + ov[at(wk3, 1).date].date, at(wk3, 0).date + '|' + at(wk3, 1).date);
+  const ovRev = swapDays(at(wk3, 1), at(wk3, 0));
+  ok('swap(a,b) equals swap(b,a)', Object.keys(ov).every(k => samePlan(ov[k], ovRev[k]) && ov[k].date === ovRev[k].date) && Object.keys(ov).length === Object.keys(ovRev).length);
+  const applied = applyOverrides(weeks, ov);
+  eq('applyOverrides moves the day', applied[2].days[0].tpl, 'upperA');
+  ok('applyOverrides leaves the source untouched', weeks[2].days[0].tpl === 'lowerA');
+  ok('applyOverrides with no overrides returns the same array', applyOverrides(weeks, {}) === weeks && applyOverrides(weeks, null) === weeks);
+  const back = swapDays(applied[2].days[0], applied[2].days[1]);
+  ok('swapping the swapped days lands back on the generated plan', samePlan(back[at(wk3, 0).date], at(wk3, 0)) && samePlan(back[at(wk3, 1).date], at(wk3, 1)));
+  ok('samePlan ignores date and key order', samePlan({ kind: 'lift', tpl: 'lowerA', title: 'x', date: '2026-01-01' }, { title: 'x', tpl: 'lowerA', kind: 'lift', date: '2026-02-02' }));
+  ok('samePlan sees a different template', !samePlan({ kind: 'lift', tpl: 'lowerA', title: 'x' }, { kind: 'lift', tpl: 'lowerB', title: 'x' }));
+  // locks
+  const t = at(wk3, 2).date;   // "today" = Wednesday of week 3
+  eq('race day is locked', swapLockReason(weeks[5].days[6], t, () => false), 'race day stays put');
+  eq('a past day is locked', swapLockReason(at(wk3, 0), t, () => false), 'already gone');
+  eq('a logged day is locked', swapLockReason(at(wk3, 3), t, d => d === at(wk3, 3).date), 'already logged');
+  eq('today itself is movable if nothing is logged', swapLockReason(at(wk3, 2), t, () => false), null);
+  eq('a future unlogged day is movable', swapLockReason(at(wk3, 5), t, () => false), null);
+  eq('a missing day reports so', swapLockReason(null, t, () => false), 'not on the plan');
+  // warnings: the generated weeks themselves are clean
+  for (const w of weeks.slice(1, 5)) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
+  const off = P.buildOffseason();
+  for (const w of off) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
+  const build = P.buildRunBuild('2027-02-21', 'feb2027');
+  for (const w of build.slice(0, 11)) eq(`generated ${w.phase} (${w.monday}) has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
+  ok('the generated race week only carries the race-week caution', swapWarnings(build[11].days).every(x => /race week/.test(x)) && swapWarnings(build[11].days).length === 1);
+  const after = (w, a, b) => { const o = swapDays(w.days[a], w.days[b]); return w.days.map(d => o[d.date] || d); };
+  const warnsFor = (w, a, b) => swapWarnings(after(w, a, b));
+  ok('Mon lowerA ↔ Tue upperA: lower day lands before the hard run', warnsFor(wk3, 0, 1).some(x => /before a hard run/.test(x)), JSON.stringify(warnsFor(wk3, 0, 1)));
+  ok('Thu lowerB ↔ Sat upperB: lower day lands before the long run', warnsFor(wk3, 3, 5).some(x => /before a long run/.test(x)), JSON.stringify(warnsFor(wk3, 3, 5)));
+  ok('Thu lowerB ↔ Fri easy: lower day within 48 h of the long run', warnsFor(wk3, 3, 4).some(x => /48 h/.test(x)), JSON.stringify(warnsFor(wk3, 3, 4)));
+  ok('Tue upperA ↔ Thu lowerB: two lower days back to back', warnsFor(wk3, 1, 3).some(x => /back to back/.test(x)), JSON.stringify(warnsFor(wk3, 1, 3)));
+  ok('Wed hard ↔ Sat upperB: hard run straight into the long run', warnsFor(wk3, 2, 5).some(x => /straight into the long run/.test(x)), JSON.stringify(warnsFor(wk3, 2, 5)));
+  eq('Tue upperA ↔ Sat upperB: nothing to warn about', warnsFor(wk3, 1, 5).length, 0, JSON.stringify(warnsFor(wk3, 1, 5)));
+  eq('Wed hard ↔ Fri easy: nothing to warn about (upper sits before the hard run, lowerB is 2 days from Sunday)', warnsFor(wk3, 2, 4).filter(x => !/hard run/.test(x)).length, 0, JSON.stringify(warnsFor(wk3, 2, 4)));
+  const hw = off[1];   // hypertrophy week 1
+  eq('hypertrophy: Lower B ↔ Arms (Thu↔Sat) is fine — Sunday is an easy run', warnsFor(hw, 3, 5).length, 0, JSON.stringify(warnsFor(hw, 3, 5)));
+  ok('hypertrophy: Upper A ↔ Lower B (Tue↔Thu) makes two lower days in a row', warnsFor(hw, 1, 3).some(x => /back to back/.test(x)));
+}
+
 group('the weekly mobility routine covers the whole body');
 {
   const { mobilityRoutine, MOBILITY_MINS, STRETCH_AREAS } = P;

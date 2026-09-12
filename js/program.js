@@ -1316,6 +1316,69 @@ function buildRunBuild(raceISO, raceKey) {
   return weeks;
 }
 
+/* =====================================================================
+   PLAN OVERRIDES — swapping two days of the same week
+   =====================================================================
+   The generated calendar (ST.program) is never edited in place: migrations
+   rebuild it, and an edit would be lost. A swap is stored as
+   ST.planOverrides[date] = dayPlan, applied on read by applyOverrides()
+   (app.js planWeeks()/dayFor()), so every consumer sees the same moved
+   day. All of this is pure so tools/test-progression.js can drive it. */
+function applyOverrides(weeks, overrides) {
+  if (!overrides || !Object.keys(overrides).length) return weeks;
+  return weeks.map(w => ({ ...w, days: w.days.map(d => overrides[d.date] ? { ...overrides[d.date], date: d.date } : d) }));
+}
+/* A template is "lower-body" when at least half its real exercises are —
+   the rules below care about leg fatigue before key runs, not upper work. */
+function isLowerTpl(tplId) {
+  const tpl = TEMPLATES[tplId]; if (!tpl) return false;
+  const ids = tpl.items.map(i => i[0]).filter(id => EXERCISES[id]);
+  const lower = ids.filter(id => EXERCISES[id].group === 'lower').length;
+  return lower > 0 && lower * 2 >= ids.length;
+}
+/* The two overrides a swap produces: each day's plan moves to the other's
+   date. Symmetric (swap(a,b) ≡ swap(b,a)) and self-inverse. */
+function swapDays(dayA, dayB) {
+  const strip = d => { const c = { ...d }; delete c.date; return c; };
+  return { [dayA.date]: { ...strip(dayB), date: dayA.date }, [dayB.date]: { ...strip(dayA), date: dayB.date } };
+}
+/* Why a day can't be moved, or null. `logged(date)` is supplied by the app
+   (a session, a run, or a routine already on that date). */
+function swapLockReason(day, todayISO, logged) {
+  if (!day) return 'not on the plan';
+  if (day.kind === 'race') return 'race day stays put';
+  if (day.date < todayISO) return 'already gone';
+  if (logged && logged(day.date)) return 'already logged';
+  return null;
+}
+/* Same plan? Field-wise, so key order and a differing `date` don't matter. */
+function samePlan(a, b) {
+  if (!a || !b) return a === b;
+  for (const k of ['kind', 'tpl', 'title', 'sub', 'optional', 'mobility']) if ((a[k] || null) !== (b[k] || null)) return false;
+  return true;
+}
+/* Warnings — never blocks — for a week as it would look after a swap, from
+   the rules WHY_SCHEDULE spells out: legs fresh for the key runs, no
+   back-to-back lower days, an easy day between hard and long. */
+function swapWarnings(days) {
+  const out = [];
+  const isRun = d => !!d && (d.kind === 'run' || d.kind === 'race');
+  const rt = d => isRun(d) ? runType(d) : null;
+  const lower = d => !!d && d.kind === 'lift' && isLowerTpl(d.tpl);
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i], next = days[i + 1], next2 = days[i + 2];
+    if (lower(d) && isRun(next) && (rt(next) === 'hard' || rt(next) === 'long' || rt(next) === 'race')) {
+      out.push(`${d.title} lands the day before a ${rt(next)} run — fresh leg fatigue goes straight into a key run.`);
+    } else if (lower(d) && isRun(next2) && rt(next2) === 'long') {
+      out.push(`${d.title} sits within 48 h of the long run.`);
+    }
+    if (lower(d) && lower(next)) out.push(`Two lower-body days back to back (${d.title}, ${next.title}) — the second one will be compromised.`);
+    if (isRun(d) && rt(d) === 'hard' && isRun(next) && rt(next) === 'long') out.push('Hard run straight into the long run — no easy day between them.');
+  }
+  if (days.some(d => d && d.kind === 'race')) out.push('This is race week — the taper is deliberate. Move things only if life forces it.');
+  return out;
+}
+
 /* The whole calendar, numbered continuously. ST.program stores the result
    (see the migrations in app.js), so any change here needs a migration
    that rebuilds it — sessions/runs/routines are keyed by date and survive. */
@@ -1694,6 +1757,7 @@ if (typeof module !== 'undefined' && module.exports) {
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, RUN_BUILD_START, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
     RUN_BUILD_WEEKS, RUN_BUILD_PLAN, buildRunBuild,
+    applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
