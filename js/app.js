@@ -259,7 +259,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v50';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v51';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -744,7 +744,7 @@ function raceExtraCards() {
   if (rw) {
     const r = raceInfo(rw); const st = raceState(rw);
     const done = Object.values(st.checklist).filter(Boolean).length;
-    out += `<div class="card racekit" onclick="openChecklist('${rw}')"><div class="card-kicker">🏁 ${esc(r.name)} — race week</div><div class="card-sub">Checklist: ${done} of ${RACE_CHECKLIST.length} ticked. Tap to open.</div></div>`;
+    out += `<div class="card racekit" role="button" tabindex="0" onclick="openChecklist('${rw}')"><div class="card-kicker">🏁 ${esc(r.name)} — race week</div><div class="card-sub">Checklist: ${done} of ${RACE_CHECKLIST.length} ticked. Tap to open.</div></div>`;
   }
   const ur = unloggedPastRace();
   if (ur) {
@@ -839,7 +839,7 @@ function vHome() {
       <main>${maintenanceCard()}${streakHeatmap()}${backupCard2}${soreSpotBtn()}</main>${navBar()}${installBanner()}`;
   }
   if (active && active.status === 'active') {
-    card = `<div class="card action" onclick="go('session')">
+    card = `<div class="card action" role="button" tabindex="0" onclick="go('session')">
       <div class="card-kicker">Workout in progress</div>
       <div class="card-title">${esc(active.title)}</div>
       <div class="card-sub">Tap to continue — your place is saved</div>
@@ -867,7 +867,7 @@ function vHome() {
       : `<div class="card action">
           <div class="card-kicker">${day.optional ? 'Optional today' : day.run ? "Today's lift + run" : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min</div>
           <div class="card-title">${esc(day.title)}</div>${day.sub ? `<div class="card-sub">${esc(day.sub)}</div>` : ''}
-          <div class="card-sub" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${materializeTemplate(day.tpl, t, mesoAnchor(ST.maintenance)).items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
+          <div class="card-sub" role="button" tabindex="0" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${materializeTemplate(day.tpl, t, mesoAnchor(ST.maintenance)).items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button>${runRow}</div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
     const mr = mergedRunFor(t);
@@ -2978,7 +2978,7 @@ function secStrength(load) {
       ${movers.length ? `<div class="tj-wrap">${trajBars(movers)}</div><div class="dim small">Estimated 1RM, early sessions vs recent — tap a lift for its chart.</div>` : `<div class="dim small">Log each lift 3+ times and its trajectory appears here.</div>`}
       ${['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel((weekFor(today()) || {}).phase)) ? safe(volumeByMuscleBody, '') : ''}
       <details class="disc"><summary>All lifts, PR book ›</summary>
-        ${prsL.length ? `<div class="prb-h">🏆 PR book</div>` + prsL.map(p => `<div class="prb-row" onclick="go('exdetail',{ex:'${p.exId}',back:'insights'})">
+        ${prsL.length ? `<div class="prb-h">🏆 PR book</div>` + prsL.map(p => `<div class="prb-row" role="button" tabindex="0" onclick="go('exdetail',{ex:'${p.exId}',back:'insights'})">
           <span class="prb-name">${esc(p.name)}</span><span class="prb-val">${p.maxW} kg × ${p.wReps}</span>
           <span class="prb-sub">${p.maxE > 0 ? `e1RM ${p.maxE.toFixed(1)} · ${fmtDate(p.eDate)}` : fmtDate(p.wDate)}</span></div>`).join('') : ''}
         ${traj.length > 3 ? `<div class="prb-h" style="margin-top:12px">Every trajectory</div><div class="tj-wrap">${trajBars(traj)}</div>` : ''}
@@ -3583,7 +3583,7 @@ function topInsight() {
 }
 function trajBars(traj) {
   const maxAbs = Math.max(5, ...traj.map(x => Math.abs(x.pct)));
-  return traj.map(x => `<div class="tj-row" onclick="go('exdetail',{ex:'${x.exId}',back:'trends'})">
+  return traj.map(x => `<div class="tj-row" role="button" tabindex="0" onclick="go('exdetail',{ex:'${x.exId}',back:'trends'})">
     <div class="tj-name">${esc(x.name)}</div>
     <div class="tj-track"><div class="tj-bar ${x.pct >= 0 ? 'up' : 'down'}" style="width:${Math.min(100, Math.abs(x.pct) / maxAbs * 100)}%"></div></div>
     <div class="tj-pct ${x.pct >= 0 ? 'up' : 'down'}">${x.pct >= 0 ? '+' : ''}${x.pct}%</div>
@@ -3874,6 +3874,22 @@ window.skipRest = skipRest;
 document.addEventListener('click', ensureAudio, { once: true });
 /* update banner: new SW takes control (skipWaiting+claim) → offer one-tap reload */
 let swReg = null;
+/* Keyboard activation for the handful of tap targets that are <div onclick>
+   rather than <button> (v51, clearing the last of the audit's accessibility
+   batch). They stay divs deliberately: two of them are cards that contain
+   their own nested control, and a <button> inside a <button> is invalid HTML
+   that browsers recover from unpredictably. role="button" + tabindex makes
+   them reachable and announced correctly; this makes Enter and Space actually
+   fire them, which is the half that assistive tech users would otherwise be
+   missing. Space is prevented from scrolling the page, as a real button does. */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const el = e.target;
+  if (!el || !el.getAttribute || el.getAttribute('role') !== 'button') return;
+  if (e.key === ' ') e.preventDefault();
+  el.click();
+});
+
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(r => { swReg = r; r.update().catch(() => {}); scheduleReminder(); }).catch(() => {});

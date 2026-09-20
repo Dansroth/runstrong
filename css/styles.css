@@ -410,3 +410,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
    a target was beaten. Sits inside a .sumrow, so it inherits its spacing. */
 .volbar { display: block; height: 5px; border-radius: 3px; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; margin-top: 4px; }
 .volbar i { display: block; height: 100%; border-radius: 3px; background: var(--accent, #4caf50); transition: width .2s ease; }
+
+/* v51: div-based tap targets are keyboard-reachable now (role=button +
+   tabindex), so they need the focus ring a real button gets for free. */
+[role="button"]:focus-visible { outline: 2px solid var(--acc, #b5d94c); outline-offset: 2px; }
