@@ -4,11 +4,7 @@
     {
       "name": "runstrong",
       "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "C:\\Users\\rothd\\AppData\\Local\\Temp\\claude\\C--Users-rothd\\f600560e-c91f-430d-9a29-cefc559074a2\\scratchpad\\runstrong-static-server.js",
-        "C:\\Users\\rothd\\runstrong",
-        "5173"
-      ],
+      "runtimeArgs": ["tools/serve.js", "5173"],
       "port": 5173
     }
   ]

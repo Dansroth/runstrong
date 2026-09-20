@@ -229,7 +229,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v40';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v41';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2808,7 +2808,7 @@ function secMilestones() {
       ${raceLine ? `<div class="sumrow"><span>${raceLine}</span></div>` : ''}
       ${retroReady || hyperReady || ST.weeklySummaries.length ? `<details class="disc"><summary>Reports and weekly summaries ›</summary>
         ${retroReady ? `<button class="btn big" onclick="showRetro()">📜 Geelong block, in numbers</button>` : ''}
-        ${hyperReady ? `<button class="btn big" onclick="showHyperRetro()">🏋️ Hypertrophy block, in numbers</button>` : ''}
+        ${hyperReady ? `<button class="btn big" onclick="showHyperRetro()">🏋️ ${esc(reportBlock(today()).name)}, in numbers</button>` : ''}
         ${ST.weeklySummaries.length ? `<div class="prb-h" style="margin-top:12px">📒 Weekly summaries</div>` + ST.weeklySummaries.slice().reverse().map((s, i) =>
           `<button class="exlist-row" onclick='showWeeklySummary(ST.weeklySummaries[${ST.weeklySummaries.length - 1 - i}], true)'><span>${esc(s.phase)}</span><span class="dim">week of ${fmtDate(s.weekOf)}</span><span>›</span></button>`).join('') : ''}
       </details>` : ''}
@@ -3352,27 +3352,46 @@ window.showRetro = function () {
 /* One entry per HYPER_POOLS key — a missing one renders "undefined: <lift>"
    in the rotation list, so this moves whenever the pools do. */
 const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory', quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift', calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', coreAcc: 'Core lift' };
+/* Which block this report is about. Before v41 the function was pinned to the
+   nine-week one — HYPER_START, HYPER_WEEKS and HYPER_WEEK were read directly —
+   so from 30 Nov it would have shown "week 9 of 9" for the whole summer and
+   counted adherence against five templates the user had stopped doing, with
+   the sessions they were actually doing absent from the list. */
+function reportBlock(t) {
+  return t >= SUMMER_START
+    ? { since: SUMMER_START, weeks: SUMMER_WEEKS, name: 'Summer block' }
+    : { since: HYPER_START, weeks: HYPER_WEEKS, name: 'Hypertrophy block' };
+}
 window.showHyperRetro = function () {
-  const since = HYPER_START;
-  const mesoStart = mesoAnchor(ST.maintenance);
   const t = today();
-  const weeksIn = Math.min(HYPER_WEEKS, weeksSince(since, t) + 1);
+  const blk = reportBlock(t);
+  const since = blk.since;
+  const mesoStart = mesoAnchor(ST.maintenance);
+  const weeksIn = Math.min(blk.weeks, weeksSince(since, t) + 1);
   const blockNum = Math.floor(weeksSince(mesoStart, t) / HYPER_MESO_WEEKS) + 1;
   const doneSessions = Object.values(ST.sessions).filter(s => s.status === 'done' && s.date >= since);
   const byTpl = {};
   for (const s of doneSessions) byTpl[s.tpl] = (byTpl[s.tpl] || 0) + 1;
-  const weekTpls = [...new Set(Object.values(HYPER_WEEK).filter(p => p.kind === 'lift').map(p => p.tpl))];
+  /* Read the templates off the plan itself rather than off a layout constant:
+     the summer block's Monday alternates quad-led and hinge-led, so no single
+     week's layout is the whole list, and a day-swap should not hide a session
+     from its own report. */
+  const weekTpls = [...new Set(planWeeks().filter(w => w.monday >= since).flatMap(w => w.days)
+    .filter(d => d.kind === 'lift').map(d => d.tpl))];
   const dayLines = weekTpls.map(tp => `${TEMPLATES[tp].title}: ${byTpl[tp] || 0}`);
   const traj = hyperTrajectories();
   const lifters = traj.map(x => `${x.name}: ${x.pct >= 0 ? '+' : ''}${x.pct}% e1RM`);
   const totTon = Math.round(tonnageIn(since, t) / 100) / 10;
   const runsInPhase = Object.keys(mergedRunsAll()).filter(d => d >= since).length;
-  const runsPlanned = planWeeks().filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => d.kind === 'run' && d.date <= t).length, 0);
+  /* A run is either its own day or a flag on a lift day (day.run), so both
+     count toward what was planned — otherwise the summer block's Tuesday run
+     and the hypertrophy block's Sunday run go missing from adherence. */
+  const runsPlanned = planWeeks().filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => (d.kind === 'run' || d.run) && d.date <= t).length, 0);
   const mobilityDone = Object.keys(ST.routines || {}).filter(d => d >= since && routineDone(d, 'stretch') && (dayFor(d) || {}).mobility).length;
   const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, t)].name}`);
   const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><h2>🏋️ Hypertrophy block, in numbers</h2>
-    <div class="dim small" style="margin-bottom:10px">Week ${weeksIn} of ${HYPER_WEEKS} · rotation block ${blockNum} (accessories rotate every ${HYPER_MESO_WEEKS} weeks)</div>
+  m.innerHTML = `<div class="sheet"><h2>🏋️ ${esc(blk.name)}, in numbers</h2>
+    <div class="dim small" style="margin-bottom:10px">Week ${weeksIn} of ${blk.weeks} · rotation block ${blockNum} (accessories rotate every ${HYPER_MESO_WEEKS} weeks)</div>
     <div class="wksum-sec"><div class="wksum-h">📅 Sessions this block</div>${dayLines.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
     <div class="wksum-sec"><div class="wksum-h">🏋️ Anchor lifts (est. 1RM change)</div>
       ${lifters.length ? lifters.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('') : '<div class="wksum-li dim">Not enough repeat sessions yet to compare.</div>'}</div>
