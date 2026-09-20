@@ -229,7 +229,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v41';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v42';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2696,6 +2696,52 @@ function barChart(rows, key, fmt, cls) {
   return `<div class="volchart">${rows.map(r => `<div class="volcol"><div class="volbar ${cls || ''}" style="height:${Math.max(2, 100 * r[key] / max)}%"></div><div class="voln">${r[key] ? fmt(r[key]) : ''}</div><div class="voll">W${r.wk}</div></div>`).join('')}</div>`;
 }
 const vs = (cur, prev, unit) => prev == null || !prev ? '' : ` <span class="dim small">vs ${prev}${unit} last week</span>`;
+/* Weekly sets per muscle — the hypertrophy metric the app prescribed from but
+   never showed (v42). Only rendered in a hypertrophy phase: during a race
+   block the question is not "did chest get 13 sets", and the section would be
+   noise. Logged against planned for the current week, plus the block's average
+   week so a single missed session does not read as a collapse. */
+function volumeByMuscleBlock() {
+  const t = today();
+  const blk = reportBlock(t);
+  const wk = weekFor(t);
+  if (!wk) return null;
+  const weekStart = wk.days[0].date, weekEnd = wk.days[6].date;
+  const sessions = Object.values(ST.sessions);
+  const meso = mesoAnchor(ST.maintenance);
+  const logged = setsByMuscle(sessions, weekStart, weekEnd);
+  const planned = plannedSetsByMuscle(planWeeks(), weekStart, weekEnd, meso);
+  const tons = tonnageByMuscle(sessions, weekStart, weekEnd);
+  /* Block to date, averaged per week — weeksSince is whole weeks elapsed, so
+     +1 counts the week in progress and never divides by zero. */
+  const weeksIn = Math.max(1, weeksSince(blk.since, t) + 1);
+  const blockSets = setsByMuscle(sessions, blk.since, t);
+  const muscles = [...new Set([...Object.keys(planned), ...Object.keys(logged)])];
+  if (!muscles.length) return null;
+  const rank = m => (PRIORITY_MUSCLES.includes(m) ? 0 : 1);
+  muscles.sort((a, b) => rank(a) - rank(b) || (planned[b] || 0) - (planned[a] || 0) || a.localeCompare(b));
+  return { blk, weekStart, weekEnd, logged, planned, tons, blockSets, weeksIn, muscles };
+}
+function volumeByMuscleBody() {
+  const v = volumeByMuscleBlock();
+  if (!v) return '';
+  const rows = v.muscles.map(m => {
+    const done = v.logged[m] || 0, plan = v.planned[m] || 0;
+    const pct = plan ? Math.min(100, Math.round(done / plan * 100)) : (done ? 100 : 0);
+    const avg = (v.blockSets[m] || 0) / v.weeksIn;
+    const ton = (v.tons[m] || 0) / 1000;
+    const pri = PRIORITY_MUSCLES.includes(m);
+    return `<div class="sumrow${pri ? '' : ' dim'}">
+      <b>${pri ? '★ ' : ''}${esc(m)}</b>
+      <span>${done}/${plan} sets · ${avg.toFixed(1)}/wk this block${ton >= 0.1 ? ` · ${ton.toFixed(1)} t` : ''}</span>
+      <span class="volbar"><i style="width:${pct}%"></i></span></div>`;
+  }).join('');
+  return `<details class="disc"><summary>Sets per muscle, this week ›</summary>
+    <div class="prb-h">Week of ${fmtDate(v.weekStart)} · ${esc(v.blk.name)}</div>
+    ${rows}
+    <div class="dim small" style="margin-top:8px">★ = what this block is for. Logged sets against what the plan asked for, so a set you skipped is not counted. A set credits every muscle its exercise is tagged with — a bench press counts for chest and shoulders both — which is why the pressing and pulling muscles read high. Only direct work is tagged, so presses and rows carry no arm tag and the arm numbers understate what your arms actually did.</div>
+  </details>`;
+}
 function secStrength(load) {
   const safe = (fn, fb) => { try { return fn(); } catch (e) { return fb; } };
   const withHist = Object.keys(EXERCISES).filter(id => exHistory(id).length > 0);
@@ -2709,6 +2755,7 @@ function secStrength(load) {
       <div class="headline">${cur} t <span class="headline-sub">lifted this week</span>${vs(cur, load.prev && load.prev.tonnes, ' t')}</div>
       ${barChart(load.rows, 'tonnes', v => v.toFixed(1))}
       ${movers.length ? `<div class="tj-wrap">${trajBars(movers)}</div><div class="dim small">Estimated 1RM, early sessions vs recent — tap a lift for its chart.</div>` : `<div class="dim small">Log each lift 3+ times and its trajectory appears here.</div>`}
+      ${['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel((weekFor(today()) || {}).phase)) ? safe(volumeByMuscleBody, '') : ''}
       <details class="disc"><summary>All lifts, PR book ›</summary>
         ${prsL.length ? `<div class="prb-h">🏆 PR book</div>` + prsL.map(p => `<div class="prb-row" onclick="go('exdetail',{ex:'${p.exId}',back:'insights'})">
           <span class="prb-name">${esc(p.name)}</span><span class="prb-val">${p.maxW} kg × ${p.wReps}</span>

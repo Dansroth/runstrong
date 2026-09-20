@@ -404,3 +404,9 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 /* ---- equipment-aware swap suggestions ---- */
 .swapopt.unavail { opacity: .6; }
 .swap-note { display: block; font-size: .72rem; font-weight: 500; color: var(--warn); margin-top: 3px; }
+
+/* Per-muscle weekly volume (v42). The bar is logged sets as a share of what
+   the plan asked for this week — full means the week was delivered, not that
+   a target was beaten. Sits inside a .sumrow, so it inherits its spacing. */
+.volbar { display: block; height: 5px; border-radius: 3px; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; margin-top: 4px; }
+.volbar i { display: block; height: 100%; border-radius: 3px; background: var(--accent, #4caf50); transition: width .2s ease; }

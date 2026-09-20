@@ -595,6 +595,72 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   eq('hypertrophy: Lower B ↔ Arms (Thu↔Sat) is fine — Sunday is an easy run', warnsFor(hw, 3, 5).length, 0, JSON.stringify(warnsFor(hw, 3, 5)));
   ok('hypertrophy: Upper A ↔ Lower B (Tue↔Thu) makes two lower days in a row', warnsFor(hw, 1, 3).some(x => /back to back/.test(x)));
 }
+/* ===================================================================
+   6g. per-muscle weekly volume (PER-MUSCLE WEEKLY VOLUME header)
+   =================================================================== */
+group('sets and tonnage per muscle: logged only, every mapped muscle credited');
+{
+  const { setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES, MUSCLE_MAP, HYPER_START } = P;
+  const sess = (date, status, exercises) => ({ date, status, exercises });
+  const set = (weight, reps, done) => ({ weight, reps, done });
+  // bench maps to chest + shoulders and deliberately NOT triceps: MUSCLE_MAP
+  // counts direct work only, so presses and rows carry no arm tag and the arm
+  // numbers understate what the arms actually did. Same reasoning as the
+  // "13 not 14" comment on the block's own set targets above.
+  const fixture = [
+    sess('2026-10-05', 'done', [{ exId: 'bench', sets: [set(60, 6, true), set(60, 6, true), set(60, 6, false)] }]),
+    sess('2026-10-07', 'done', [{ exId: 'bbcurl', sets: [set(30, 10, true), set(30, 10, true)] }]),
+    sess('2026-10-09', 'active', [{ exId: 'bench', sets: [set(60, 6, true), set(60, 6, true)] }]),
+    sess('2026-11-02', 'done', [{ exId: 'bench', sets: [set(70, 5, true)] }]),
+  ];
+  const wk = setsByMuscle(fixture, '2026-10-05', '2026-10-11');
+  eq('two completed bench sets, not three (the unticked one is not volume)', wk.chest, 2);
+  eq('…and the same set credits shoulders', wk.shoulders, 2);
+  ok('…but not triceps: MUSCLE_MAP counts direct work only', !wk.triceps, `${wk.triceps}`);
+  eq('curls credit biceps', wk.biceps, 2);
+  ok('an unfinished session contributes nothing', !Object.keys(setsByMuscle([fixture[2]], '2026-10-05', '2026-10-11')).length);
+  ok('a session outside the window contributes nothing', (setsByMuscle(fixture, '2026-10-05', '2026-10-11').chest || 0) === 2);
+  eq('widening the window picks the later session up', setsByMuscle(fixture, '2026-10-05', '2026-11-30').chest, 3);
+  eq('empty input is an empty map, not a crash', JSON.stringify(setsByMuscle([], '2026-01-01', '2026-12-31')), '{}');
+  eq('undefined input is handled too', JSON.stringify(setsByMuscle(undefined, '2026-01-01', '2026-12-31')), '{}');
+  // tonnage: 2 sets x 60 kg x 6 reps = 720, credited to each mapped muscle
+  const tons = tonnageByMuscle(fixture, '2026-10-05', '2026-10-11');
+  eq('chest tonnage is weight x reps x completed sets', tons.chest, 720);
+  eq('…credited to every mapped muscle alike', tons.shoulders, 720);
+  eq('curls carry their own tonnage', tons.biceps, 600);
+  const bw = [sess('2026-10-06', 'done', [{ exId: 'hangraise', sets: [set(0, 12, true), set(0, 12, true)] }])];
+  eq('bodyweight work counts as sets…', setsByMuscle(bw, '2026-10-05', '2026-10-11').core, 2);
+  ok('…but carries no tonnage', !(tonnageByMuscle(bw, '2026-10-05', '2026-10-11').core));
+  // planned side: materialised, so the ramp and the deload are in the numbers
+  const weeks = P.buildProgram().weeks;
+  const plannedWk1 = plannedSetsByMuscle(weeks, '2026-09-28', '2026-10-04', HYPER_START);
+  const plannedWk3 = plannedSetsByMuscle(weeks, '2026-10-12', '2026-10-18', HYPER_START);
+  const plannedDl = plannedSetsByMuscle(weeks, '2026-10-19', '2026-10-25', HYPER_START);
+  ok('week 3 asks for more than week 1 (the ramp is in there)', plannedWk3.chest > plannedWk1.chest, `${plannedWk1.chest} → ${plannedWk3.chest}`);
+  ok('the deload asks for less than week 1', plannedDl.chest < plannedWk1.chest, `${plannedDl.chest} vs ${plannedWk1.chest}`);
+  ok('a week with no lift days plans nothing', !Object.keys(plannedSetsByMuscle(weeks, '2026-09-21', '2026-09-22', HYPER_START)).length);
+  // the priority muscles this block is for actually clear [H1]'s threshold
+  for (const m of PRIORITY_MUSCLES) {
+    ok(`${m} is a real muscle tag`, Object.values(MUSCLE_MAP).some(list => list.includes(m)));
+    ok(`${m}: the plan asks for ≥10 sets in block week 1 [H1]`, (plannedWk1[m] || 0) >= 10, `${plannedWk1[m]}`);
+  }
+  // …and hold up in the summer block, where the session count drops to four
+  const summerWk1 = plannedSetsByMuscle(weeks, '2026-11-30', '2026-12-06', HYPER_START);
+  for (const m of PRIORITY_MUSCLES) {
+    ok(`${m}: still ≥9 sets a week on four sessions`, (summerWk1[m] || 0) >= 9, `${summerWk1[m]}`);
+  }
+  ok('the legs are what absorbed the cut, not the priority muscles',
+    summerWk1.glutes < plannedWk1.glutes && summerWk1.quads < plannedWk1.quads,
+    `glutes ${plannedWk1.glutes}→${summerWk1.glutes}, quads ${plannedWk1.quads}→${summerWk1.quads}`);
+  ok('core is trained at least twice a week in both blocks [H2]', true);
+  for (const [label, from, to] of [['hypertrophy', '2026-09-28', '2026-10-04'], ['summer', '2026-11-30', '2026-12-06']]) {
+    const days = weeks.flatMap(w => w.days).filter(d => d.kind === 'lift' && d.date >= from && d.date <= to);
+    const coreDays = days.filter(d => P.materializeTemplate(d.tpl, d.date, HYPER_START).items
+      .some(([id]) => (MUSCLE_MAP[id] || []).includes('core')));
+    ok(`${label} block: core is trained on ≥2 days a week [H2]`, coreDays.length >= 2, `${coreDays.length}`);
+  }
+}
+
 
 group('the weekly mobility routine covers the whole body');
 {

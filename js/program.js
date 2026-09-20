@@ -1511,6 +1511,77 @@ function buildProgram() {
   return { startDate: PROGRAM_START, weeks };
 }
 
+/* =====================================================================
+   PER-MUSCLE WEEKLY VOLUME (v42)
+   =====================================================================
+   The block prescribes from [H1] (weekly hard sets drive hypertrophy) and
+   [H2] (≥2×/week per muscle), cites both, and until now gave no way to see
+   whether a week actually delivered either. Progress had total tonnage and
+   e1RM trajectories — both strength measures. This is the hypertrophy one.
+
+   Counted from what was LOGGED, not from what was planned: a prescribed set
+   that never happened is not volume. The convention is the one
+   buildStretchRoutine() has always used — a completed set credits every
+   muscle its exercise is tagged with, so a bench press counts once for chest
+   and once for shoulders. That is why the pressing and pulling muscles read
+   high in any such table, and the UI says so rather than quietly
+   double-counting. Note the other half of that convention: MUSCLE_MAP tags
+   DIRECT work only, so bench carries no triceps tag and rows carry no biceps
+   tag — the arm numbers here understate what the arms actually did, which is
+   the same caveat the block's own ≥13-set target carries.
+   Pure: sessions and dates are arguments, never read from
+   ST or the clock, so tools/test-progression.js can drive fixtures.
+   ===================================================================== */
+function setsByMuscle(sessions, fromISO, toISO) {
+  const out = {};
+  for (const s of sessions || []) {
+    if (!s || s.status !== 'done' || s.date < fromISO || s.date > toISO) continue;
+    for (const e of (s.exercises || [])) {
+      const done = (e.sets || []).filter(x => x.done).length;
+      if (!done) continue;
+      for (const m of (MUSCLE_MAP[e.exId] || [])) out[m] = (out[m] || 0) + done;
+    }
+  }
+  return out;
+}
+/* Same window, same credit rule, but kilograms moved — total tonnage hides
+   whether chest specifically is doing more work than it was in October.
+   Bodyweight and timed work carries no load, so it contributes sets but no
+   tonnage; that is honest rather than a gap. */
+function tonnageByMuscle(sessions, fromISO, toISO) {
+  const out = {};
+  for (const s of sessions || []) {
+    if (!s || s.status !== 'done' || s.date < fromISO || s.date > toISO) continue;
+    for (const e of (s.exercises || [])) {
+      const ex = EXERCISES[e.exId];
+      if (!ex || ex.mode !== 'reps') continue;
+      let v = 0;
+      for (const t of (e.sets || []).filter(x => x.done)) v += (t.weight || 0) * (t.reps || 0) * (ex.perSide ? 2 : 1);
+      if (!v) continue;
+      for (const m of (MUSCLE_MAP[e.exId] || [])) out[m] = (out[m] || 0) + v;
+    }
+  }
+  return out;
+}
+/* What the plan asked for over the same window, so logged volume has
+   something to be measured against. Materialised, so the ramp and the
+   deload are included rather than the flat template numbers. */
+function plannedSetsByMuscle(weeks, fromISO, toISO, mesoStartISO) {
+  const out = {};
+  for (const w of weeks || []) {
+    for (const d of w.days) {
+      if (d.kind !== 'lift' || d.date < fromISO || d.date > toISO) continue;
+      const tpl = materializeTemplate(d.tpl, d.date, mesoStartISO);
+      if (!tpl) continue;
+      for (const [exId, sets] of tpl.items) for (const m of (MUSCLE_MAP[exId] || [])) out[m] = (out[m] || 0) + sets;
+    }
+  }
+  return out;
+}
+/* The muscles this block is for, in the order the summer brief names them.
+   Shown first so "is chest holding?" is answerable without scanning. */
+const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
+
 /* Which mesocycle-start date the accessory rotation counts from. The
    calendar's block start once the off-season is live; the legacy
    maintenance-mode start if that fallback was chosen instead. */
@@ -1887,7 +1958,8 @@ if (typeof module !== 'undefined' && module.exports) {
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
-    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor,
+    setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
