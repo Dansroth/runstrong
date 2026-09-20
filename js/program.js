@@ -86,6 +86,15 @@ const EXERCISES = {
      weeks from here to the February race that was two and a half cycles of
      the same two curls — thinner variety than [H9] asks for. */
   cablecurl:  { name: 'Cable Curl', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['hammercurl', 'bbcurl'], equip: ['cable'], cue: 'Elbows pinned at your sides, no swing — the cable keeps tension at the top.' },
+  /* Added v52. The library's core work was almost entirely anti-rotation and
+     anti-extension — pallof, chops, carries, planks — which is runner
+     stability, not ab growth. Of the three in the rotation only the cable
+     crunch loaded properly: the ab wheel is bodyweight with nowhere to
+     progress once you can do it, and the hanging raise is as much hip flexor
+     as abs. Both of these take external load, which is what [H1] needs to
+     work on the abs the same way it works everywhere else. */
+  declinesitup:{ name: 'Weighted Decline Sit-Up', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['cablecrunch', 'hangraise'], equip: ['bench'], cue: 'Plate on your chest, curl up one vertebra at a time — no hinging at the hips.' },
+  reversecrunch:{ name: 'Reverse Crunch', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['hangraise', 'abwheel'], equip: [], cue: 'Roll the hips off the floor, knees toward your nose. No swing, no momentum.' },
   ropeext:    { name: 'Overhead Rope Extension', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['overheadext', 'pushdown'], equip: ['cable'], cue: 'Rope behind your head, upper arms still, split the rope at lockout.' },
   slcalfseat: { name: 'Single-Leg Seated Calf Raise', group: 'lower', mode: 'reps', perSide: true, rest: 60, rpe: [8, 8], swaps: ['calfseat', 'bkcalfpress'], equip: ['machine'], cue: 'Bent knee, one foot at a time — the weaker side sets the reps.' },
   dbbench:    { name: 'DB Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['dumbbell', 'bench'], cue: 'Weight = per dumbbell.' },
@@ -155,6 +164,8 @@ const INSIGHTS = {
   lpcalf:    { why: 'Heavy calf loading without balance as the limiter — big, safe doses for stride-impact armour.', deep: 'The leg-press position lets you load the calf complex heavily with zero balance demand, useful for pushing weight beyond what standing raises allow. Depth of stretch is the quality marker — let the heel travel fully down each rep.' },
   calfseat:  { why: 'The soleus takes the highest forces of any muscle when you run — bent-knee raises target exactly it.', deep: 'With the knee bent, the gastrocnemius goes slack and the soleus — the deep, flat endurance workhorse of the calf — does the lifting. Modelling studies put peak soleus forces during running above any other muscle. It responds to high reps and hates being ignored; sore shins and Achilles problems often trace back here.' },
   bkcalfpress:{ why: 'Soleus loading on the leg press — the deep calf endurance muscle, trained heavy and safe.', deep: 'Same logic as the seated raise: bent knee isolates the soleus. The press machine version suits heavier loading with a controlled range — drive through the ball of the foot and pause the stretch.' },
+  declinesitup:{ why: 'Abs trained the way every other muscle here is: through a long range, against a weight you can add to.', deep: 'The decline angle keeps tension on the rectus abdominis from a stretched position at the bottom rather than only at the crunch, and a plate held at the chest — or overhead, for more leverage — means the load can climb week to week like a squat does. Progressive load is the whole reason this is in the rotation; bodyweight ab work runs out of road quickly.' },
+  reversecrunch:{ why: 'Works the abs from the bottom up — the pelvis moves, not the ribcage, which is the half a sit-up misses.', deep: 'Curling the pelvis toward the ribs biases the lower portion of the rectus abdominis and takes the hip flexors largely out of it, which a hanging leg raise does not. Slow and honest beats swinging: the moment momentum starts the set, the abs have stopped working. Add load by holding a dumbbell between the feet once bodyweight is easy.' },
   cablecurl:  { why: 'A curl that stays heavy at the top, where a dumbbell goes light — biceps volume for its own sake this block.', deep: 'Free-weight curls lose tension as the forearm passes vertical, because gravity stops fighting you. A cable pulls horizontally the whole way, so the biceps keeps working through the lockout. This is here to grow arms, not to help you run — the honest reason it exists is that this is a hypertrophy block.' },
   ropeext:    { why: 'The long head of the triceps only loads properly with the arm overhead, and a rope lets it finish the lockout.', deep: 'Two of the three triceps heads cross only the elbow; the long head also crosses the shoulder, so it is stretched — and best trained — with the upper arm overhead [H6]. A rope splits at lockout, letting the forearms rotate out to complete a contraction a straight bar cuts short. Arm size, not stride.' },
   slcalfseat: { why: 'One calf at a time, bent knee — the side that is quietly weaker stops hiding behind the strong one.', deep: 'Two-legged calf work lets the dominant side take more than its share, and calves are among the most asymmetric muscles most people own. Loading one at a time exposes that and makes the lagging side do its own reps. The bent knee keeps it on the soleus, so it slots straight into the seated calf rotation.' },
@@ -266,6 +277,8 @@ const HOWTO = {
   slcalf:      { steps: ['Stand on one foot on a step, holding something for balance, a dumbbell in the other hand if you have one.', 'Lower the heel all the way down for a full stretch.', 'Rise as high as you can onto the ball of the foot, pause at the top.', 'Slow on the way down — all reps on one leg, then switch.'] },
   bkcalfpress: { steps: ['Sit in the leg press with your knees bent to about 90°, balls of your feet on the platform edge.', 'Keep the knee bend fixed — the bent knee is what makes this soleus work.', 'Press through the balls of your feet, pause at the top.', 'Lower slowly into a full stretch before the next rep.'] },
   revlunge:    { steps: ['Stand tall, dumbbells at your sides.', 'Step one foot back and lower until the back knee grazes the floor, front shin near vertical.', 'Drive through the front heel to stand, bringing the back foot forward.', 'All reps on one leg, then switch — or alternate if balance is the limiter.'] },
+  declinesitup:{ steps: ['Hook your feet under the pads on a decline bench, plate held against your chest.', 'Lower under control until your back is flat on the bench and you feel the abs lengthen.', 'Curl up by rounding your spine — ribs toward hips — rather than hinging stiffly at the waist.', 'Once a set of 12 is comfortable, hold a heavier plate rather than adding reps forever.'] },
+  reversecrunch:{ steps: ['Lie on your back, hands by your hips or gripping something solid behind your head.', 'Knees bent to about 90°, thighs vertical to start.', 'Curl your pelvis off the floor and draw the knees toward your nose — the movement is small.', 'Lower slowly. If your feet swing or your back arches, you are using momentum, not abs.'] },
   cablecurl:   { steps: ['Stand a pace back from a low pulley, bar or handle in both hands, palms up.', 'Pin your elbows to your sides — they are a hinge, not a lever.', 'Curl up without letting the elbows drift forward.', 'Lower under control all the way to a straight arm; the cable keeps pulling, so do not let it snatch you back.'] },
   ropeext:     { steps: ['Set the pulley high, take the rope and turn away from the stack.', 'Rope behind your head, upper arms beside your ears and staying there.', 'Extend to straight, splitting the two ends of the rope apart at the top.', 'Let the elbows bend back to a deep stretch behind your head before the next rep.'] },
   slcalfseat:  { steps: ['Sit at the calf machine with one foot on the platform, the other resting aside.', 'Lower that heel slowly into a full stretch.', 'Press up as high as the joint allows and pause at the top.', 'Finish the set, then match the reps exactly on the other side — the weaker leg sets the number.'] },
@@ -305,7 +318,7 @@ const MUSCLE_MAP = {
   rdl:['hams','glutes','back'], trapbar:['hams','glutes','back'], goodmorning:['hams','back'],
   hipthrust:['glutes'], slhipthrust:['glutes'], glutebridge:['glutes'],
   calfstand:['calves'], slcalf:['calves'], lpcalf:['calves'], calfseat:['calves'], bkcalfpress:['calves'], slcalfseat:['calves'],
-  cablecurl:['biceps'], ropeext:['triceps'],
+  cablecurl:['biceps'], ropeext:['triceps'], declinesitup:['core'], reversecrunch:['core'],
   copen:['adductors','core'], sideplank:['core','glutes'], adductor:['adductors'],
   boxjump:['calves','quads'], broadjump:['glutes','quads'], depthdrop:['quads','calves'],
   bench:['chest','shoulders'], dbbench:['chest','shoulders'], machpress:['chest','shoulders'],
@@ -1010,7 +1023,14 @@ const HYPER_POOLS = {
      it is trained 2-3× a week [H2]. Loaded flexion deliberately: pallof,
      copen and sideplank already cover anti-rotation in the running templates,
      and what was missing was trunk flexion under a load that can progress. */
-  coreAcc:     ['hangraise', 'cablecrunch', 'abwheel'],
+  /* Five deep as of v52, and ordered so the two that take external load sit
+     next to the two that don't — the rotation alternates between "add weight"
+     and "add reps" blocks rather than stacking both bodyweight options
+     together. Deliberately NOT here: loaded side bends. They would thicken
+     the obliques, and a thicker waist works against exactly the look this
+     block is for, so the oblique work stays the unloaded anti-rotation kind
+     that already lives in the running templates. */
+  coreAcc:     ['cablecrunch', 'hangraise', 'declinesitup', 'abwheel', 'reversecrunch'],
   /* shoulderAcc (dbshoulder / landmine) retired v40. The arms day it lived on
      became a 30 min session and lost the slot; ohp already presses overhead
      twice a week and latraise moved onto Upper A, so the vertical-press
