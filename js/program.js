@@ -7,13 +7,10 @@
    this array (finalRace()/nextRace() in app.js), never a literal key. */
 const RACES = [
   { key: 'geelong', name: 'Geelong Half', tag: 'A race', date: '2026-09-20' },
-  /* Was the Carman's Classic half and an A race. Changed 2026-09-20: the
-     user entered the 10 km instead and is not running a race build for it
-     — summer is a hypertrophy block, the running comes from Runna. With
-     Geelong run, the calendar now has no A race at all, which is fine:
-     finalRace()/nextRace() key off dates, and the 'A race' tag only drives
-     a CSS class and the race-day copy in dayFromPlan(). */
-  { key: 'feb2027', name: 'Carman\'s Classic 10 km', tag: 'B race', date: '2027-02-21' },
+  /* The Carman's Classic entry was removed in v69: the user is not racing it.
+     Geelong is now the only race the app has ever known about, and it is in
+     the past — so there is no upcoming race anywhere in the calendar, which
+     every race-aware surface already handles by rendering nothing. */
 ];
 
 const PROGRAM_START = '2026-08-13'; // Thursday — partial intro week 1
@@ -1626,9 +1623,8 @@ function applyDayOverrides(weeks) {
   }));
 }
 function buildProgram() {
-  const feb = RACES.find(r => r.key === 'feb2027');
   const weeks = applyDayOverrides(
-    buildRaceBlock().concat(buildOffseason(feb.date, feb.key))
+    buildRaceBlock().concat(buildOffseason(null, null))
   );
   weeks.forEach((w, i) => { w.num = i + 1; });
   return { startDate: PROGRAM_START, weeks };

@@ -294,7 +294,6 @@ group('race block ends on Geelong with an 8-day taper (GEELONG TAPER header)');
 group('off-season calendar: the hypertrophy block starts the day after the race, no gaps');
 {
   const { RACES, HYPER_START, BLOCK_WEEKS, hyperPhaseLabel, buildOffseason, buildRaceBlock, mesoAnchor } = P;
-  const feb = RACES.find(r => r.key === 'feb2027');
   const prog = buildProgram();
   const race = buildRaceBlock();
   eq('the race block is unchanged by the off-season (6 weeks)', race.length, 6);
@@ -309,7 +308,7 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
   eq('the block starts the day after the race — no recovery week', HYPER_START, dadd(RACES[0].date, 1));
   ok('…and nothing on the calendar is still labelled a recovery week', !prog.weeks.some(w => /recovery week/i.test(w.phase)));
   eq('the block runs to Sun 18 Apr 2027', dadd(HYPER_START, BLOCK_WEEKS * 7 - 1), '2027-04-18');
-  ok('…with the February 10 km inside it, not after it', prog.weeks.some(w => w.days.some(d => d.kind === 'race' && d.date === '2027-02-21')));
+  ok('…with no race anywhere in it (v69)', !prog.weeks.some(w => w.days.some(d => d.kind === 'race' && d.date > RACES[0].date)));
   /* Week 1 is the lightest week of a mesocycle — the only protection left
      once the recovery week went, so it is worth an assertion. */
   const wk1 = prog.weeks.find(w => w.monday === HYPER_START);
@@ -318,11 +317,9 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
     .reduce((a, d) => a + P.materializeTemplate(d.tpl, d.date, HYPER_START).items.reduce((x, i) => x + i[1], 0), 0);
   ok('block week 1 carries no ramp — it is the lightest loading week', sets(wk1) < sets(wk2), `${sets(wk1)} vs ${sets(wk2)}`);
   // hypertrophy weeks
-  // the post-race block reuses the "Hypertrophy —" prefix so phaseKeyFromLabel
-  // needs no new rule; this group is about the pre-summer block only
   const hyper = prog.weeks.filter(w => /hypertrophy/i.test(w.phase));
-  eq('all but the race week carry a hypertrophy label', hyper.length, BLOCK_WEEKS - 1);
-  const off = buildOffseason(feb.date, feb.key);
+  eq('every week of the block carries a hypertrophy label', hyper.length, BLOCK_WEEKS);
+  const off = buildOffseason(null, null);
   eq('buildOffseason returns the whole block', off.length, BLOCK_WEEKS);
   /* Weeks carrying a dated exception are not the generated shape by design —
      they are checked in their own group below. */
@@ -519,8 +516,7 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
 group('one continuous block: the same split for thirty weeks, race week aside');
 {
   const { RACES, BLOCK_WEEKS, buildOffseason, blockPhaseLabel, isLowerTpl, DAY_OVERRIDES } = P;
-  const feb = RACES.find(r => r.key === 'feb2027');
-  const block = buildOffseason(feb.date, feb.key);
+  const block = buildOffseason(null, null);
   eq(`${BLOCK_WEEKS} weeks`, block.length, BLOCK_WEEKS);
   eq('starting the day after Geelong', block[0].monday, dadd(RACES[0].date, 1));
   eq('…and running to Sun 18 Apr 2027', block[block.length - 1].days[6].date, '2027-04-18');
@@ -541,14 +537,16 @@ group('one continuous block: the same split for thirty weeks, race week aside');
   ok('every fourth week is a deload and no other week is [H10]',
     keys.every((k, i) => ((i + 1) % 4 === 0) === (k === 'hyperDeload')), keys.join(','));
 
-  // the race sits inside the block as one lighter week, not a taper block
-  const rw = block.find(w => w.days.some(d => d.kind === 'race'));
-  ok('race week exists', !!rw);
-  eq('…and ends on race day', rw.days[6].date, feb.date);
-  ok('…has no leg session', !rw.days.some(d => d.kind === 'lift' && isLowerTpl(d.tpl)));
-  ok('…and nothing heavy after the Wednesday', rw.days.slice(3).every(d => d.kind !== 'lift'));
-  eq('…while the week before it is an ordinary training week',
-    block[block.indexOf(rw) - 1].days.filter(d => d.kind === 'lift').length, 5);
+  /* No race anywhere on the calendar since v69, so every week of the block is
+     an ordinary training week. The race-week layout is only reachable when a
+     race date is passed in, and nothing passes one now — it is kept rather
+     than deleted so adding a race back restores the lighter week on its own. */
+  ok('no race day anywhere in the block', !block.some(w => w.days.some(d => d.kind === 'race')));
+  ok('…and no week is labelled race week', !block.some(w => /race week/i.test(w.phase)));
+  eq('the only race the app knows is Geelong', RACES.map(r => r.key).join(','), 'geelong');
+  ok('…and it is in the past', RACES[0].date < '2026-09-21');
+  ok('the race-week layout still works if a date is given back',
+    buildOffseason('2027-02-21', 'geelong').some(w => w.days.some(d => d.kind === 'race')));
 
   // the calendar is continuous end to end
   const prog = buildProgram();
@@ -607,10 +605,8 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   eq('a missing day reports so', swapLockReason(null, t, () => false), 'not on the plan');
   // warnings: the generated weeks themselves are clean
   for (const w of weeks.slice(1, 5)) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
-  const off = P.buildOffseason(P.RACES.find(r => r.key === 'feb2027').date, 'feb2027');
-  const raceWk = off.find(w => w.days.some(d => d.kind === 'race'));
-  for (const w of off.filter(w => w !== raceWk)) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
-  ok('the generated race week only carries the race-week caution', swapWarnings(raceWk.days).every(x => /race week/.test(x)) && swapWarnings(raceWk.days).length === 1);
+  const off = P.buildOffseason(null, null);
+  for (const w of off) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
   const after = (w, a, b) => { const o = swapDays(w.days[a], w.days[b]); return w.days.map(d => o[d.date] || d); };
   const warnsFor = (w, a, b) => swapWarnings(after(w, a, b));
   ok('Mon lowerA ↔ Tue upperA: lower day lands before the hard run', warnsFor(wk3, 0, 1).some(x => /before a hard run/.test(x)), JSON.stringify(warnsFor(wk3, 0, 1)));

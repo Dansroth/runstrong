@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 31;
+const SCHEMA_VERSION = 32;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -21,7 +21,7 @@ function defaultState() {
     runs: {},              // date → {km, min, feel, note}
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
-    races: { geelong: { checklist: {} }, feb2027: { checklist: {} } },   // checklist only since v64 — results live in the run log
+    races: { geelong: { checklist: {} } },   // checklist only since v64; the February race was removed in v69
     maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     planOverrides: {},     // date → day plan — days swapped in the Plan tab (see planWeeks)
@@ -283,6 +283,14 @@ const MIGRATIONS = {
   // its transition week and the post-race block collapse into one continuous
   // thirty-week block on the same split. Calendar rebuilt.
   30: (s) => { s.program = buildProgram(); s.schemaVersion = 31; return s; },
+  // 31 → 32: the February 10 km is removed. Its race-week layout goes with it,
+  // so that week becomes an ordinary training week; the calendar is rebuilt and
+  // the race's stored record dropped. Geelong's is kept — it was actually run.
+  31: (s) => {
+    if (s.races) delete s.races.feb2027;
+    s.program = buildProgram();
+    s.schemaVersion = 32; return s;
+  },
 };
 
 function migrate(s) {
@@ -336,7 +344,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v68';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v69';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1336,28 +1344,9 @@ function efSeries() {
   return out;
 }
 /* honest half-marathon projection: range from actual long-run pace, VO2 as secondary adjuster */
-function raceProjection() {
-  const merged = mergedRunsAll();
-  const longs = Object.keys(merged).filter(d => merged[d].km >= 12 && merged[d].min).slice(-4);
-  if (!longs.length) return null;
-  const paces = longs.map(d => merged[d].min * 60 / merged[d].km); // sec/km
-  const longPace = paces.reduce((a, b) => a + b, 0) / paces.length;
-  let fast = longPace * 0.93 * 21.1, slow = longPace * 0.99 * 21.1;  // seconds
-  // VO2 adjuster (rough Daniels-style anchor points), only nudges the range
-  const vo2 = Object.values(ST.fitness.vo2).slice(-1)[0];
-  if (vo2) {
-    const table = [[35, 135], [40, 122], [45, 109], [50, 98], [55, 89], [60, 81]]; // vo2 → HM minutes
-    let est = null;
-    for (let i = 0; i < table.length - 1; i++) {
-      const [v1, t1] = table[i], [v2, t2] = table[i + 1];
-      if (vo2 >= v1 && vo2 <= v2) est = (t1 + (t2 - t1) * (vo2 - v1) / (v2 - v1)) * 60;
-    }
-    if (vo2 < 35) est = 135 * 60; if (vo2 > 60) est = 81 * 60;
-    if (est) { if (est < fast) fast = fast * 0.99; if (est > slow) slow = slow * 1.01; }
-  }
-  const fmtT = s => Math.floor(s / 3600) + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0');
-  return { range: fmtT(fast) + '–' + fmtT(slow), nLongs: longs.length };
-}
+/* Removed in v69 with the February race — see below. Kept as a stub only in
+   this comment: it projected a half-marathon finish from recent long runs, and
+   with no race on the calendar there is nothing to project. */
 
 /* Removed with the backlog card and the launch prompt (v61) — its only two
    callers were the two things that chased you about unlogged runs, and a
@@ -2922,9 +2911,11 @@ function secRecovery(load) {
 }
 function secMilestones() {
   const safe = (fn, fb) => { try { return fn(); } catch (e) { return fb; } };
-  const proj = safe(raceProjection, null);
+  /* No race on the calendar since v69, so this renders nothing. Left in place
+     rather than deleted: the day a race is added back, the countdown returns
+     on its own. */
   const next = RACES.find(r => daysUntil(r.date) >= 0);
-  const raceLine = next ? `🏁 ${next.name} in ${daysUntil(next.date)} day${daysUntil(next.date) === 1 ? '' : 's'}${proj ? ` — projected <b>${proj.range}</b> from your last ${proj.nLongs} long run${proj.nLongs === 1 ? '' : 's'}. A range, honestly.` : ' — a projection appears after your first 12 km+ long run with a time.'}` : '';
+  const raceLine = next ? `🏁 ${next.name} in ${daysUntil(next.date)} day${daysUntil(next.date) === 1 ? '' : 's'}` : '';
   const retroReady = RACES.some(r => daysUntil(r.date) < 0) || ST.maintenance.active;
   const hyperReady = today() >= HYPER_START && !ST.maintenance.active;
   return `<div class="section-label">💡 Milestones</div>
