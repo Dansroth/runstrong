@@ -1,5 +1,5 @@
 /* RunStrong service worker — cache-first, fully offline after first load */
-const CACHE = 'runstrong-v60';
+const CACHE = 'runstrong-v61';
 const ASSETS = [
   './',
   './index.html',
@@ -17,8 +17,8 @@ self.addEventListener('install', e => {
      through the browser's HTTP cache by default, and GitHub Pages serves these
      files with max-age=600 — so a service worker installing within ten minutes
      of the last fetch would populate its brand-new cache with the PREVIOUS
-     version's files. The cache would be named runstrong-v60 and contain v59,
-     and because the fetch handler below is cache-first with no revalidation,
+     version's files — a cache named for this version holding the last one's
+     assets. Because the fetch handler below is cache-first with no revalidation,
      it would stay that way until the next version bump. An update that
      silently no-ops is worse than one that fails loudly. */
   const fresh = ASSETS.map(u => new Request(u, { cache: 'reload' }));

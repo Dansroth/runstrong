@@ -266,7 +266,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v60';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v61';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -910,16 +910,13 @@ function vHome() {
   const radar = deloadRadar();
   const radarCard = (() => { try { return reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
     + (radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '');
-  // Runs older than yesterday used to be a queue of modal sheets on every launch.
-  // They're a card you can ignore now — the data still matters (pace trend, deload
-  // radar), but not enough to stand between you and today's workout.
-  const backlog = unloggedRuns().filter(d => d < dadd(t, -1));
-  const backlogCard = backlog.length ? `<div class="card">
-      <div class="card-kicker">🏃 ${backlog.length} run${backlog.length === 1 ? '' : 's'} not logged</div>
-      <div class="card-sub">Oldest is ${fmtDate(backlog[0])}. Logging them keeps your pace trend and the deload radar honest.</div>
-      <button class="btn" onclick="openRunLog('${backlog[0]}')">Log ${fmtDate(backlog[0])}</button>
-      ${backlog.length > 1 ? `<button class="linkbtn" onclick="go('schedule')">See all ${backlog.length} in Plan</button>` : ''}
-    </div>` : '';
+  /* The unlogged-run backlog card is gone (v61, by request). It began as an
+     improvement — v23 turned a queue of modal sheets into one passive card —
+     but it was still the app counting your misses back at you every time you
+     opened it, on a screen whose job is to show you today's session. Runs are
+     logged when you log them; the pace trend and the deload radar work with
+     whatever is there. */
+  const backlogCard = '';
   const hasData = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0;
   const backupDue = hasData && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
@@ -1411,12 +1408,10 @@ window.saveCheckIn = function () {
   const v = $('#ci-vo2') ? parseInt($('#ci-vo2').value, 10) : NaN;
   if (!isNaN(v) && v > 20 && v < 90) ST.fitness.vo2[t] = v;
   save(); closeModal(); render();
-  autoPromptRun();
 };
 window.skipCheckIn = function () {
   ST.fitness.skipped = today();
   save(); closeModal();
-  autoPromptRun();
 };
 window.updateVo2 = function () {
   const v = prompt('VO₂ max from Garmin (ml/kg/min):', Object.values(ST.fitness.vo2).slice(-1)[0] || '48');
@@ -1461,35 +1456,16 @@ function raceProjection() {
   return { range: fmtT(fast) + '–' + fmtT(slow), nLongs: longs.length };
 }
 
-/* every run day ≤ today that still has no log, oldest first */
-function unloggedRuns() {
-  const t = today();
-  const out = [];
-  for (const wk of planWeeks()) for (const d of wk.days) {
-    if ((d.kind === 'run' || d.kind === 'race') && d.date <= t && !ST.runs[d.date]) out.push(d.date);
-  }
-  return out;
-}
+/* Removed with the backlog card and the launch prompt (v61) — its only two
+   callers were the two things that chased you about unlogged runs, and a
+   helper whose whole purpose is enumerating your misses has no other use
+   here. The Plan tab already shows which run days have a log against them. */
 
-/* auto-prompt: at most ONE run sheet per app launch, and only for today or
-   yesterday. This used to walk the entire backlog, and because saveRun/skipRun
-   each called back into it, dismissing one sheet summoned the next — a week
-   away from the app meant five sheets between you and the Today screen, with
-   "I didn't do this run" as the fastest way through. Anything older than
-   yesterday is a passive card on Today now (see runBacklogCard). */
-let runPromptShown = false;
-function autoPromptRun() {
-  if (ST.activeSessionId) return;                      // never interrupt a workout
-  if (runPromptShown) return;                          // one per launch, never chained
-  if ($('#modal').classList.contains('open')) return;
-  const t = today();
-  const recent = unloggedRuns().filter(d => d === t || d === dadd(t, -1));
-  if (!recent.length) return;
-  const pick = recent[0];
-  if (pick === t && new Date().getHours() < 10) return;
-  runPromptShown = true;
-  openRunLog(pick);
-}
+/* The launch-time run prompt is gone (v61, by request). v23 already cut it
+   from a chain of sheets down to one; this removes the last of it. Opening the
+   app to a dialog asking what you did yesterday is the app's agenda, not
+   yours, and the Today screen's job is the session in front of you. Runs are
+   logged from the run day itself, or from the Plan tab, when you choose to. */
 
 function upNext(t) {
   const items = [];
@@ -4159,6 +4135,5 @@ stravaHandleCallback().then(handled => {
   stravaSync(false);               // quiet auto-sync (6h throttle, never blocks or breaks offline use)
   if (handled) return;             // fresh connect already toasts + renders
   if (maybeWeeklySummary()) return;   // Sunday-evening (or later) week in review takes the stage first
-  if (checkInDue()) openCheckIn(); // morning HRV first; run prompt chains after save/skip
-  else autoPromptRun();
+  if (checkInDue()) openCheckIn(); // morning HRV check-in is the only thing that still opens on launch
 });
