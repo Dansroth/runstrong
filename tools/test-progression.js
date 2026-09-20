@@ -614,7 +614,13 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   eq('Wed hard ↔ Fri easy: nothing to warn about (upper sits before the hard run, lowerB is 2 days from Sunday)', warnsFor(wk3, 2, 4).filter(x => !/hard run/.test(x)).length, 0, JSON.stringify(warnsFor(wk3, 2, 4)));
   const hw = off[1];   // hypertrophy week 1
   eq('hypertrophy: Lower B ↔ Arms (Thu↔Sat) is fine — Sunday is an easy run', warnsFor(hw, 3, 5).length, 0, JSON.stringify(warnsFor(hw, 3, 5)));
-  ok('hypertrophy: Upper A ↔ Lower B (Tue↔Thu) makes two lower days in a row', warnsFor(hw, 1, 3).some(x => /back to back/.test(x)));
+  /* Since v57 the week is Upper A, Lower A, run, Lower B — so the two lower
+     days already sit either side of the Wednesday run, and moving that run out
+     from between them is what puts them back to back. The old fixture swapped
+     Tue↔Thu, which under the previous Lower-first layout produced the
+     collision and under this one produces nothing at all. */
+  eq('hypertrophy: Tue ↔ Thu no longer collides — the run stays between the lower days', warnsFor(hw, 1, 3).length, 0, JSON.stringify(warnsFor(hw, 1, 3)));
+  ok('hypertrophy: moving the Wednesday run out (Wed↔Thu) puts the lower days back to back', warnsFor(hw, 2, 3).some(x => /back to back/.test(x)), JSON.stringify(warnsFor(hw, 2, 3)));
 }
 /* ===================================================================
    6g. per-muscle weekly volume (PER-MUSCLE WEEKLY VOLUME header)

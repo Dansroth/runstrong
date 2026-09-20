@@ -1097,9 +1097,11 @@ const HYPER_POOLS = {
      twice a week and latraise moved onto Upper A, so the vertical-press
      accessory was the redundant one to drop rather than the side delts. */
 };
-/* The five lifting templates of a block week, Mon→Sat order (HYPER_WEEK is
-   the dated layout; this is the list the block retro reports against). */
-const HYPER_ORDER = ['hypLowerA', 'hypUpperA', 'hypLowerB', 'hypUpperB', 'hypArms'];
+/* The five lifting templates of a block week, Mon→Sun order (HYPER_WEEK is
+   the dated layout; this is the list the block retro reports against, and a
+   test asserts the two agree — so this moves whenever HYPER_WEEK does. Upper
+   A leads since v57. */
+const HYPER_ORDER = ['hypUpperA', 'hypLowerA', 'hypLowerB', 'hypUpperB', 'hypArms'];
 /* Volume ramp inside a mesocycle [H1]: item indexes that gain one set in
    block week 1, 2, 3. Week HYPER_MESO_WEEKS is the deload (sets halved). */
 const HYPER_RAMP = [[], [0, 1], [0, 1, 2, 3]];
@@ -1411,8 +1413,15 @@ function hyperPhaseLabel(weekN) {
 }
 const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow down';
 const HYPER_WEEK = {
-  0: { kind: 'lift', tpl: 'hypLowerA' },
-  1: { kind: 'lift', tpl: 'hypUpperA' },
+  /* Upper before Lower on Mon/Tue, swapped v57 on request. It also happens to
+     be the better order coming off a race: the block starts the morning after
+     the Geelong Half, and pushing the first squat session to Tuesday gives the
+     legs an extra day. The cost is that Lower A (Tue) and Lower B (Thu) now
+     sit two days apart rather than three, with only the Wednesday easy run
+     between them — swapWarnings() does not flag it (they are not back to back
+     and the Sunday run is easy, not long), but it is the trade being made. */
+  0: { kind: 'lift', tpl: 'hypUpperA' },
+  1: { kind: 'lift', tpl: 'hypLowerA' },
   2: { kind: 'run', title: 'Easy Run + Mobility', sub: EASY_RUN_SUB + ' · then the week\'s mobility session', mobility: true },
   3: { kind: 'lift', tpl: 'hypLowerB' },
   4: { kind: 'lift', tpl: 'hypUpperB' },
