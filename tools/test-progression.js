@@ -428,7 +428,11 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
   // reps: compounds 5-10, isolation 10-15 [H3]
   for (const tp of HYPER_ORDER) for (const [id, , reps] of TEMPLATES[tp].items) {
     const ex = String(id).startsWith('ROTATE:') ? null : EXERCISES[id];
-    if (ex && COMPOUND.has(id)) ok(`${tp}/${id}: compound reps 5-10 [H3]`, reps >= 5 && reps <= 10, `${reps}`);
+    /* Timed and carry work logs seconds or metres in the reps column, so the
+       rep-range rule does not apply to it — copen's "30" is half a minute of
+       holding, not thirty repetitions. */
+    if (ex && ex.mode !== 'reps' && ex.mode !== 'bw') ok(`${tp}/${id}: ${ex.mode} work, reps rule does not apply`, reps > 0, `${reps}`);
+    else if (ex && COMPOUND.has(id)) ok(`${tp}/${id}: compound reps 5-10 [H3]`, reps >= 5 && reps <= 10, `${reps}`);
     else if (ex) ok(`${tp}/${id}: isolation reps 10-15 [H3]`, reps >= 10 && reps <= 15, `${reps}`);
   }
   // every exercise the block can schedule has the full contract
@@ -837,6 +841,35 @@ group('bodyweight: a trailing mean, and nothing derived from it');
   eq('…counts from the latest, not the last key added', daysSinceWeight(w, '2026-12-21'), 1);
 }
 
+
+/* ===================================================================
+   6i. streaks (STREAKS header)
+   =================================================================== */
+group('streaks: a planned rest day bridges, a missed training day breaks');
+{
+  const { streakCount, longestStreakCount } = P;
+  const never = () => false;
+  const S = (...d) => new Set(d);
+  /* The regression this rule exists for: the block trains Mon-Fri + Sun and
+     rests Saturday, so under the old "consecutive trained days" rule a streak
+     could never pass six no matter how perfectly the plan was followed. */
+  const sat = d => d === '2026-09-26' || d === '2026-10-03';
+  const twoPerfectWeeks = S('2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-27',
+    '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-04');
+  eq('two perfect weeks around a rest Saturday is a 12-day streak', streakCount(twoPerfectWeeks, sat, '2026-10-04'), 12);
+  /* Under the old rule the same two perfect weeks, read on the Sunday, gave
+     1 — Saturday broke it and everything before Saturday was invisible. */
+  eq('…where the old rule read the same fortnight as 1', streakCount(twoPerfectWeeks, never, '2026-10-04'), 1);
+  eq('the rest day bridges but does not count toward the number', streakCount(S('2026-09-25', '2026-09-27'), sat, '2026-09-27'), 2);
+  eq('a missed training day still breaks it', streakCount(S('2026-09-21', '2026-09-22', '2026-09-24'), never, '2026-09-24'), 1);
+  eq('today not logged yet does not break it', streakCount(S('2026-09-21', '2026-09-22'), never, '2026-09-23'), 2);
+  eq('nothing logged at all is zero, not a crash', streakCount(S(), never, '2026-09-23'), 0);
+  eq('an all-rest history terminates rather than looping', streakCount(S(), () => true, '2026-09-23'), 0);
+  eq('longest streak sees the same bridge', longestStreakCount(twoPerfectWeeks, sat, '2026-10-04'), 12);
+  eq('…and without it, six', longestStreakCount(twoPerfectWeeks, never, '2026-10-04'), 6);
+  eq('longest with no history is zero', longestStreakCount(S(), never, '2026-10-04'), 0);
+  eq('longest reports the best run, not the current one', longestStreakCount(S('2026-09-21', '2026-09-22', '2026-09-23', '2026-09-30'), never, '2026-09-30'), 3);
+}
 
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));

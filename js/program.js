@@ -865,13 +865,26 @@ const TEMPLATES = {
      halves each item with Math.ceil, so six items of 3-4 sets round up to 12
      — under 60% of 21, but not of 20. An even-set core/calf/delt slot is what
      keeps the deload an actual deload rather than a 62% week. */
-  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 60, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12], ['ROTATE:coreAcc', 4, 12]] },
-  hypUpperA: { title: 'Upper A · Push', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10], ['latraise', 4, 15]] },
-  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 60, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 4, 15], ['ROTATE:coreAcc', 4, 12]] },
+  /* copen closes a gap the v40 rewrite opened. Adductors were only ever
+     trained by `bss`, which sits in the rotating `unilateral` slot on Lower B
+     — so they got work in some mesocycles and none in others, and in the
+     summer block, where Lower B runs only every other week, they fell to
+     zero. That is the best-evidenced groin-injury exercise in the library
+     going missing four months before a race. Two timed sets on BOTH lower
+     days means weekly adductor work whichever day the summer Monday lands on,
+     and it is cheap: 45 s rest and a short hold, not a per-set average. */
+  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 60, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
+  /* Delts give a set to chest on both upper days (v45): chest is the stated
+     priority and sits mid-table, while shoulders read top of the table partly
+     because every press credits them. A bigger shift than this would mean
+     gutting side-delt work, which trades one "looks good" muscle for another
+     rather than finding real surplus. */
+  hypUpperA: { title: 'Upper A · Push', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:chestAcc', 4, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10], ['latraise', 3, 15]] },
+  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 60, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 4, 15], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
   /* Order matters here: HYPER_RAMP bumps the first four items, so both curls
      sit inside that window. With the arms day down to 30 min, biceps would
      otherwise peak at 12 sets in week 3 and miss the ≥13 target [H1]. */
-  hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['incline', 4, 10], ['reardelt', 3, 15]] },
+  hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['incline', 5, 10], ['reardelt', 2, 15]] },
   /* The 30 min session. Arms first while fresh — they are the reason this day
      exists — then core, which is the slot the block was missing entirely.
      Four items, not seven: the side-delt and shoulder-press work moved out
@@ -1605,6 +1618,44 @@ function daysSinceWeight(weights, todayISO) {
   return Math.round((Date.parse(todayISO) - Date.parse(s[s.length - 1].date)) / 86400000);
 }
 
+/* =====================================================================
+   STREAKS (v45)
+   =====================================================================
+   A streak counts days you trained, and a day the PLAN gave you off bridges
+   it rather than breaking it. Before v45 only trained days bridged, and once
+   the block gained a scheduled Saturday off (v39) a streak longer than six
+   days became arithmetically impossible — it reset every week. A streak you
+   cannot build is worse than none.
+   A rest day bridges but does not count: the number is still days trained.
+   A day you were meant to train and didn't still breaks it, which is the
+   part that carries any meaning.
+   Pure, so the rule is testable without app state: `trained` is a Set of ISO
+   dates, `plannedOff(d)` answers whether the plan gave that day off.
+   ===================================================================== */
+function streakCount(trained, plannedOff, todayISO) {
+  const alive = d => trained.has(d) || !!plannedOff(d);
+  let d = todayISO;
+  // Today not logged yet doesn't break it — the day isn't over.
+  if (!alive(d)) d = dadd(d, -1);
+  let n = 0, guard = 0;
+  while (alive(d) && guard++ < 500) {
+    if (trained.has(d)) n++;
+    d = dadd(d, -1);
+  }
+  return n;
+}
+function longestStreakCount(trained, plannedOff, todayISO) {
+  const all = [...trained].sort();
+  if (!all.length) return 0;
+  let best = 0, cur = 0, d = all[0], guard = 0;
+  while (d <= todayISO && guard++ < 3000) {
+    if (trained.has(d)) { cur++; if (cur > best) best = cur; }
+    else if (!plannedOff(d)) cur = 0;
+    d = dadd(d, 1);
+  }
+  return best;
+}
+
 /* The muscles this block is for, in the order the summer brief names them.
    Shown first so "is chest holding?" is answerable without scanning. */
 const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
@@ -1987,7 +2038,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
     SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
-    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

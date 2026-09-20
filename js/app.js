@@ -249,7 +249,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v44';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v45';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -768,29 +768,31 @@ function activityDates() {
   }
   return set;
 }
-function currentStreak() {
-  const dates = activityDates();
-  let d = today();
-  // Today not logged yet doesn't break the streak — the day isn't over.
-  if (!dates.has(d)) d = dadd(d, -1);
-  let n = 0;
-  while (dates.has(d)) { n++; d = dadd(d, -1); }
-  return n;
+/* A day that keeps a streak alive: one you trained, or one the plan gave you
+   off. Before v45 only the first counted, and since v39 — when the block
+   gained a Saturday rest day — that made a streak longer than six days
+   arithmetically impossible: it reset every Saturday. A streak that cannot be
+   built is worse than no streak.
+   So a scheduled rest day now bridges rather than breaks. It does not count
+   toward the number either — the streak still measures days you trained, it
+   just stops punishing you for a day off the plan asked you to take. The Home
+   card for that day already says "Recovery is training too". A day you were
+   meant to train and didn't still breaks it, which is the part that matters.
+   Optional sessions bridge for the same reason adherence() excludes them. */
+/* Whether the plan gave this day off. An optional session counts as off for
+   the same reason adherence() excludes it: skipping it guilt-free is the
+   point. The arithmetic itself is streakCount()/longestStreakCount() in
+   program.js, where it is pure and tested. */
+function plannedOffDay(d) {
+  const day = dayFor(d);
+  return !!(day && (day.kind === 'rest' || day.optional));
 }
+function currentStreak() { return streakCount(activityDates(), plannedOffDay, today()); }
 /* Longest run of consecutive activity dates ever, not just the live one —
    currentStreak() answers "am I on one right now", this answers "what's the
    best I've done", which needs the whole history rather than a walk back
    from today. */
-function longestStreak() {
-  const dates = [...activityDates()].sort();
-  if (!dates.length) return 0;
-  let best = 1, cur = 1;
-  for (let i = 1; i < dates.length; i++) {
-    cur = dadd(dates[i - 1], 1) === dates[i] ? cur + 1 : 1;
-    best = Math.max(best, cur);
-  }
-  return best;
-}
+function longestStreak() { return longestStreakCount(activityDates(), plannedOffDay, today()); }
 const STREAK_DAYS = 35;
 function streakHeatmap() {
   const dates = activityDates();
