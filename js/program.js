@@ -1743,6 +1743,24 @@ function hardSetShare(sessions, fromISO, toISO, minRpe) {
   return { working, hard, share: working ? hard / working : null };
 }
 
+/* Mean readiness for finished sessions in a window — the soreness and fatigue
+   self-reports the pre-session check already collects. The scales run 1-5 and
+   HIGHER IS WORSE, which is the direction deloadRadar() reads them in, so the
+   sum runs 2-10 with 10 the worst day you can report. Collected since the app
+   began and spent only on same-day guidance until v50; shown against training
+   load, it answers a question only the app can see.
+   Null when nothing in the window carried a readiness check. */
+function readinessMean(sessions, fromISO, toISO) {
+  let n = 0, sum = 0;
+  for (const s of sessions || []) {
+    if (!s || s.status !== 'done' || s.date < fromISO || s.date > toISO) continue;
+    const r = s.readiness;
+    if (!r || r.sore == null || r.fat == null) continue;
+    sum += r.sore + r.fat; n++;
+  }
+  return n ? sum / n : null;
+}
+
 /* The muscles this block is for, in the order the summer brief names them.
    Shown first so "is chest holding?" is answerable without scanning. */
 const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
@@ -2125,7 +2143,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
     SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, POST_RACE_WEEKS, buildPostRace,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
-    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, readinessMean, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

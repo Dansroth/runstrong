@@ -937,6 +937,20 @@ group('proximity to failure: only sets that were meant to be hard are counted');
   eq('the floor is configurable', hardSetShare(s, '2026-09-21', '2026-09-27', 9).hard, 1);
 }
 
+group('readiness: the pre-session score, averaged over a window');
+{
+  const { readinessMean } = P;
+  const s = (date, sore, fat, status) => ({ date, status: status || 'done', readiness: sore == null ? null : { sore, fat } });
+  const fx = [s('2026-09-21', 2, 2), s('2026-09-23', 4, 4), s('2026-09-25', null), s('2026-10-05', 5, 5)];
+  eq('averages sore + fat across the window', readinessMean(fx, '2026-09-21', '2026-09-27'), 6);
+  eq('sessions with no check-in are skipped, not counted as zero', readinessMean([s('2026-09-21', 3, 3), s('2026-09-22', null)], '2026-09-21', '2026-09-27'), 6);
+  eq('a window with no check-ins is null, not 0', readinessMean(fx, '2026-11-01', '2026-11-07'), null);
+  eq('unfinished sessions do not count', readinessMean([s('2026-09-21', 5, 5, 'active')], '2026-09-21', '2026-09-27'), null);
+  eq('empty and undefined input are handled', readinessMean(undefined, '2026-09-21', '2026-09-27'), null);
+  ok('higher is worse — the direction deloadRadar reads it in',
+    readinessMean([s('2026-09-21', 5, 5)], '2026-09-21', '2026-09-27') > readinessMean([s('2026-09-21', 1, 1)], '2026-09-21', '2026-09-27'));
+}
+
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));
 if (fail) {

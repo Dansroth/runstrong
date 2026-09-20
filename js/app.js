@@ -259,7 +259,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v49';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v50';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -901,7 +901,7 @@ function vHome() {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
   const radar = deloadRadar();
-  const radarCard = (() => { try { return reminderCard(); } catch (e) { return ''; } })()
+  const radarCard = (() => { try { return reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
     + (radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '');
   // Runs older than yesterday used to be a queue of modal sheets on every launch.
   // They're a card you can ignore now — the data still matters (pace trend, deload
@@ -2781,6 +2781,26 @@ function volumeByMuscleBody() {
   return `<details class="disc"><summary>Sets per muscle, this week ›</summary>
     <div class="prb-h">Week of ${fmtDate(v.weekStart)} · ${esc(v.blk.name)}</div>
     ${rows}
+    ${(() => {
+      /* Load against how you felt. The readiness check has been collecting a
+         soreness and fatigue score before every session since the app began,
+         and it was only ever spent on same-day guidance. Four weeks of sets
+         beside four weeks of readiness is a pattern only the app can see.
+         Stated as two columns and nothing else — volumeShiftNote() sets the
+         precedent that this app does not assert causation from a correlation
+         of n=4, and it is not going to start here. */
+      const all = Object.values(ST.sessions);
+      const rows = [];
+      for (let i = 3; i >= 0; i--) {
+        const wkStart = dadd(v.weekStart, -7 * i), wkEnd = dadd(wkStart, 6);
+        const sets = Object.values(setsByMuscle(all, wkStart, wkEnd)).reduce((a, b) => a + b, 0);
+        const r = readinessMean(all, wkStart, wkEnd);
+        if (!sets && r == null) continue;
+        rows.push(`<div class="sumrow"><b>${fmtDate(wkStart)}</b><span>${sets} muscle-sets · ${r == null ? 'no check-ins' : `readiness ${r.toFixed(1)}/10`}</span></div>`);
+      }
+      return rows.length > 1 ? `<div class="prb-h" style="margin-top:12px">Load and how you felt</div>${rows.join('')}
+        <div class="dim small">Readiness is the pre-session soreness + fatigue score; higher is worse. Four weeks is too few to prove anything — it is here so you can notice, not so the app can diagnose.</div>` : '';
+    })()}
     ${hardLine ? `<div class="prb-h" style="margin-top:12px">Effort</div>${hardLine}
       <div class="dim small">Counts only sets on lifts that carry an RPE target — plyometrics, carries and planks are prescribed nowhere near failure on purpose, so they sit this out.</div>` : ''}
     <div class="dim small" style="margin-top:8px">★ = what this block is for. Logged sets against what the plan asked for, so a set you skipped is not counted. A set credits every muscle its exercise is tagged with — a bench press counts for chest and shoulders both — which is why the pressing and pulling muscles read high. Only direct work is tagged, so presses and rows carry no arm tag and the arm numbers understate what your arms actually did.</div>
@@ -2847,6 +2867,25 @@ async function scheduleReminder() {
     });
   } catch (e) { /* unsupported or blocked — the Home nudge covers it */ }
 }
+/* The weight log is entirely passive — nothing ever asks, so realistically it
+   gets used twice and forgotten. The rest day is the one day of the week with
+   no session competing for attention, so that is where the ask lives: once a
+   week at most, only on a day the plan gave off, and only when the last entry
+   is already a week old. Independent of the reminder toggle, because this is
+   a card you can ignore rather than a notification that interrupts. */
+function weightNudgeCard() {
+  const t = today();
+  const day = dayFor(t);
+  if (!day || day.kind !== 'rest') return '';
+  const since = daysSinceWeight(ST.weights, t);
+  if (since != null && since < 7) return '';
+  return `<div class="card"><div class="card-kicker">⚖️ Rest day</div>
+    <div class="card-sub">${since == null
+      ? 'Tracking your weight is optional — one number, once a week, if you want the trend.'
+      : `Last weighed ${since} day${since === 1 ? '' : 's'} ago.`}</div>
+    <button class="btn" onclick="openWeightLog()">Log weight</button></div>`;
+}
+
 /* The fallback: a card on Home when the app is opened past the reminder time
    on a training day that hasn't been logged. */
 function reminderCard() {
