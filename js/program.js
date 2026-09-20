@@ -961,14 +961,14 @@ const TEMPLATES = {
      going missing four months before a race. Two timed sets on BOTH lower
      days means weekly adductor work whichever day the summer Monday lands on,
      and it is cheap: 45 s rest and a short hold, not a per-set average. */
-  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 60, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
+  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 60, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 5, 12], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
   /* Delts give a set to chest on both upper days (v45): chest is the stated
      priority and sits mid-table, while shoulders read top of the table partly
      because every press credits them. A bigger shift than this would mean
      gutting side-delt work, which trades one "looks good" muscle for another
      rather than finding real surplus. */
   hypUpperA: { title: 'Upper A · Push', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:chestAcc', 4, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10], ['latraise', 3, 15]] },
-  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 60, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 4, 15], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
+  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 60, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 5, 15], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
   /* Order matters here: HYPER_RAMP bumps the first four items, so both curls
      sit inside that window. With the arms day down to 30 min, biceps would
      otherwise peak at 12 sets in week 3 and miss the ≥13 target [H1]. */
@@ -979,6 +979,18 @@ const TEMPLATES = {
      (latraise to Upper A, shoulderAcc retired) because 30 minutes cannot hold
      a shoulder day as well, and delts are not what this summer is for. */
   hypArms:   { title: 'Arms & Core', hyper: true, est: 30, items: [['bbcurl', 4, 10], ['pushdown', 4, 12], ['ROTATE:tricepsAcc', 3, 12], ['ROTATE:coreAcc', 3, 12]] },
+  /* The summer block's single lower day (v58). It replaced alternating
+     Lower A / Lower B on the Monday, which looked reasonable and audited
+     badly: quads took 13 sets one week and 2 the next, hams 8 then 3. That is
+     a fortnightly stimulus wearing a weekly schedule, and [H2] is about
+     frequency of actual exposure, not of the calendar slot.
+     One blended session trains quads, hamstrings, glutes, calves, core and
+     adductors every week instead. Still one lower day, so still short of
+     [H2]'s two — that is the cost of four lifting slots, and it is paid
+     knowingly — but a steady weekly dose beats a sawtooth.
+     Order matters: the ramp bumps the first four items, which here are the
+     two big compounds and the two direct quad/ham lifts. */
+  hypLowerS: { title: 'Lower · Full', hyper: true, est: 62, items: [['squat', 4, 6], ['rdl', 4, 8], ['ROTATE:quadAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:calfStand', 5, 12], ['ROTATE:coreAcc', 3, 12], ['copen', 2, 30]] },
 };
 
 /* =====================================================================
@@ -1504,9 +1516,12 @@ const SUMMER_RUN_LONG = '10–16 km long — your Runna session';
 function summerTempoOnTue(weekN) {
   return SUMMER_TEMPO_TUE_FIRST ? weekN % 2 === 1 : weekN % 2 === 0;
 }
-/* Monday's lower day alternates so neither the quad nor the hinge pattern
-   goes a fortnight without being trained. */
-function summerLowerTpl(weekN) { return weekN % 2 ? 'hypLowerA' : 'hypLowerB'; }
+/* Monday is one blended lower session every week, not Lower A and Lower B in
+   alternation (v58). See the hypLowerS comment: alternating meant each lower
+   muscle got a real dose fortnightly, which is not what [H2] asks for. The
+   argument takes weekN so the signature survives if the block ever wants a
+   rotation again. */
+function summerLowerTpl(weekN) { return 'hypLowerS'; }
 function summerPhaseLabel(weekN) {
   const block = Math.floor((weekN - 1) / HYPER_MESO_WEEKS) + 1;
   const inBlock = ((weekN - 1) % HYPER_MESO_WEEKS) + 1;

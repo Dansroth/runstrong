@@ -535,10 +535,19 @@ group('summer block: 12 hypertrophy-led weeks, running owned by Runna');
     ok(`${w.phase}: no run carries a pace prescription — Runna owns that`,
       [w.days[1].runSub, w.days[4].sub, w.days[6].sub].every(s => /Runna/.test(s || '')));
   }
-  // Monday alternates so both lower patterns stay alive
-  eq('Monday alternates quad-led and hinge-led', JSON.stringify([1, 2, 3, 4].map(summerLowerTpl)),
-    JSON.stringify(['hypLowerA', 'hypLowerB', 'hypLowerA', 'hypLowerB']));
-  ok('…and both appear in the block', new Set(build.slice(0, 11).map(w => w.days[0].tpl)).size === 2);
+  /* Monday is one blended lower session every week (v58). Alternating Lower A
+     and Lower B gave quads 13 sets one week and 2 the next — a fortnightly
+     stimulus on a weekly slot — so the assertion is now that every lower
+     muscle gets trained every single week, which is the thing [H2] cares
+     about and the thing the alternating layout quietly failed. */
+  eq('Monday is the same blended lower session every week', new Set([1, 2, 3, 4].map(summerLowerTpl)).size, 1);
+  for (let n = 1; n <= 4; n++) {
+    const tags = new Set(P.materializeTemplate(summerLowerTpl(n), dadd(P.SUMMER_START, (n - 1) * 7), P.HYPER_START)
+      .items.flatMap(([id]) => P.MUSCLE_MAP[id] || []));
+    for (const m of ['quads', 'hams', 'glutes', 'calves', 'core', 'adductors']) {
+      ok(`summer week ${n}: ${m} is trained`, tags.has(m), [...tags].join(','));
+    }
+  }
   // easy/tempo alternate between Tuesday and Friday
   ok('tempo alternates Tue/Fri week to week', [1, 2, 3, 4].map(summerTempoOnTue).join(',') === 'false,true,false,true');
   eq('week 1 runs easy on Tuesday and tempo on Friday', build[0].days[4].title, 'Tempo Run');

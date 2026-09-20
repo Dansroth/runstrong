@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 24;
+const SCHEMA_VERSION = 25;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -209,6 +209,10 @@ const MIGRATIONS = {
   // 23 → 24: Monday and Tuesday swapped so the week opens with Upper A and the
   // first squat session lands on Tuesday. Calendar change, program rebuilt.
   23: (s) => { s.program = buildProgram(); s.schemaVersion = 24; return s; },
+  // 24 → 25: audit fixes — calf slots to 5 sets, and the summer Monday becomes
+  // one blended lower session (hypLowerS) instead of alternating A/B. Calendar
+  // change, program rebuilt.
+  24: (s) => { s.program = buildProgram(); s.schemaVersion = 25; return s; },
 };
 
 function migrate(s) {
@@ -262,7 +266,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v57';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v58';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
