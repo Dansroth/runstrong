@@ -266,7 +266,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v58';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v59';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -4082,6 +4082,30 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) return; // first install, not an update
     if (document.getElementById('updatebar')) return;
+    /* Apply the update ourselves when nothing is in flight (v59). The banner
+       was the whole mechanism before, and an update that needs a tap is one
+       plenty of people never take — an installed PWA can sit on a months-old
+       version indefinitely while its owner assumes it is current.
+       "Nothing in flight" is meant strictly: never during an active workout,
+       never with a sheet open, never while a field has focus. Reloading out
+       from under someone mid-set reads as data loss even though every set is
+       already saved. In any of those cases the banner appears exactly as
+       before and they choose the moment.
+       The sessionStorage flag makes this at most one reload per tab, so a
+       misbehaving update can never put the app in a reload loop. */
+    const s = ST.activeSessionId && ST.sessions[ST.activeSessionId];
+    const modal = document.getElementById('modal');
+    const el = document.activeElement;
+    const busy = (s && s.status === 'active')
+      || (modal && modal.classList.contains('open'))
+      || (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    let reloadedAlready = false;
+    try { reloadedAlready = !!sessionStorage.getItem('rs-swreload'); } catch (e) {}
+    if (!busy && !reloadedAlready) {
+      try { sessionStorage.setItem('rs-swreload', '1'); } catch (e) {}
+      location.reload();
+      return;
+    }
     document.body.insertAdjacentHTML('beforeend',
       `<div class="updatebar" id="updatebar" onclick="location.reload()">⬆ App updated — tap to load the new version</div>`);
   });
