@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 19;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -156,6 +156,26 @@ const MIGRATIONS = {
   // (maint* templates, 2-3 a week), and the February race gets its real
   // name. Stored program rebuilt; swaps and history untouched.
   17: (s) => { s.program = buildProgram(); s.schemaVersion = 18; return s; },
+  // 18 → 19: February became the Carman's Classic 10 km instead of the half
+  // (2026-09-20). The 12-week half-marathon build is deleted and replaced by
+  // the summer block — hypertrophy-led, running owned by the user's Runna
+  // plan (buildSummer in program.js) — and the hypertrophy block's own week
+  // is restructured: four 60 min lifts Mon/Tue/Thu/Fri, a short Sunday
+  // session stacked with that day's run, Saturday off. Both are calendar
+  // changes, so the stored program is rebuilt (precedent: 1 → 2). A swap
+  // stored against a date whose plan no longer exists is dropped rather than
+  // left pointing at a retired session; sessions, runs and routines are
+  // keyed by date and survive untouched.
+  18: (s) => {
+    s.program = buildProgram();
+    if (s.planOverrides) {
+      for (const d of Object.keys(s.planOverrides)) {
+        const o = s.planOverrides[d];
+        if (o && o.kind === 'lift' && !TEMPLATES[o.tpl]) delete s.planOverrides[d];
+      }
+    }
+    s.schemaVersion = 19; return s;
+  },
 };
 
 function migrate(s) {
@@ -209,7 +229,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v38';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v39';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -798,13 +818,25 @@ function vHome() {
       : `<div class="card"><div class="card-title">Program complete 🎉</div><div class="card-sub">Hope ${esc(finalRace().name)} went fast.</div><button class="btn primary big" onclick="offerRecoveryMode()">What's next?</button></div>`;
   } else if (day.kind === 'lift') {
     const done = ST.sessions[t] && ST.sessions[t].status === 'done';
+    /* A lift day the plan also runs on — the summer block's Tuesday, the
+       hypertrophy block's Sunday. The lift owns the card because it is what
+       the app drives; the run gets its own row so it can be logged from
+       here exactly as it would be on a run day. Mirrors the `mobility` flag
+       on a run day, which works the same way round. */
+    const runRow = !day.run ? '' : (() => {
+      const mr = mergedRunFor(t);
+      return mr
+        ? `<div class="run-logged">✓ ${mr.km} km · ${mr.min} min${mr.feel ? ` · felt ${esc(mr.feel)}` : ''}</div>`
+        : `<div class="card-sub dim">🏃 ${esc(day.runSub || 'A run today as well — either side of the lift.')}</div>
+           <button class="btn" onclick="event.stopPropagation();openRunLog('${t}')">🏃 Log this run</button>`;
+    })();
     card = done
-      ? `<div class="card"><div class="card-kicker">Done today ✓</div><div class="card-title">${esc(day.title)}</div><button class="btn" onclick="event.stopPropagation();go('summary',{sid:'${t}'})">View summary</button></div>`
+      ? `<div class="card"><div class="card-kicker">Done today ✓</div><div class="card-title">${esc(day.title)}</div><button class="btn" onclick="event.stopPropagation();go('summary',{sid:'${t}'})">View summary</button>${runRow}</div>`
       : `<div class="card action">
-          <div class="card-kicker">${day.optional ? 'Optional today' : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min</div>
+          <div class="card-kicker">${day.optional ? 'Optional today' : day.run ? "Today's lift + run" : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min</div>
           <div class="card-title">${esc(day.title)}</div>${day.sub ? `<div class="card-sub">${esc(day.sub)}</div>` : ''}
           <div class="card-sub" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${materializeTemplate(day.tpl, t, mesoAnchor(ST.maintenance)).items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
-          <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button></div>`;
+          <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button>${runRow}</div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
     const mr = mergedRunFor(t);
     const skippedManual = ST.runs[t] && ST.runs[t].skipped && !stravaRunOn(t);
@@ -1493,12 +1525,12 @@ window.saveRaceResult = function (key) {
    reachable as a fallback for anyone who wants no calendar at all. */
 function offerRecoveryMode() {
   const m = $('#modal');
-  const hyperEnd = dadd(RUN_BUILD_START, -1);
+  const hyperEnd = dadd(SUMMER_START, -1);
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
     <div class="wksum-li">• <b>Recovery week</b> — ${esc(fmtDate(RECOVERY_MONDAY))} to ${esc(fmtDate(dadd(RECOVERY_MONDAY, 6)))}. Walk, eat, sleep; an optional light session Thursday; an easy jog Sunday if the legs say yes.</div>
     <div class="wksum-li">• <b>Hypertrophy block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(hyperEnd))}. Five lifts, two easy runs and one mobility session a week, in two 4-week blocks with a deload at the end of each, then a transition week that brings running back to three days.</div>
-    <div class="wksum-li">• <b>Run build</b> — from ${esc(fmtDate(RUN_BUILD_START))}, twelve weeks to ${esc(finalRace().name)}. Lifting drops to maintenance there: two or three short sessions a week.</div>
+    <div class="wksum-li">• <b>Summer block</b> — from ${esc(fmtDate(SUMMER_START))}, twelve weeks to ${esc(finalRace().name)}. Lifting stays the point: three 60 min sessions plus a short one on your Tuesday run, with three Runna runs a week around them.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
     <button class="linkbtn" onclick="closeModal()">Close</button></div>`;
@@ -2539,7 +2571,7 @@ function vSchedule() {
         const runSkipped = isRun && !merged && ST.runs[d.date] && ST.runs[d.date].skipped;
         const extraRun = !isRun && merged && merged.src !== 'manual';   // synced run on a non-plan day (Runna ≠ plan)
         const mobDone = (d.kind === 'mobility' || d.mobility) && routineDone(d.date, 'stretch');
-        const icon = d.kind === 'run' ? (d.mobility ? '🏃🧘' : '🏃') : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? '🏋️' : d.kind === 'mobility' ? '🧘' : '·';
+        const icon = d.kind === 'run' ? (d.mobility ? '🏃🧘' : '🏃') : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? (d.run ? '🏋️🏃' : '🏋️') : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
         const moved = !!(ST.planOverrides && ST.planOverrides[d.date]);
         if (done) action = `<button class="mini" onclick="event.stopPropagation();go('summary',{sid:'${d.date}'})">view</button>`;
@@ -3377,7 +3409,7 @@ function vSettings() {
     ${ST.maintenance.active
       ? `<div class="dim small" style="margin-bottom:8px">Maintenance mode is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: 3 flexible gym workouts a week, no calendar, no race clock.</div>
          <button class="btn big" onclick="if(confirm('Back to the calendar? Today\\'s plan takes over from the flexible workouts.')){ST.maintenance={active:false,startedOn:null,program:'balanced',mesoStart:null};save();render();}">Back to the calendar</button>`
-      : `<div class="dim small" style="margin-bottom:8px">The calendar runs the race block, the recovery week, the hypertrophy block (${fmtDate(HYPER_START)} → ${fmtDate(dadd(RUN_BUILD_START, -1))}) and the February build. Today: ${esc(phaseLabel(today()))}.</div>
+      : `<div class="dim small" style="margin-bottom:8px">The calendar runs the race block, the recovery week, the hypertrophy block (${fmtDate(HYPER_START)} → ${fmtDate(dadd(SUMMER_START, -1))}) and the summer block. Today: ${esc(phaseLabel(today()))}.</div>
          <button class="btn big" onclick="if(confirm('Switch to maintenance mode? The calendar is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance('balanced')">Switch to 3 flexible workouts (no calendar)</button>`}
     <div class="section-label">Run sync</div>
     <div class="dim small" style="margin-bottom:8px">Import your runs from <b>Garmin Connect</b> (free): on connect.garmin.com go to Activities → All Activities → Export CSV, then load the file here. Re-imports skip runs it already knows.</div>

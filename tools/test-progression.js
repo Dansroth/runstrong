@@ -293,11 +293,11 @@ group('race block ends on Geelong with an 8-day taper (GEELONG TAPER header)');
    =================================================================== */
 group('off-season calendar: recovery week + 9-week hypertrophy block, no gaps');
 {
-  const { RACES, RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, RUN_BUILD_START, hyperPhaseLabel, buildOffseason, buildRaceBlock, mesoAnchor } = P;
+  const { RACES, RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, SUMMER_START, hyperPhaseLabel, buildOffseason, buildRaceBlock, mesoAnchor } = P;
   const prog = buildProgram();
   const race = buildRaceBlock();
   eq('the race block is unchanged by the off-season (6 weeks)', race.length, 6);
-  eq('the whole calendar is race block + recovery + hypertrophy + run build', prog.weeks.length, 6 + 1 + HYPER_WEEKS + P.RUN_BUILD_WEEKS);
+  eq('the whole calendar is race block + recovery + hypertrophy + summer', prog.weeks.length, 6 + 1 + HYPER_WEEKS + P.SUMMER_WEEKS);
   // continuity
   for (let i = 1; i < prog.weeks.length; i++) {
     const prev = prog.weeks[i - 1], cur = prog.weeks[i];
@@ -307,8 +307,8 @@ group('off-season calendar: recovery week + 9-week hypertrophy block, no gaps');
   }
   eq('recovery week starts the day after the race', RECOVERY_MONDAY, dadd(RACES[0].date, 1));
   eq('the hypertrophy block starts the Monday after recovery week', HYPER_START, dadd(RECOVERY_MONDAY, 7));
-  eq('the run build starts the Monday after the last hypertrophy week', RUN_BUILD_START, dadd(HYPER_START, HYPER_WEEKS * 7));
-  eq('…which is 12 weeks before the February half (2027-02-21)', dadd(RUN_BUILD_START, 12 * 7 - 1), '2027-02-21');
+  eq('the summer block starts the Monday after the last hypertrophy week', SUMMER_START, dadd(HYPER_START, HYPER_WEEKS * 7));
+  eq('…which is 12 weeks before the February 10 km (2027-02-21)', dadd(SUMMER_START, 12 * 7 - 1), '2027-02-21');
   // recovery week
   const rec = prog.weeks.find(w => w.phase === 'Recovery week');
   ok('recovery week exists', !!rec);
@@ -325,12 +325,18 @@ group('off-season calendar: recovery week + 9-week hypertrophy block, no gaps');
   eq('buildOffseason returns recovery + hypertrophy weeks', off.length, 1 + HYPER_WEEKS);
   for (const w of hyper.slice(0, HYPER_WEEKS - 1)) {
     const lifts = w.days.filter(d => d.kind === 'lift').length;
-    const runs = w.days.filter(d => d.kind === 'run').length;
+    /* Since v39 the Sunday lift carries the day's easy run (day.run), so a
+       run is either its own day or a flag on a lift day — the same shape
+       the `mobility` flag has always had on a run day. */
+    const runs = w.days.filter(d => d.kind === 'run' || d.run).length;
     const mob = w.days.filter(d => d.kind === 'mobility' || d.mobility).length;
     eq(`week ${w.num} (${w.phase}): 5 lifts`, lifts, 5);
     eq(`week ${w.num}: 2 easy runs`, runs, 2);
     ok(`week ${w.num}: every run is easy`, w.days.filter(d => d.kind === 'run').every(d => /easy/i.test(d.title)));
     eq(`week ${w.num}: exactly one mobility session`, mob, 1);
+    eq(`week ${w.num}: lifts sit Mon/Tue/Thu/Fri/Sun`, w.days.map((d, i) => d.kind === 'lift' ? i : null).filter(i => i !== null).join(','), '0,1,3,4,6');
+    eq(`week ${w.num}: Saturday is the rest day`, w.days[5].kind, 'rest');
+    eq(`week ${w.num}: Sunday is the short lift stacked on the easy run`, w.days[6].kind + '/' + !!w.days[6].run, 'lift/true');
     ok(`week ${w.num}: has no rest-less 8-slot day problem (every day is one plan)`, w.days.every(d => ['lift', 'run', 'mobility', 'rest'].includes(d.kind)));
     ok(`week ${w.num}: label resolves to a hypertrophy policy`, ['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel(w.phase)), phaseKeyFromLabel(w.phase));
   }
@@ -452,21 +458,25 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
 }
 
 /* ===================================================================
-   6e. the February 2027 build (RUN BUILD header)
+   6e. the summer block (SUMMER BLOCK header)
    =================================================================== */
-group('run build: 12 race-anchored weeks with a real long-run progression');
+group('summer block: 12 hypertrophy-led weeks, running owned by Runna');
 {
-  const { RACES, RUN_BUILD_WEEKS, RUN_BUILD_PLAN, buildRunBuild, RUN_BUILD_START } = P;
+  const { RACES, SUMMER_WEEKS, SUMMER_START, buildSummer, summerLowerTpl, summerTempoOnTue, isLowerTpl } = P;
   const feb = RACES.find(r => r.key === 'feb2027');
   ok('the February race is on the calendar', !!feb);
-  eq('…as an A race', feb.tag, 'A race');
-  eq('…on 2027-02-21', feb.date, '2027-02-21');
-  const build = buildRunBuild(feb.date, feb.key);
-  eq('12 weeks', build.length, RUN_BUILD_WEEKS);
-  eq('starts on RUN_BUILD_START', build[0].monday, RUN_BUILD_START);
+  eq('…as the 10 km, not the half', feb.name, 'Carman\'s Classic 10 km');
+  ok('…and not an A race any more', feb.tag !== 'A race', feb.tag);
+  eq('…still on 2027-02-21', feb.date, '2027-02-21');
+  ok('the half-marathon build is gone', typeof P.buildRunBuild === 'undefined' && typeof P.RUN_BUILD_PLAN === 'undefined');
+  const build = buildSummer(feb.date, feb.key);
+  eq('12 weeks', build.length, SUMMER_WEEKS);
+  eq('starts on SUMMER_START', build[0].monday, SUMMER_START);
+  eq('…which is the Monday after the last hypertrophy week', SUMMER_START, dadd(P.HYPER_START, P.HYPER_WEEKS * 7));
   eq('ends on race day', build[11].days[6].date, feb.date);
   eq('race day is a race', build[11].days[6].kind, 'race');
   ok('race-day title names the race', build[11].days[6].title.includes(feb.name));
+  ok('race-day copy does not call a B race "the one it was all for"', !/all for/.test(build[11].days[6].sub), build[11].days[6].sub);
   // the whole calendar is continuous through race day
   const prog = buildProgram();
   eq('the calendar\'s last day is the February race', prog.weeks[prog.weeks.length - 1].days[6].date, feb.date);
@@ -476,55 +486,49 @@ group('run build: 12 race-anchored weeks with a real long-run progression');
     if (cur.days[0].date !== dadd(prevLast, 1)) ok(`gap between week ${prev.num} and ${cur.num}`, false, `${prevLast} → ${cur.days[0].date}`);
   }
   ok('no gaps from 2026-08-13 to 2027-02-21', true);
-  // phases resolve
+  // lifting stays hypertrophy — this is the whole point of the block
   for (const w of build) ok(`"${w.phase}" resolves to a real policy`, !!PHASE_POLICY[phaseKeyFromLabel(w.phase)], phaseKeyFromLabel(w.phase));
-  eq('down weeks use the down policy (load held)', phaseKeyFromLabel(build[3].phase) + '/' + phaseKeyFromLabel(build[7].phase), 'down/down');
-  // lifting is MAINTENANCE through the run build, by request — base, build
-  // and peak weeks all hold strength rather than push it
-  eq('base weeks lift under the maintenance policy', phaseKeyFromLabel(build[0].phase), 'maint');
-  eq('build weeks lift under the maintenance policy', [4, 5, 6].map(i => phaseKeyFromLabel(build[i].phase)).join('/'), 'maint/maint/maint');
-  eq('peak weeks lift under the maintenance policy', phaseKeyFromLabel(build[8].phase) + '/' + phaseKeyFromLabel(build[9].phase), 'maint/maint');
-  eq('week 11 is the taper', phaseKeyFromLabel(build[10].phase), 'taper');
-  eq('week 12 is race week', phaseKeyFromLabel(build[11].phase), 'raceweek');
-  eq('the down policy never allows a load increase', PHASE_POLICY.down.allowUp, false);
-  ok('the maintenance policy holds at target rather than pushing', PHASE_POLICY.maint.atTargetHold === true && PHASE_POLICY.maint.maxUpPct <= 4);
-  // lifts per phase
-  const liftsOf = w => w.days.filter(d => d.kind === 'lift').length;
-  eq('base week 1: 2 lifts', liftsOf(build[0]), 2);
-  eq('base weeks 2-3: 3 lifts', liftsOf(build[1]) + '/' + liftsOf(build[2]), '3/3');
-  eq('down weeks: 2 lifts', liftsOf(build[3]) + '/' + liftsOf(build[7]), '2/2');
-  eq('build and peak weeks: 3 lifts', [4, 5, 6, 8, 9].map(i => liftsOf(build[i])).join(''), '33333');
-  ok('build weeks use the maintenance templates', [1, 2, 4, 5, 6, 8, 9].every(i => JSON.stringify(build[i].days.filter(d => d.kind === 'lift').map(d => d.tpl)) === JSON.stringify(['maintFull', 'maintUpper', 'maintLower'])));
-  ok('no hypertrophy template survives into the run build', build.every(w => w.days.every(d => !(d.tpl && TEMPLATES[d.tpl].hyper))));
-  ok('every maintenance session is ~40 min or less', ['maintFull', 'maintUpper', 'maintLower'].every(tp => TEMPLATES[tp].est <= 42));
-  eq('taper week: two short taper sessions', JSON.stringify(build[10].days.filter(d => d.kind === 'lift').map(d => d.tpl)), JSON.stringify(['upperTaperA', 'lowerTaperA']));
-  eq('race week: primer only', JSON.stringify(build[11].days.filter(d => d.kind === 'lift').map(d => d.tpl)), JSON.stringify(['primer']));
-  ok('no lift within 3 days of the race', build[11].days.filter(d => d.kind === 'lift').every(d => dadd(d.date, 3) < feb.date));
-  ok('Thursday is the lower day in build weeks (WHY_SCHEDULE)', [4, 5, 6, 8, 9].every(i => build[i].days[3].tpl === 'maintLower'));
-  ok('the race is Carman\'s Classic', /Carman/.test(feb.name));
-  ok('race-week label carries the race name', /Carman/.test(build[11].phase), build[11].phase);
-  // runs
-  for (const w of build) {
-    const runs = w.days.filter(d => d.kind === 'run' || d.kind === 'race').length;
-    eq(`${w.phase} (${w.monday}): 3 runs`, runs, 3);
-    eq(`${w.phase} (${w.monday}): one mobility session`, w.days.filter(d => d.kind === 'mobility' || d.mobility).length >= 1, true);
-    ok(`${w.phase} (${w.monday}): Wednesday says what to do`, w.days[2].kind === 'run' && w.days[2].sub.length > 20 && !/Intervals \/ tempo — lifting/.test(w.days[2].sub));
+  ok('every week lifts under a hypertrophy policy, never maintenance',
+    build.every(w => ['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel(w.phase))),
+    build.map(w => phaseKeyFromLabel(w.phase)).join(','));
+  ok('no maintenance template appears anywhere in the block',
+    build.every(w => w.days.every(d => !/^maint/.test(d.tpl || ''))));
+  ok('every lift is a hypertrophy template', build.every(w => w.days.every(d => d.kind !== 'lift' || TEMPLATES[d.tpl].hyper)));
+  // deload rhythm: 12 weeks = 3 mesocycles exactly, race week is the third deload
+  const deloads = build.map((w, i) => phaseKeyFromLabel(w.phase) === 'hyperDeload' ? i + 1 : null).filter(Boolean);
+  eq('three deload weeks, every fourth', JSON.stringify(deloads), JSON.stringify([4, 8, 12]));
+  ok('race week is the third deload', phaseKeyFromLabel(build[11].phase) === 'hyperDeload', build[11].phase);
+  // the weekly shape the user asked for
+  for (const w of build.slice(0, SUMMER_WEEKS - 1)) {
+    const lifts = w.days.filter(d => d.kind === 'lift');
+    const runs = w.days.filter(d => d.kind === 'run' || d.kind === 'race' || d.run);
+    eq(`${w.phase}: 4 lift touches`, lifts.length, 4);
+    eq(`${w.phase}: 3 runs`, runs.length, 3);
+    eq(`${w.phase}: one mobility session`, w.days.filter(d => d.kind === 'mobility' || d.mobility).length, 1);
+    eq(`${w.phase}: Thursday is the rest day`, w.days[3].kind, 'mobility');
+    ok(`${w.phase}: Monday is the lower day`, isLowerTpl(w.days[0].tpl), w.days[0].tpl);
+    ok(`${w.phase}: Saturday leaves the legs alone (upper/arms)`, !isLowerTpl(w.days[5].tpl), w.days[5].tpl);
+    eq(`${w.phase}: Tuesday is the short lift stacked on a run`, w.days[1].kind + '/' + !!w.days[1].run, 'lift/true');
+    ok(`${w.phase}: Tuesday's run says what it is`, /km/.test(w.days[1].runSub || ''), w.days[1].runSub);
+    ok(`${w.phase}: Friday and Sunday are runs`, w.days[4].kind === 'run' && w.days[6].kind === 'run');
+    ok(`${w.phase}: no run carries a pace prescription — Runna owns that`,
+      [w.days[1].runSub, w.days[4].sub, w.days[6].sub].every(s => /Runna/.test(s || '')));
   }
-  // long-run progression
-  const longs = RUN_BUILD_PLAN.slice(0, 11).map(p => p.long);
-  eq('the longest run is 21 km', Math.max(...longs), 21);
-  eq('…three weeks out (week 9)', longs.indexOf(21), 8);
-  ok('week 1 starts around 12 km', longs[0] >= 11 && longs[0] <= 13, `${longs[0]}`);
-  for (let i = 1; i < longs.length; i++) {
-    const p = RUN_BUILD_PLAN[i], prev = RUN_BUILD_PLAN[i - 1];
-    if (/down/i.test(p.phase)) ok(`week ${i + 1} down week drops to ~70% (${longs[i]} of ${longs[i - 1]})`, longs[i] <= longs[i - 1] * 0.8 && longs[i] >= longs[i - 1] * 0.6);
-    else if (/down/i.test(prev.phase)) ok(`week ${i + 1} rebuilds after a down week`, longs[i] > longs[i - 1]);
-    else if (/taper|peak/i.test(p.phase) && longs[i] < longs[i - 1]) ok(`week ${i + 1} (${p.phase}) comes down from the peak`, true);
-    else ok(`week ${i + 1} steps up by ≤ 12% (${longs[i - 1]} → ${longs[i]})`, longs[i] / longs[i - 1] <= 1.125 && longs[i] > longs[i - 1], `${(longs[i] / longs[i - 1] * 100).toFixed(0)}%`);
-  }
-  ok('the taper week long run is 12-14 km', longs[10] >= 12 && longs[10] <= 14);
-  ok('every long-run subtitle carries real kilometres', build.slice(0, 11).every(w => /\d+(\.\d+)?( |–)/.test(w.days[6].sub) && /km/.test(w.days[6].sub)));
-  // the old race block is untouched by the generalisation
+  // Monday alternates so both lower patterns stay alive
+  eq('Monday alternates quad-led and hinge-led', JSON.stringify([1, 2, 3, 4].map(summerLowerTpl)),
+    JSON.stringify(['hypLowerA', 'hypLowerB', 'hypLowerA', 'hypLowerB']));
+  ok('…and both appear in the block', new Set(build.slice(0, 11).map(w => w.days[0].tpl)).size === 2);
+  // easy/tempo alternate between Tuesday and Friday
+  ok('tempo alternates Tue/Fri week to week', [1, 2, 3, 4].map(summerTempoOnTue).join(',') === 'false,true,false,true');
+  eq('week 1 runs easy on Tuesday and tempo on Friday', build[0].days[4].title, 'Tempo Run');
+  eq('…and week 2 swaps them', build[1].days[4].title, 'Easy Run');
+  // race week is lighter, with nothing heavy late
+  const rwLifts = build[11].days.filter(d => d.kind === 'lift');
+  ok('race week: no lift after Wednesday', rwLifts.every(d => d.date <= dadd(build[11].monday, 2)), rwLifts.map(d => d.date).join(','));
+  ok('race week: at least 4 clear days between the last lift and the race',
+    rwLifts.every(d => dadd(d.date, 4) <= feb.date));
+  eq('race week: Saturday is rest', build[11].days[5].kind, 'rest');
+  // the old race block is untouched by all of this
   const race = P.buildRaceBlock();
   eq('August week 3 still maps its Monday to lowerA', race[2].days[0].tpl, 'lowerA');
   eq('…and its Thursday to lowerB', race[2].days[3].tpl, 'lowerB');
@@ -575,7 +579,7 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   for (const w of weeks.slice(1, 5)) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
   const off = P.buildOffseason();
   for (const w of off) eq(`generated ${w.phase} week has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
-  const build = P.buildRunBuild('2027-02-21', 'feb2027');
+  const build = P.buildSummer('2027-02-21', 'feb2027');
   for (const w of build.slice(0, 11)) eq(`generated ${w.phase} (${w.monday}) has no warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
   ok('the generated race week only carries the race-week caution', swapWarnings(build[11].days).every(x => /race week/.test(x)) && swapWarnings(build[11].days).length === 1);
   const after = (w, a, b) => { const o = swapDays(w.days[a], w.days[b]); return w.days.map(d => o[d.date] || d); };
