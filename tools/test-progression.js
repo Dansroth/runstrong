@@ -871,6 +871,58 @@ group('streaks: a planned rest day bridges, a missed training day breaks');
   eq('longest reports the best run, not the current one', longestStreakCount(S('2026-09-21', '2026-09-22', '2026-09-23', '2026-09-30'), never, '2026-09-30'), 3);
 }
 
+/* ===================================================================
+   6j. deploy hygiene + proximity to failure
+   =================================================================== */
+group('deploy hygiene: the version strings that must move together, do');
+{
+  const fs = require('fs'), path = require('path');
+  const root = path.join(__dirname, '..');
+  const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const appV = (app.match(/const APP_VERSION = '([^']+)'/) || [])[1];
+  const swV = (sw.match(/const CACHE = 'runstrong-([^']+)'/) || [])[1];
+  ok('app.js declares an APP_VERSION', !!appV, String(appV));
+  ok('sw.js declares a CACHE version', !!swV, String(swV));
+  /* Not hypothetical: v40 shipped with app.js on v39 because the bump was
+     done by hand in two files. For an offline-first PWA a stale CACHE keeps
+     serving the old JS after a deploy, so the update looks applied and is
+     not. This assertion is the whole fix. */
+  eq('…and they match — a stale cache serves old JS to an offline-first app', swV, appV);
+
+  // every schema version between 1 and current has a migration to the next
+  const schema = Number((app.match(/const SCHEMA_VERSION = (\d+);/) || [])[1]);
+  ok('app.js declares a SCHEMA_VERSION', schema > 0, String(schema));
+  const keys = new Set([...app.matchAll(/^\s{2}(\d+): \(s\) =>/gm)].map(m => Number(m[1])));
+  for (let v = 1; v < schema; v++) ok(`schema ${v} has a migration to ${v + 1}`, keys.has(v));
+  ok('…and there is no migration past the current schema', ![...keys].some(k => k >= schema), [...keys].filter(k => k >= schema).join(','));
+}
+
+group('proximity to failure: only sets that were meant to be hard are counted');
+{
+  const { hardSetShare, HARD_SET_RPE } = P;
+  const sess = (date, exercises) => ({ date, status: 'done', exercises });
+  const set = (rpe, done) => ({ weight: 50, reps: 8, rpe, done: done !== false });
+  eq('the RPE that counts as hard is 8 [H4]', HARD_SET_RPE, 8);
+  const s = [sess('2026-09-21', [
+    { exId: 'bench', sets: [set(8), set(9), set(7)] },          // rpe target -> counts
+    { exId: 'boxjump', sets: [set(10), set(10)] },              // rpe: null -> ignored
+    { exId: 'bbcurl', sets: [set(8), set(6, false)] },          // unticked set ignored
+  ])];
+  const r = hardSetShare(s, '2026-09-21', '2026-09-27');
+  eq('working sets exclude lifts with no RPE target', r.working, 4);
+  eq('…and exclude sets that were never ticked off', r.hard, 3);
+  ok('share is hard / working', Math.abs(r.share - 0.75) < 1e-9, String(r.share));
+  eq('a window with nothing logged reports null rather than 0%', hardSetShare(s, '2026-10-01', '2026-10-07').share, null);
+  eq('…and counts nothing', hardSetShare(s, '2026-10-01', '2026-10-07').working, 0);
+  eq('empty and undefined input are handled', hardSetShare(undefined, '2026-09-21', '2026-09-27').working, 0);
+  const unfinished = [{ date: '2026-09-21', status: 'active', exercises: [{ exId: 'bench', sets: [set(9)] }] }];
+  eq('an unfinished session contributes nothing', hardSetShare(unfinished, '2026-09-21', '2026-09-27').working, 0);
+  const noRpe = [sess('2026-09-21', [{ exId: 'bench', sets: [{ weight: 50, reps: 8, done: true }] }])];
+  eq('a set logged without an RPE is not counted as working', hardSetShare(noRpe, '2026-09-21', '2026-09-27').working, 0);
+  eq('the floor is configurable', hardSetShare(s, '2026-09-21', '2026-09-27', 9).hard, 1);
+}
+
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));
 if (fail) {

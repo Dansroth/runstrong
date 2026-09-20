@@ -1673,6 +1673,39 @@ function longestStreakCount(trained, plannedOff, todayISO) {
   return best;
 }
 
+/* =====================================================================
+   PROXIMITY TO FAILURE (v48)
+   =====================================================================
+   [H4] (Robinson 2024, proximity to failure × hypertrophy meta-regressions)
+   is in this file's evidence base and drives every rpe target in EXERCISES,
+   and until now the app never told the user whether they were getting there.
+   Sets quietly drifting to RPE 6-7 is the most common reason a block that
+   looks right on paper does not deliver, and it is invisible without this.
+
+   Only sets on exercises that CARRY an rpe target count. Plyometrics, carries
+   and planks are prescribed with rpe: null on purpose — they are not meant to
+   be taken near failure, and counting them would drag the share down for
+   doing exactly what the plan asked.
+   ===================================================================== */
+const HARD_SET_RPE = 8;
+function hardSetShare(sessions, fromISO, toISO, minRpe) {
+  const floor = minRpe || HARD_SET_RPE;
+  let working = 0, hard = 0;
+  for (const s of sessions || []) {
+    if (!s || s.status !== 'done' || s.date < fromISO || s.date > toISO) continue;
+    for (const e of (s.exercises || [])) {
+      const ex = EXERCISES[e.exId];
+      if (!ex || !ex.rpe) continue;
+      for (const t of (e.sets || [])) {
+        if (!t.done || t.rpe == null) continue;
+        working++;
+        if (t.rpe >= floor) hard++;
+      }
+    }
+  }
+  return { working, hard, share: working ? hard / working : null };
+}
+
 /* The muscles this block is for, in the order the summer brief names them.
    Shown first so "is chest holding?" is answerable without scanning. */
 const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
@@ -2055,7 +2088,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
     SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
-    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

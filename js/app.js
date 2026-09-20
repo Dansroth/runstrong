@@ -256,7 +256,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v47';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v48';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2766,9 +2766,20 @@ function volumeByMuscleBody() {
       <span>${done}/${plan} sets · ${avg.toFixed(1)}/wk this block${ton >= 0.1 ? ` · ${ton.toFixed(1)} t` : ''}</span>
       <span class="volbar"><i style="width:${pct}%"></i></span></div>`;
   }).join('');
+  /* How hard the week's sets actually were. [H4] drives every rpe target in
+     the plan, and sets drifting to RPE 6-7 is the usual reason a block that
+     looks right on paper underdelivers — so it is shown next to the volume
+     rather than buried, and phrased as a fact rather than a grade. */
+  const hs = hardSetShare(Object.values(ST.sessions), v.weekStart, v.weekEnd);
+  const hardLine = hs.working
+    ? `<div class="sumrow"><b>Close to failure</b><span>${hs.hard} of ${hs.working} working sets at RPE ${HARD_SET_RPE}+ · ${Math.round(hs.share * 100)}%</span>
+       <span class="volbar"><i style="width:${Math.round(hs.share * 100)}%"></i></span></div>`
+    : '';
   return `<details class="disc"><summary>Sets per muscle, this week ›</summary>
     <div class="prb-h">Week of ${fmtDate(v.weekStart)} · ${esc(v.blk.name)}</div>
     ${rows}
+    ${hardLine ? `<div class="prb-h" style="margin-top:12px">Effort</div>${hardLine}
+      <div class="dim small">Counts only sets on lifts that carry an RPE target — plyometrics, carries and planks are prescribed nowhere near failure on purpose, so they sit this out.</div>` : ''}
     <div class="dim small" style="margin-top:8px">★ = what this block is for. Logged sets against what the plan asked for, so a set you skipped is not counted. A set credits every muscle its exercise is tagged with — a bench press counts for chest and shoulders both — which is why the pressing and pulling muscles read high. Only direct work is tagged, so presses and rows carry no arm tag and the arm numbers understate what your arms actually did.</div>
   </details>`;
 }
