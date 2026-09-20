@@ -259,7 +259,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v52';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v53';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -670,7 +670,7 @@ let elapsedInterval = null;
 function render() {
   // 'history' and 'trends' stay mapped as aliases of the merged Progress tab so any
   // older deep link (or a stale service-worker page) still lands somewhere sensible.
-  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, daypreview: vDayPreview, settings: vSettings, stretch: vStretch, progress: vProgress, history: vProgress, trends: vProgress };
+  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, daypreview: vDayPreview, settings: vSettings, stretch: vStretch, catalogue: vCatalogue, progress: vProgress, history: vProgress, trends: vProgress };
   invalidateMergedRuns(); invalidateExHistory(); invalidatePlan();   // one build per render, never a stale one
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   // a crashing view must never leave the app silently frozen — show what broke instead
@@ -3694,6 +3694,71 @@ window.showHyperRetro = function () {
   m.classList.add('open');
 };
 
+/* ================= exercise catalogue (v53) =================
+   753 strength/plyo/olympic entries from free-exercise-db (Unlicense, public
+   domain), trimmed to name, equipment, muscle tags and the step-by-step
+   instructions, with its muscle vocabulary mapped onto MUSCLE_MAP's.
+
+   It is a REFERENCE, not a programme source, and the distinction is the whole
+   design. The dataset carries no rest periods and no RPE targets, and
+   nextPrescription() has nothing to autoregulate without them — so a
+   catalogue entry cannot be scheduled or progressed. What it is good for is
+   the moment the rack is taken and you need to know what else trains the same
+   thing, which is a question this app could not answer until now.
+
+   Loaded on demand rather than bundled: 637 KB has no business in the startup
+   path of an app whose job is to show you today's session. Once fetched the
+   service worker has it, so it works offline from then on. */
+let CATALOGUE = null, catQuery = '';
+async function loadCatalogue() {
+  if (CATALOGUE) return;
+  try {
+    const r = await fetch('assets/exercise-catalogue.json');
+    CATALOGUE = await r.json();
+  } catch (e) {
+    CATALOGUE = [];
+    toast('Could not load the exercise library — it needs one online visit first.');
+  }
+  if (view.v === 'catalogue') renderCatalogueResults();
+}
+/* Names already in the curated library, normalised, so the programme's own
+   exercises are marked rather than looking like just another search hit. */
+function curatedNames() {
+  const set = new Set();
+  for (const id of Object.keys(EXERCISES)) set.add(EXERCISES[id].name.toLowerCase().replace(/[^a-z]/g, ''));
+  return set;
+}
+function vCatalogue() {
+  if (!CATALOGUE) loadCatalogue();
+  return `<header class="top"><h1 class="phase">Exercise library</h1>
+    <div class="dim small">Every exercise, searchable. The ones in your programme are marked ★ — the rest are reference, since they carry no rest or RPE targets to progress from.</div></header>
+  <main>
+    <input id="catq" class="notefield" type="search" placeholder="Search name, muscle or equipment" oninput="renderCatalogueResults()" value="${esc(catQuery)}">
+    <div id="catres">${CATALOGUE ? '' : '<div class="dim small">Loading the library…</div>'}</div>
+  </main>${navBar()}`;
+}
+window.renderCatalogueResults = function () {
+  const box = $('#catres'); if (!box) return;
+  const inp = $('#catq'); catQuery = inp ? inp.value : catQuery;
+  if (!CATALOGUE) { box.innerHTML = '<div class="dim small">Loading the library…</div>'; return; }
+  const q = catQuery.trim().toLowerCase();
+  const hit = e => !q || e.n.toLowerCase().includes(q) || e.eq.toLowerCase().includes(q)
+    || e.m.some(m => m.includes(q)) || e.s.some(m => m.includes(q));
+  const all = CATALOGUE.filter(hit);
+  const cur = curatedNames();
+  const isCur = e => cur.has(e.n.toLowerCase().replace(/[^a-z]/g, ''));
+  // programme exercises first — when you are looking for an alternative, what
+  // you already have a history for is the most useful answer
+  all.sort((a, b) => (isCur(b) ? 1 : 0) - (isCur(a) ? 1 : 0) || a.n.localeCompare(b.n));
+  const shown = all.slice(0, 60);
+  box.innerHTML = `<div class="dim small" style="margin:8px 0">${all.length} exercise${all.length === 1 ? '' : 's'}${all.length > shown.length ? ` · showing the first ${shown.length}` : ''}</div>`
+    + shown.map(e => `<details class="disc"><summary>${isCur(e) ? '★ ' : ''}${esc(e.n)}</summary>
+        <div class="dim small">${esc([e.m.join(', '), e.eq, e.mech, e.lvl].filter(Boolean).join(' · '))}${e.s.length ? ` · also ${esc(e.s.join(', '))}` : ''}</div>
+        ${e.steps.length ? '<ol class="howto">' + e.steps.map(s => `<li>${esc(s)}</li>`).join('') + '</ol>' : '<div class="dim small">No instructions in the source data.</div>'}
+      </details>`).join('')
+    + (all.length ? '' : '<div class="dim small">Nothing matches that.</div>');
+};
+
 /* ---------- settings ---------- */
 /* Every on/off control in Settings shares this markup so they all carry
    real switch semantics — a screen reader previously heard only "ON"/"OFF"
@@ -3719,6 +3784,9 @@ function vSettings() {
     ${ST.settings.reminder.on ? `<div class="set-row"><span>Remind me at</span>
       <input type="time" value="${esc(ST.settings.reminder.time)}" onchange="ST.settings.reminder.time=this.value;save();scheduleReminder();render()"></div>` : ''}
     <div class="dim small" style="margin-bottom:8px">A nudge on training days only — never on a rest day, and never once the session is logged.${ST.settings.reminder.on && !reminderCanSchedule() ? ' <b>Your browser can\'t schedule notifications in the background</b>, so this shows as a prompt on the Home tab when you next open the app instead. Adding RunStrong to your home screen makes that more reliable.' : ''}</div>
+    <div class="section-label">Exercise library</div>
+    <div class="dim small" style="margin-bottom:8px">753 exercises from the public-domain free-exercise-db, searchable by name, muscle or equipment — for when the rack is taken and you need to know what else trains the same thing.</div>
+    <button class="btn big" onclick="go('catalogue')">📖 Browse the exercise library</button>
     <div class="section-label">Equipment on hand</div>
     <div class="dim small" style="margin-bottom:8px">Turn off anything you don't have — the ⇄ swap-exercise list in a workout ranks compatible variants first.</div>
     ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span>${toggleBtn(ST.settings.equip[k], `ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()`)}</div>`).join('')}

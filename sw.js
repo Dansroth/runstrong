@@ -1,5 +1,5 @@
 /* RunStrong service worker — cache-first, fully offline after first load */
-const CACHE = 'runstrong-v52';
+const CACHE = 'runstrong-v53';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './js/program.js',
   './js/app.js',
   './manifest.json',
+  './assets/exercise-catalogue.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];
