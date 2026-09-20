@@ -1578,6 +1578,37 @@ function plannedSetsByMuscle(weeks, fromISO, toISO, mesoStartISO) {
   }
   return out;
 }
+/* =====================================================================
+   BODYWEIGHT (v43)
+   =====================================================================
+   One number, weekly, and deliberately nothing else. No waist or other
+   measurements — the user declined them, so there is no "measurements"
+   section here implying more fields are coming. Nothing is derived from it
+   either: no BMI, no body-fat estimate, no calorie maths, no judgement about
+   whether the block is "working". The app cannot see what it would need to
+   see to say any of that, and a training app quietly grading someone's body
+   is not a feature.
+
+   What it does do is smooth: a single morning's number is mostly water and
+   dinner, so the series carries a trailing mean and the UI leads with that.
+   ===================================================================== */
+const WEIGHT_AVG_OVER = 4;   // entries, not days — weekly logging makes this about a month
+function weightSeries(weights) {
+  const w = weights || {};
+  const dates = Object.keys(w).filter(d => typeof w[d] === 'number' && w[d] > 0).sort();
+  return dates.map((d, i) => {
+    const win = dates.slice(Math.max(0, i - WEIGHT_AVG_OVER + 1), i + 1).map(x => w[x]);
+    return { date: d, kg: w[d], avg: win.reduce((a, b) => a + b, 0) / win.length };
+  });
+}
+/* Whole days since the last entry, or null when there are none. Used only to
+   decide whether to offer the prompt — never to score a streak or chase. */
+function daysSinceWeight(weights, todayISO) {
+  const s = weightSeries(weights);
+  if (!s.length) return null;
+  return Math.round((Date.parse(todayISO) - Date.parse(s[s.length - 1].date)) / 86400000);
+}
+
 /* The muscles this block is for, in the order the summer brief names them.
    Shown first so "is chest holding?" is answerable without scanning. */
 const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
@@ -1959,7 +1990,8 @@ if (typeof module !== 'undefined' && module.exports) {
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
     SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor,
-    setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
+    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

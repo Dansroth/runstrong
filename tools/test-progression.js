@@ -810,6 +810,32 @@ group('hypertrophy phase — periodized exercise rotation');
   eq('an unknown template id returns null', materializeTemplate('nope', REF_DATE, REF_MESO_START), null);
 }
 
+/* ===================================================================
+   6h. bodyweight (BODYWEIGHT header)
+   =================================================================== */
+group('bodyweight: a trailing mean, and nothing derived from it');
+{
+  const { weightSeries, daysSinceWeight, WEIGHT_AVG_OVER } = P;
+  eq('no entries is an empty series', weightSeries({}).length, 0);
+  eq('undefined is handled', weightSeries(undefined).length, 0);
+  eq('no entries means no "days since"', daysSinceWeight({}, '2026-12-01'), null);
+  const w = { '2026-12-06': 80, '2026-11-29': 82, '2026-12-13': 79, '2026-12-20': 81 };
+  const s = weightSeries(w);
+  eq('entries come back in date order', s.map(p => p.date).join(','), '2026-11-29,2026-12-06,2026-12-13,2026-12-20');
+  eq('the first point averages only itself', s[0].avg, 82);
+  eq('the second averages two', s[1].avg, 81);
+  eq('the fourth averages four (the window is full)', s[3].avg, (82 + 80 + 79 + 81) / 4);
+  eq(`the window never exceeds ${WEIGHT_AVG_OVER} entries`, weightSeries({ ...w, '2026-12-27': 100 })[4].avg, (80 + 79 + 81 + 100) / 4);
+  ok('raw entries are preserved alongside the mean', s[3].kg === 81 && s[3].avg !== 81);
+  // junk in, nothing out — the input is a hand-typed number
+  const junk = { '2026-12-06': 0, '2026-12-07': -5, '2026-12-08': null, '2026-12-09': 'heavy', '2026-12-10': 78 };
+  eq('zero, negative, null and text entries are ignored', weightSeries(junk).length, 1);
+  eq('…and the good one survives', weightSeries(junk)[0].kg, 78);
+  eq('days since the last entry', daysSinceWeight(w, '2026-12-27'), 7);
+  eq('…counts from the latest, not the last key added', daysSinceWeight(w, '2026-12-21'), 1);
+}
+
+
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));
 if (fail) {

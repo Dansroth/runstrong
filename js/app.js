@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 19;
+const SCHEMA_VERSION = 20;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -27,6 +27,7 @@ function defaultState() {
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     planOverrides: {},     // date → day plan — days swapped in the Plan tab (see planWeeks)
     soreLog: [],           // [{date, areas: [STRETCH_AREAS ids]}] — from the on-demand stretch picker
+    weights: {},           // date → kg. One number, weekly. Nothing derived from it.
     lastBackup: null,      // ts of last JSON export
     activeSessionId: null,
     timer: null,           // {endTs, total, label}
@@ -176,6 +177,10 @@ const MIGRATIONS = {
     }
     s.schemaVersion = 19; return s;
   },
+  // 19 → 20: a bodyweight log. Purely additive — weights{} keyed by date,
+  // one number per entry, weekly. Nothing else is stored and nothing is
+  // derived from it; see the BODYWEIGHT header in program.js for why.
+  19: (s) => { s.weights = s.weights || {}; s.schemaVersion = 20; return s; },
 };
 
 function migrate(s) {
@@ -229,7 +234,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v42';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v43';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2742,6 +2747,68 @@ function volumeByMuscleBody() {
     <div class="dim small" style="margin-top:8px">★ = what this block is for. Logged sets against what the plan asked for, so a set you skipped is not counted. A set credits every muscle its exercise is tagged with — a bench press counts for chest and shoulders both — which is why the pressing and pulling muscles read high. Only direct work is tagged, so presses and rows carry no arm tag and the arm numbers understate what your arms actually did.</div>
   </details>`;
 }
+/* ---------- bodyweight (v43) ----------
+   Deliberately plain. The chart leads with the trailing mean because one
+   morning's number is mostly water and dinner, and there is no goal line, no
+   target band and no copy telling the user whether the number is good — the
+   app cannot see what it would need to see to say that. */
+function weightChart(series) {
+  const W = 340, H = 130, P = 26;
+  const vals = series.flatMap(p => [p.kg, p.avg]);
+  const min = Math.min(...vals) - 1, max = Math.max(...vals) + 1;
+  const x = i => P + (W - 2 * P) * (series.length === 1 ? .5 : i / (series.length - 1));
+  const y = v => H - P - (H - 2 * P) * (v - min) / (max - min || 1);
+  const path = series.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.avg).toFixed(1)}`).join(' ');
+  const dots = series.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="2.6" fill="var(--run)" opacity=".55"/>`).join('');
+  return `<div class="chartwrap"><svg viewBox="0 0 ${W} ${H}">
+    <text x="${P}" y="13" class="ch-lbl">Weight — line is the ${WEIGHT_AVG_OVER}-entry average, dots are each entry</text>
+    <path class="ln2" d="${path}" fill="none"/>${dots}
+  </svg></div>`;
+}
+function secWeight() {
+  const series = weightSeries(ST.weights);
+  const since = daysSinceWeight(ST.weights, today());
+  const btn = `<button class="btn big" onclick="openWeightLog()">⚖️ ${series.length ? 'Log this week\'s weight' : 'Log your weight'}</button>`;
+  if (!series.length) {
+    return `<div class="section-label">⚖️ Weight</div>
+      <div class="card"><div class="dim small">One number a week, if you want it. Nothing is worked out from it — it is here so the trend is visible, not to score you.</div>${btn}</div>`;
+  }
+  const last = series[series.length - 1];
+  const prev = series.length > 1 ? series[series.length - 2] : null;
+  const drift = prev ? last.avg - prev.avg : 0;
+  return `<div class="section-label">⚖️ Weight</div>
+    <div class="card">
+      <div class="headline">${last.avg.toFixed(1)} kg <span class="headline-sub">${WEIGHT_AVG_OVER}-entry average</span>${prev ? ` <span class="dim small">${drift >= 0 ? '+' : ''}${drift.toFixed(1)} since last</span>` : ''}</div>
+      ${series.length > 1 ? weightChart(series) : `<div class="dim small">One entry so far — the trend needs a few more.</div>`}
+      <div class="dim small">Last logged ${fmtDate(last.date)}${since != null && since >= 7 ? ' · due for another whenever suits' : ''}</div>
+      ${btn}
+    </div>`;
+}
+window.openWeightLog = function () {
+  const d = today();
+  const cur = (ST.weights || {})[d];
+  const series = weightSeries(ST.weights);
+  const start = cur || (series.length ? series[series.length - 1].kg : 75);
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>⚖️ Weight — ${fmtDate(d)}</h2>
+    <div class="dim small" style="margin-bottom:10px">Weekly is plenty. Same time of day is more useful than the exact day.</div>
+    <input id="wkg" class="notefield" type="number" inputmode="decimal" step="0.1" min="20" max="400" value="${start}">
+    <button class="btn primary big" onclick="saveWeight()">Save</button>
+    ${cur ? `<button class="linkbtn" onclick="deleteWeight('${d}')">Delete today's entry</button>` : ''}
+    <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  m.classList.add('open');
+};
+window.saveWeight = function () {
+  const v = parseFloat(($('#wkg') || {}).value);
+  if (!(v > 20 && v < 400)) { toast('That does not look like a weight in kg.'); return; }
+  ST.weights = ST.weights || {};
+  ST.weights[today()] = Math.round(v * 10) / 10;
+  save(); closeModal(); render();
+};
+window.deleteWeight = function (d) {
+  if (ST.weights) delete ST.weights[d];
+  save(); closeModal(); render();
+};
 function secStrength(load) {
   const safe = (fn, fb) => { try { return fn(); } catch (e) { return fb; } };
   const withHist = Object.keys(EXERCISES).filter(id => exHistory(id).length > 0);
@@ -2866,8 +2933,9 @@ function vProgress() {
   const key = ST.maintenance.active ? 'maint' : phaseKeyFromLabel((weekFor(today()) || {}).phase);
   const liftFirst = key === 'hypertrophy' || key === 'hyperDeload' || key === 'maint';
   const first = liftFirst ? [secStrength(load), secRunning(load)] : [secRunning(load), secStrength(load)];
+  const safe = (fn, fb) => { try { return fn(); } catch (e) { return fb; } };
   return `<header class="top"><h1 class="phase">Progress</h1><div class="dim small">${esc(phaseLabel(today()))}</div></header>
-  <main>${first.join('')}${secRecovery(load)}${secMilestones()}</main>${navBar()}`;
+  <main>${first.join('')}${safe(secWeight, '')}${secRecovery(load)}${secMilestones()}</main>${navBar()}`;
 }
 
 function vExDetail() {
