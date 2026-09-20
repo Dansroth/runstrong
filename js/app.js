@@ -259,7 +259,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v55';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v56';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -3739,7 +3739,12 @@ function vProgramme() {
     const deload = phaseKeyFromLabel(wk.phase) === 'hyperDeload' || /deload|down week/i.test(wk.phase);
     // the block name is already the section heading — don't repeat it per row
     const short = wk.phase.replace(/^(Hypertrophy|Summer)\s*—\s*/i, '').replace(/^post-race\s*/i, '');
-    out += `<div class="pgm-wk${isCur ? ' cur' : ''}${deload ? ' deload' : ''}">
+    /* Each week opens to its actual sessions. Filled on demand rather than
+       up front: eagerly materialising 36 weeks of templates is ~180 sessions
+       and a thousand-odd DOM rows for a screen most of which is never opened.
+       The current week starts open, because that is the one you came for. */
+    out += `<details class="pgm-det"${isCur ? ' open' : ''} ontoggle="fillWeekDetail(this,'${wk.monday}')">
+      <summary class="pgm-wk${isCur ? ' cur' : ''}${deload ? ' deload' : ''}">
       <span class="pgm-n">${wk.num}</span>
       <span class="pgm-days">${(() => {
         /* Place each day in its real weekday column rather than in sequence.
@@ -3756,7 +3761,8 @@ function vProgramme() {
         }).join('');
       })()}</span>
       <span class="pgm-ph">${esc(short)}</span>
-    </div>`;
+      </summary><div class="pgm-body"></div>
+    </details>`;
   }
   out += '</div>';
   return `<header class="top"><h1 class="phase">Whole programme</h1>
@@ -3765,6 +3771,39 @@ function vProgramme() {
     <div class="dim small" style="margin-top:14px">🏋️ lift · 🏋️🏃 lift + run · 🏃 run · 🏃🧘 run + mobility · 🧘 mobility · 🏁 race · · rest. Shaded rows are deload weeks.</div>
   </main>${navBar()}`;
 }
+
+/* The sessions of one week, written out in full. Reads the same
+   materializeTemplate() the session itself will run, so the ramp, the deload
+   and whichever accessory is rotating in that mesocycle are all reflected —
+   this is the actual prescription for that date, not a template sketch. */
+function weekDetailHTML(monday) {
+  const wk = planWeeks().find(w => w.monday === monday);
+  if (!wk) return '';
+  const meso = mesoAnchor(ST.maintenance);
+  const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return wk.days.map(d => {
+    const dow = DOW[(new Date(d.date + 'T00:00:00').getDay() + 6) % 7];
+    if (d.kind !== 'lift') {
+      return `<div class="pgm-day"><b>${dow}</b> <span>${esc(d.title || 'Rest')}</span>
+        ${d.sub ? `<div class="dim small">${esc(d.sub)}</div>` : ''}</div>`;
+    }
+    const tpl = materializeTemplate(d.tpl, d.date, meso);
+    const rows = tpl.items.map(([id, sets, reps]) => {
+      const ex = EXERCISES[id];
+      const unit = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
+      return `<div class="pgm-ex"><span>${esc(ex.name)}</span><span class="dim">${sets} × ${reps}${unit}${ex.perSide ? '/side' : ''}${ex.rpe ? ` · RPE ${ex.rpe[0] === ex.rpe[1] ? ex.rpe[0] : ex.rpe.join('–')}` : ''}</span></div>`;
+    }).join('');
+    return `<div class="pgm-day"><b>${dow}</b> <span>${esc(tpl.title)}</span>
+      <span class="dim small">~${TEMPLATES[d.tpl].est} min${d.run ? ` · + ${esc(d.runSub || 'run')}` : ''}</span>
+      ${rows}</div>`;
+  }).join('');
+}
+window.fillWeekDetail = function (el, monday) {
+  if (!el.open || el.dataset.filled) return;
+  const box = el.querySelector('.pgm-body');
+  if (box) box.innerHTML = weekDetailHTML(monday);
+  el.dataset.filled = '1';
+};
 
 /* ================= exercise catalogue (v53) =================
    753 strength/plyo/olympic entries from free-exercise-db (Unlicense, public

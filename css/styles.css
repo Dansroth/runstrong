@@ -435,3 +435,16 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .pgm-d.today { outline: 1.5px solid var(--acc, #b5d94c); }
 .pgm-ph { font-size: .72rem; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 380px) { .pgm-days { grid-template-columns: repeat(7, 18px); } .pgm-d { font-size: .62rem; } }
+
+/* v56: the whole-programme rows open to their actual sessions. The summary IS
+   the week row, so it keeps the grid and loses the default disclosure marker. */
+.pgm-det > summary { list-style: none; cursor: pointer; }
+.pgm-det > summary::-webkit-details-marker { display: none; }
+.pgm-det[open] > summary { background: rgba(127, 127, 127, .1); }
+.pgm-body { padding: 2px 0 10px 34px; }
+.pgm-day { margin: 8px 0 0; }
+.pgm-day > b { display: inline-block; min-width: 30px; opacity: .6; font-size: .72rem; }
+.pgm-day > span { font-size: .84rem; }
+.pgm-ex { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0 1px 30px; font-size: .78rem; }
+.pgm-ex > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pgm-ex > span:last-child { white-space: nowrap; }
