@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 26;
+const SCHEMA_VERSION = 28;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -21,7 +21,7 @@ function defaultState() {
     runs: {},              // date → {km, min, feel, note}
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
-    races: { geelong: { checklist: {}, result: null, feel: null, note: '', projAtRace: null }, feb2027: { checklist: {}, result: null, feel: null, note: '', projAtRace: null } },
+    races: { geelong: { checklist: {} }, feb2027: { checklist: {} } },   // checklist only since v64 — results live in the run log
     maintenance: { active: false, startedOn: null, program: 'balanced', mesoStart: null },
     routines: {},          // date → {prep, stretch} — warm-ups and run cool-downs
     planOverrides: {},     // date → day plan — days swapped in the Plan tab (see planWeeks)
@@ -238,6 +238,28 @@ const MIGRATIONS = {
     delete s.strava;
     s.schemaVersion = 26; return s;
   },
+  /* 26 → 27: "Log official result" is gone — a race is logged like any other
+     run now, through the screenshot import or by hand. Any result already
+     recorded is folded into that day's run note rather than dropped, since it
+     was a finish time the user typed and the run log is where race day lives
+     from here. The checklist stays: it is race-week prep, not a result. */
+  26: (s) => {
+    for (const key of Object.keys(s.races || {})) {
+      const st = s.races[key] || {};
+      const race = (typeof RACES !== 'undefined' ? RACES : []).find(r => r.key === key);
+      if (st.result && race) {
+        const run = s.runs[race.date];
+        const line = 'Official: ' + st.result + (st.feel ? ' (' + st.feel + ')' : '') + (st.note ? ' — ' + st.note : '');
+        if (run && !run.skipped) run.note = run.note ? run.note + ' · ' + line : line;
+        else if (!run) s.runs[race.date] = { km: null, min: null, hr: null, feel: st.feel || null, note: line, splits: [] };
+      }
+      s.races[key] = { checklist: st.checklist || {} };
+    }
+    s.schemaVersion = 27; return s;
+  },
+  // 27 → 28: Arms & Core moves to Saturday, Sunday becomes a run. Calendar
+  // change, so the stored program is rebuilt.
+  27: (s) => { s.program = buildProgram(); s.schemaVersion = 28; return s; },
 };
 
 function migrate(s) {
@@ -291,7 +313,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v63';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v65';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -756,14 +778,14 @@ function navBar() {
 
 function raceCountdowns() {
   if (ST.maintenance.active) return ''; // race clocks retired
-  // A run race stays on the header for two weeks (result next to the clock),
-  // then the calendar moves on. Unrun races always show.
-  const live = RACES.filter(r => daysUntil(r.date) >= -14 || !ST.races[r.key].result);
+  /* A run race stays on the header for a fortnight, then the calendar moves
+     on. The old rule also kept any race with no logged result, which since
+     v64 would have been all of them, forever. */
+  const live = RACES.filter(r => daysUntil(r.date) >= -14);
   if (!live.length) return '';
   return `<div class="races">` + live.map(r => {
     const d = daysUntil(r.date);
-    const st = ST.races[r.key];
-    const txt = st.result ? `✓ ${st.result}` : d > 0 ? `${d} day${d === 1 ? '' : 's'}` : d === 0 ? 'TODAY 🏁' : 'done ✓';
+    const txt = d > 0 ? `${d} day${d === 1 ? '' : 's'}` : d === 0 ? 'TODAY 🏁' : 'done ✓';
     return `<div class="race ${r.tag === 'A race' ? 'arace' : ''}"><div class="race-name">${r.name}</div><div class="race-tag">${r.tag}</div><div class="race-count">${txt}</div></div>`;
   }).join('') + `</div>`;
 }
@@ -777,18 +799,6 @@ function raceExtraCards() {
     const r = raceInfo(rw); const st = raceState(rw);
     const done = Object.values(st.checklist).filter(Boolean).length;
     out += `<div class="card racekit" role="button" tabindex="0" onclick="openChecklist('${rw}')"><div class="card-kicker">🏁 ${esc(r.name)} — race week</div><div class="card-sub">Checklist: ${done} of ${RACE_CHECKLIST.length} ticked. Tap to open.</div></div>`;
-  }
-  const ur = unloggedPastRace();
-  if (ur) {
-    const r = raceInfo(ur);
-    out += `<div class="card racekit"><div class="card-kicker">🏁 ${esc(r.name)} — how did it go?</div><div class="card-sub">Log your time and it'll sit next to what the app projected.</div><button class="btn primary big" onclick="openRaceResult('${ur}')">Log result</button></div>`;
-  }
-  for (const r of RACES) {
-    const st = raceState(r.key);
-    const d = daysUntil(r.date);
-    if (st.result && d < 0 && d >= -7) {
-      out += `<div class="card"><div class="card-kicker">🏁 ${esc(r.name)} result</div><div class="card-sub">${st.projAtRace ? `Projected ${esc(st.projAtRace)} → ran <b>${esc(st.result)}</b>.` : `Ran <b>${esc(st.result)}</b>.`}${st.feel ? ` Felt ${esc(st.feel)}.` : ''}${r.key === finalRace().key ? ` <button class="mini" onclick="offerRecoveryMode()">What now?</button>` : ''}</div></div>`;
-    }
   }
   return out;
 }
@@ -922,7 +932,7 @@ function vHome() {
         : `${prepBtn}<button class="btn big" onclick="openRunShot('${t}')">📷 Upload run screenshot</button>
            <button class="mini" onclick="openRunLog('${t}')">or enter it manually</button>`;
     const raceHere = day.kind === 'race' ? RACES.find(r => r.date === t) : null;
-    const raceBtn = raceHere && !ST.races[raceHere.key].result ? `<button class="btn big" onclick="openRaceResult('${raceHere.key}')" style="margin-top:8px">🏁 Log official result</button>` : '';
+    const raceBtn = '';   // "Log official result" removed in v64 — a race is logged like any other run
     // the mobility session is its own thing — reachable whether or not the run is logged yet
     const mobBtn = day.mobility && !mr ? coolBtn : '';
     card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : day.mobility ? "Today's run + mobility" : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">${day.mobility ? 'No lifting today — an easy run, then the week\'s mobility session.' : 'No lifting today — running is the priority.'}</div>${logged}${mobBtn}${raceBtn}</div>`;
@@ -1358,11 +1368,7 @@ function raceInfo(key) { return RACES.find(r => r.key === key); }
 function finalRace() { return RACES[RACES.length - 1]; }
 function nextRace() { return RACES.find(r => daysUntil(r.date) >= 0) || finalRace(); }
 function activeRaceWeek() {
-  for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0 && d <= 6 && !raceState(r.key).result) return r.key; }
-  return null;
-}
-function unloggedPastRace() {
-  for (const r of RACES) { if (daysUntil(r.date) < 0 && !raceState(r.key).result) return r.key; }
+  for (const r of RACES) { const d = daysUntil(r.date); if (d >= 0 && d <= 6) return r.key; }
   return null;
 }
 window.openChecklist = function (key) {
@@ -1378,32 +1384,6 @@ window.openChecklist = function (key) {
     ${RACE_CHECKLIST.map(item => `<label class="chk-row"><input type="checkbox" ${st.checklist[item.id] ? 'checked' : ''} onchange="ST.races['${key}'].checklist['${item.id}']=this.checked;save()"> <span>${esc(item.text)}</span></label>`).join('')}
     <button class="btn primary big" onclick="closeModal()" style="margin-top:12px">Close</button></div>`;
   m.classList.add('open');
-};
-window.openRaceResult = function (key) {
-  const r = raceInfo(key); const st = raceState(key);
-  const m = $('#modal');
-  const proj = raceProjection();
-  m.innerHTML = `<div class="sheet"><h2>🏁 ${esc(r.name)} — how did it go?</h2>
-    <div class="stepper"><div class="stepper-lbl">Finish time (h:mm:ss)</div>
-      <input id="race-time" class="notefield" inputmode="numeric" placeholder="1:56:32" value="${esc(st.result || '')}"></div>
-    <div class="stepper"><div class="stepper-lbl">How did it feel?</div><div class="rpes">
-      ${['strong', 'mixed', 'rough'].map(f => `<button class="rpe feel ${st.feel === f ? 'sel' : ''}" data-f="${f}" onclick="pickFeel('${f}')">${f === 'strong' ? '💪 strong' : f === 'mixed' ? '😐 mixed' : '😖 rough'}</button>`).join('')}</div></div>
-    <input id="race-note" class="notefield" placeholder="Anything worth remembering (optional)" value="${esc(st.note || '')}">
-    <button class="btn primary big" onclick="saveRaceResult('${key}')">Save result</button>
-    <button class="linkbtn" onclick="closeModal()">Later</button></div>`;
-  m.classList.add('open');
-  m.dataset.feel = st.feel || '';
-};
-window.saveRaceResult = function (key) {
-  const m = $('#modal');
-  const t = ($('#race-time').value || '').trim();
-  if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) { toast('Time as h:mm or h:mm:ss — e.g. 1:56:32'); return; }
-  const st = raceState(key);
-  st.result = t; st.feel = m.dataset.feel || null; st.note = ($('#race-note').value || '').trim();
-  st.projAtRace = raceProjection() ? raceProjection().range : null;
-  save(); closeModal(); render();
-  toast(`${raceInfo(key).name}: ${t} logged. ${st.projAtRace ? 'Projection was ' + st.projAtRace + '.' : ''} 🎉`);
-  if (key === finalRace().key) offerRecoveryMode();
 };
 /* Shown once the final race result is logged (and from the result card /
    "Program complete" card). The off-season is already on the calendar —
@@ -3452,10 +3432,13 @@ window.showRetro = function () {
   const totKm = Math.round(Object.values(merged).reduce((a, r) => a + (r.km || 0), 0) * 10) / 10;
   const firstD = Object.keys(ST.sessions).sort()[0] || today();
   const totTon = Math.round(tonnageIn(firstD, today()) / 100) / 10;
+  /* Reads the run logged on race day rather than a separate result field:
+     with the official-time sheet gone, the run log IS the race record. */
   const raceLines = RACES.map(r => {
-    const st = ST.races[r.key];
-    if (!st.result) return `${r.name}: not logged.`;
-    return `${r.name}: ${st.result}${st.projAtRace ? ` (projected ${st.projAtRace})` : ''}${st.feel ? ` — felt ${st.feel}` : ''}.`;
+    const run = merged[r.date];
+    if (!run) return `${r.name}: not logged.`;
+    const h = Math.floor(run.min / 60), mm = String(Math.round(run.min % 60)).padStart(2, '0');
+    return `${r.name}: ${run.km} km in ${h ? h + ':' + mm : run.min + ' min'}${paceStr(run.km, run.min) ? ' · ' + paceStr(run.km, run.min) : ''}${run.feel ? ` — felt ${run.feel}` : ''}.`;
   });
   const lifters = traj.slice(0, 5).map(x => `${x.name}: ${x.pct >= 0 ? '+' : ''}${x.pct}% e1RM`);
   const m = $('#modal');

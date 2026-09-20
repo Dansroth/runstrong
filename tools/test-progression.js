@@ -334,9 +334,14 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
     eq(`week ${w.num}: 2 easy runs`, runs, 2);
     ok(`week ${w.num}: every run is easy`, w.days.filter(d => d.kind === 'run').every(d => /easy/i.test(d.title)));
     eq(`week ${w.num}: exactly one mobility session`, mob, 1);
-    eq(`week ${w.num}: lifts sit Mon/Tue/Thu/Fri/Sun`, w.days.map((d, i) => d.kind === 'lift' ? i : null).filter(i => i !== null).join(','), '0,1,3,4,6');
-    eq(`week ${w.num}: Saturday is the rest day`, w.days[5].kind, 'rest');
-    eq(`week ${w.num}: Sunday is the short lift stacked on the easy run`, w.days[6].kind + '/' + !!w.days[6].run, 'lift/true');
+    /* v65: Arms & Core moved to Saturday and Sunday became a run of its own,
+       which leaves the week with no rest day. Asserted rather than assumed,
+       because it was the reverse two commits ago and the rest day was the
+       whole point of that change — if it comes back, this is where it shows. */
+    eq(`week ${w.num}: lifts sit Mon/Tue/Thu/Fri/Sat`, w.days.map((d, i) => d.kind === 'lift' ? i : null).filter(i => i !== null).join(','), '0,1,3,4,5');
+    eq(`week ${w.num}: Saturday is the short Arms & Core session`, w.days[5].tpl, 'hypArms');
+    eq(`week ${w.num}: Sunday is a run on its own, not stacked on a lift`, w.days[6].kind + '/' + !!w.days[6].run, 'run/false');
+    eq(`week ${w.num}: seven training days, no rest day`, w.days.filter(d => d.kind === 'rest').length, 0);
     ok(`week ${w.num}: has no rest-less 8-slot day problem (every day is one plan)`, w.days.every(d => ['lift', 'run', 'mobility', 'rest'].includes(d.kind)));
     ok(`week ${w.num}: label resolves to a hypertrophy policy`, ['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel(w.phase)), phaseKeyFromLabel(w.phase));
   }
@@ -677,8 +682,10 @@ group('sets and tonnage per muscle: logged only, every mapped muscle credited');
   const plannedDl = plannedSetsByMuscle(weeks, ...blockWeek(P.HYPER_MESO_WEEKS), HYPER_START);
   ok('week 3 asks for more than week 1 (the ramp is in there)', plannedWk3.chest > plannedWk1.chest, `${plannedWk1.chest} → ${plannedWk3.chest}`);
   ok('the deload asks for less than week 1', plannedDl.chest < plannedWk1.chest, `${plannedDl.chest} vs ${plannedWk1.chest}`);
-  const sat = dadd(HYPER_START, 5);   // the block's rest day
-  ok('a day with no lift plans nothing', !Object.keys(plannedSetsByMuscle(weeks, sat, sat, HYPER_START)).length);
+  /* Wednesday — the run-and-mobility day. Saturday used to be the rest day
+     and served as this fixture until v65 moved Arms & Core onto it. */
+  const wed = dadd(HYPER_START, 2);
+  ok('a day with no lift plans nothing', !Object.keys(plannedSetsByMuscle(weeks, wed, wed, HYPER_START)).length);
   // the priority muscles this block is for actually clear [H1]'s threshold
   for (const m of PRIORITY_MUSCLES) {
     ok(`${m} is a real muscle tag`, Object.values(MUSCLE_MAP).some(list => list.includes(m)));

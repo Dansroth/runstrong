@@ -1437,14 +1437,16 @@ const HYPER_WEEK = {
   2: { kind: 'run', title: 'Easy Run + Mobility', sub: EASY_RUN_SUB + ' · then the week\'s mobility session', mobility: true },
   3: { kind: 'lift', tpl: 'hypLowerB' },
   4: { kind: 'lift', tpl: 'hypUpperB' },
-  /* Restructured 2026-09-20 on the user's instruction: the four 60 min
-     sessions sit Mon/Tue/Thu/Fri, the short one moves to Sunday where it
-     stacks onto the easy run that was already there (day.run), and
-     Saturday becomes the block's only full rest day — it previously had
-     none, since the old Sunday "run, or rest" was the only day that moved.
-     Five lifts, two runs, one mobility session and one rest day. */
-  5: { kind: 'rest', title: 'Rest', sub: 'The one full day off in the week. Nothing to log, nothing to skip.' },
-  6: { kind: 'lift', tpl: 'hypArms', run: true, runSub: '45–60 min conversational — before or after, whichever suits' },
+  /* Arms & Core moved to Saturday and Sunday became a run of its own (v65, on
+     request). It was the other way round: the short session stacked onto
+     Sunday's run and Saturday was the block's one full rest day.
+     The trade, since it is the second time this week has been reshuffled and
+     the first reshuffle existed to create the rest day: there is no longer a
+     day off. Five lifts and two runs across seven days. Sunday is the lightest
+     of them and the one that moves — if the week needs a day back, that is the
+     one to take, and the plan will not mind. */
+  5: { kind: 'lift', tpl: 'hypArms' },
+  6: { kind: 'run', title: 'Easy Run', sub: '45–60 min conversational. The week has no rest day now — take this one off if the legs want it.' },
 };
 /* Transition week: three lifts, three runs, mobility kept — the running
    build wants a body that has run three times a week before it asks for
