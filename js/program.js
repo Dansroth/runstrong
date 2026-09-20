@@ -223,6 +223,11 @@ const TAPER_WHY = 'Taper mode: today is about keeping this pattern sharp, not bu
    PREPS/STRETCHES: short, plain, second person.
    ===================================================================== */
 const HOWTO = {
+  /* Added v40 with the coreAcc and widened quadAcc pools — a rotating slot
+     can surface either of these on any given block, and every exercise the
+     app can prescribe owes the user steps. */
+  cablecrunch:{ steps: ['Kneel facing the stack, rope behind your head, hands by your ears.', 'Set your hips and leave them there — this is a spine movement, not a hip hinge.', 'Curl your ribcage down toward your pelvis, rounding the spine deliberately.', 'Come back up under control until you feel the abs lengthen, then go again.'] },
+  frontsquat: { steps: ['Bar across the front delts, elbows driven high — the rack, not your hands, holds it.', 'Brace hard, then squat straight down with an upright torso.', 'Let the elbows stay up; the moment they drop the bar follows.', 'Drive up through mid-foot. Stop the set when the elbows start falling, not when the legs give out.'] },
   boxjump:    { steps: ['Stand close to the box, feet hip-width.', 'Swing your arms back, then drive them forward as you jump.', 'Land soft and quiet with both feet, knees slightly bent.', 'Step back down — never jump down, that\'s free eccentric load you don\'t need.'] },
   bss:        { steps: ['Rear foot up on a bench behind you, laces down.', 'Front foot far enough forward that your knee stays over your ankle at the bottom.', 'Drop straight down, back knee grazing the floor.', 'Drive up through the front heel — don\'t push off the back foot.'] },
   slrdl:      { steps: ['Stand on one leg, soft knee, dumbbell in the opposite hand.', 'Hinge forward at the hip, letting the back leg rise as a counterbalance.', 'Keep your hips square — don\'t let them open up.', 'Go as low as your hamstring flexibility allows, then squeeze the glute back to standing.'] },
@@ -846,14 +851,33 @@ const TEMPLATES = {
   // actually changes each block [H9]; the seven anchors and the two lifts
   // with no real alternative in the library (leg extension, seated curl)
   // stay fixed.
-  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 55, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12]] },
-  hypUpperA: { title: 'Upper A · Push', hyper: true, est: 55, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10]] },
-  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 55, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 4, 15]] },
-  hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 55, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 3, 12], ['incline', 4, 10], ['reardelt', 3, 15]] },
-  // Arms first while fresh — they are the reason this day exists; the delt
-  // work sits after so the ramp lands on arms, not on a shoulder count that
-  // pressing already feeds.
-  hypArms:   { title: 'Arms & Shoulders', hyper: true, est: 50, items: [['bbcurl', 4, 10], ['pushdown', 3, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:tricepsAcc', 3, 12], ['latraise', 4, 15], ['ROTATE:shoulderAcc', 3, 10], ['hangraise', 2, 12]] },
+  /* Session lengths and priority, v40. Every session is 60 min except the
+     short one, which is 30 because a run is stacked on that day. The minutes
+     the four long sessions gained went to the three muscles this block is
+     for — chest, biceps and core — and NOT to more leg volume, which is the
+     one thing three runs a week already supply. Concretely: both lower days
+     gained a rotating core slot, Upper B gained a second biceps slot, and
+     Upper A absorbed the side-delt work the arms day no longer has room for.
+     The ≥2×/week rule [H2] still holds for every major muscle: csrow on the
+     push day and incline on the pull day are the second exposures for back
+     and chest, as they always were. */
+  /* Every 60 min template is 21 base sets. Not a coincidence: the deload
+     halves each item with Math.ceil, so six items of 3-4 sets round up to 12
+     — under 60% of 21, but not of 20. An even-set core/calf/delt slot is what
+     keeps the deload an actual deload rather than a 62% week. */
+  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 60, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12], ['ROTATE:coreAcc', 4, 12]] },
+  hypUpperA: { title: 'Upper A · Push', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:chestAcc', 3, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10], ['latraise', 4, 15]] },
+  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 60, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 4, 15], ['ROTATE:coreAcc', 4, 12]] },
+  /* Order matters here: HYPER_RAMP bumps the first four items, so both curls
+     sit inside that window. With the arms day down to 30 min, biceps would
+     otherwise peak at 12 sets in week 3 and miss the ≥13 target [H1]. */
+  hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['incline', 4, 10], ['reardelt', 3, 15]] },
+  /* The 30 min session. Arms first while fresh — they are the reason this day
+     exists — then core, which is the slot the block was missing entirely.
+     Four items, not seven: the side-delt and shoulder-press work moved out
+     (latraise to Upper A, shoulderAcc retired) because 30 minutes cannot hold
+     a shoulder day as well, and delts are not what this summer is for. */
+  hypArms:   { title: 'Arms & Core', hyper: true, est: 30, items: [['bbcurl', 4, 10], ['pushdown', 4, 12], ['ROTATE:tricepsAcc', 3, 12], ['ROTATE:coreAcc', 3, 12]] },
 };
 
 /* =====================================================================
@@ -944,12 +968,23 @@ const HYPER_POOLS = {
   backAcc:     ['cablerow', 'dbrow', 'csrow'],         // block 1 cable row, block 2 DB row (csrow is fixed on Upper A)
   bicepsAcc:   ['hammercurl', 'preachercurl'],
   tricepsAcc:  ['skullcrusher', 'dip'],
-  quadAcc:     ['legpress', 'hacksquat'],              // the second quad compound after the squat
+  quadAcc:     ['legpress', 'hacksquat', 'frontsquat'], // the second quad compound after the squat
   gluteAcc:    ['hipthrust', 'glutebridge', 'slhipthrust'],
   unilateral:  ['bss', 'revlunge', 'stepup'],
   calfStand:   ['calfstand', 'slcalf', 'lpcalf'],      // straight-knee (gastroc) slot on Lower A
   calfSeat:    ['calfseat', 'bkcalfpress'],            // bent-knee (soleus) slot on Lower B
-  shoulderAcc: ['dbshoulder', 'landmine'],
+  /* Added v40. Core had 2 sets a week of one exercise (hangraise on the arms
+     day) against 20 for glutes — the widest gap in the block, and abs are one
+     of the three muscles this summer is actually for. It now rotates like any
+     other accessory and appears on both lower days and the short session, so
+     it is trained 2-3× a week [H2]. Loaded flexion deliberately: pallof,
+     copen and sideplank already cover anti-rotation in the running templates,
+     and what was missing was trunk flexion under a load that can progress. */
+  coreAcc:     ['hangraise', 'cablecrunch', 'abwheel'],
+  /* shoulderAcc (dbshoulder / landmine) retired v40. The arms day it lived on
+     became a 30 min session and lost the slot; ohp already presses overhead
+     twice a week and latraise moved onto Upper A, so the vertical-press
+     accessory was the redundant one to drop rather than the side delts. */
 };
 /* The five lifting templates of a block week, Mon→Sat order (HYPER_WEEK is
    the dated layout; this is the list the block retro reports against). */
@@ -958,6 +993,20 @@ const HYPER_ORDER = ['hypLowerA', 'hypUpperA', 'hypLowerB', 'hypUpperB', 'hypArm
    block week 1, 2, 3. Week HYPER_MESO_WEEKS is the deload (sets halved). */
 const HYPER_RAMP = [[], [0, 1], [0, 1, 2, 3]];
 function hyperWeekInBlock(startISO, dateISO) { return (weeksSince(startISO, dateISO) % HYPER_MESO_WEEKS) + 1; }
+/* Two anchors, not one (v40). The volume ramp and the accessory rotation used
+   to count from the same date, which made the summer block a forced choice:
+   re-anchor on 30 Nov and the block opens on mesocycle week 1 but every
+   accessory snaps back to the ones trained in October — the exact opposite of
+   what rotation is for [H9] — or carry the old anchor and the block opens
+   mid-ramp on week 2. So the ramp re-anchors and the rotation does not.
+   `mesoStartISO` stays the rotation anchor (mesoAnchor()); this derives the
+   ramp anchor from the date. Pure: the block boundary is a constant, not a
+   clock read. The legacy maintenance mode owns both anchors, because it has
+   no calendar to re-anchor against. */
+function rampAnchor(dateISO, rotStartISO) {
+  if (rotStartISO && rotStartISO !== HYPER_START) return rotStartISO;
+  return dateISO >= SUMMER_START ? SUMMER_START : HYPER_START;
+}
 
 /* Whole weeks elapsed between two ISO dates. Pure — both dates are inputs,
    never read from the clock — so rotation is exactly reproducible in tests. */
@@ -990,7 +1039,7 @@ function materializeTemplate(tplId, dateISO, mesoStartISO) {
   // (plannedLoads) and the session itself all agree: +1 set on the first two
   // lifts in week 2, the first four in week 3, everything halved in the
   // deload week [H1][H10]. Non-hyper templates pass through untouched.
-  const wk = tpl.hyper ? hyperWeekInBlock(mesoStartISO, dateISO) : 0;
+  const wk = tpl.hyper ? hyperWeekInBlock(rampAnchor(dateISO, mesoStartISO), dateISO) : 0;
   const deload = tpl.hyper && wk === HYPER_MESO_WEEKS;
   const bump = new Set(tpl.hyper && !deload ? (HYPER_RAMP[wk - 1] || []) : []);
   const items = tpl.items.map(([exId, sets, reps], i) => {
@@ -1834,7 +1883,7 @@ if (typeof module !== 'undefined' && module.exports) {
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
-    SUMMER_START, SUMMER_WEEKS, buildSummer, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

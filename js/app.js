@@ -3349,7 +3349,9 @@ window.showRetro = function () {
 /* on-demand report for the CURRENT hypertrophy phase — showRetro() above is
    a one-shot look back at the finished 9-week race block, this is an
    ongoing "how's it going" for a phase that has no end date */
-const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory', quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift', calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', shoulderAcc: 'Shoulder press' };
+/* One entry per HYPER_POOLS key — a missing one renders "undefined: <lift>"
+   in the rotation list, so this moves whenever the pools do. */
+const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory', quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift', calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', coreAcc: 'Core lift' };
 window.showHyperRetro = function () {
   const since = HYPER_START;
   const mesoStart = mesoAnchor(ST.maintenance);
