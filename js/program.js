@@ -953,32 +953,33 @@ const TEMPLATES = {
      halves each item with Math.ceil, so six items of 3-4 sets round up to 12
      — under 60% of 21, but not of 20. An even-set core/calf/delt slot is what
      keeps the deload an actual deload rather than a 62% week. */
-  /* copen closes a gap the v40 rewrite opened. Adductors were only ever
-     trained by `bss`, which sits in the rotating `unilateral` slot on Lower B
-     — so they got work in some mesocycles and none in others, and in the
-     summer block, where Lower B runs only every other week, they fell to
-     zero. That is the best-evidenced groin-injury exercise in the library
-     going missing four months before a race. Two timed sets on BOTH lower
-     days means weekly adductor work whichever day the summer Monday lands on,
-     and it is cheap: 45 s rest and a short hold, not a per-set average. */
-  hypLowerA: { title: 'Lower A · Quads', hyper: true, est: 60, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 5, 12], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
-  /* Delts give a set to chest on both upper days (v45): chest is the stated
-     priority and sits mid-table, while shoulders read top of the table partly
-     because every press credits them. A bigger shift than this would mean
-     gutting side-delt work, which trades one "looks good" muscle for another
-     rather than finding real surplus. */
-  hypUpperA: { title: 'Upper A · Push', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:chestAcc', 4, 10], ['ohp', 3, 8], ['overheadext', 4, 12], ['csrow', 3, 10], ['latraise', 3, 15]] },
-  hypLowerB: { title: 'Lower B · Hinge', hyper: true, est: 60, items: [['rdl', 4, 8], ['ROTATE:gluteAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:unilateral', 3, 10], ['ROTATE:calfSeat', 5, 15], ['ROTATE:coreAcc', 4, 12], ['copen', 2, 30]] },
-  /* Order matters here: HYPER_RAMP bumps the first four items, so both curls
-     sit inside that window. With the arms day down to 30 min, biceps would
-     otherwise peak at 12 sets in week 3 and miss the ≥13 target [H1]. */
-  hypUpperB: { title: 'Upper B · Pull', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 3, 10], ['inclinecurl', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['incline', 5, 10], ['reardelt', 2, 15]] },
-  /* The 30 min session. Arms first while fresh — they are the reason this day
-     exists — then core, which is the slot the block was missing entirely.
-     Four items, not seven: the side-delt and shoulder-press work moved out
-     (latraise to Upper A, shoulderAcc retired) because 30 minutes cannot hold
-     a shoulder day as well, and delts are not what this summer is for. */
-  hypArms:   { title: 'Arms & Core', hyper: true, est: 30, items: [['bbcurl', 4, 10], ['pushdown', 4, 12], ['ROTATE:tricepsAcc', 3, 12], ['ROTATE:coreAcc', 3, 12]] },
+  /* ---- v67: the split rebuilt around chest, biceps and abs ----
+     The old week was a runner's upper/lower with an arms day bolted on: two of
+     five lifting days were legs, and they were the two biggest sessions, so
+     legs took 50 weekly sets against 38 for chest and arms combined. That is
+     the wrong way round for the stated goal.
+
+     What the evidence constrains is volume, frequency, proximity to failure
+     and selection — not the day arrangement, so the split itself is only the
+     vehicle. The lever is that MAINTAINING a muscle costs far less than
+     growing one: roughly a third of the volume, and once a week is enough.
+     Legs go to a single full session on that basis, which frees the sets the
+     priority muscles needed.
+
+     Push and Pull are two of the three upper days; the third (Upper) is the
+     second chest and back exposure, which is what [H2] asks for. Every 60 min
+     session is 21 base sets, the number that keeps the Math.ceil deload under
+     60% of the loading week. */
+  hypPush:   { title: 'Push · Chest', hyper: true, est: 60, items: [['bench', 4, 6], ['machpress', 4, 8], ['ROTATE:chestAcc', 3, 12], ['overheadext', 4, 12], ['latraise', 3, 15], ['ROTATE:coreAcc', 3, 12]] },
+  hypPull:   { title: 'Pull · Back & Biceps', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 4, 10], ['inclinecurl', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['csrow', 3, 10], ['reardelt', 3, 15]] },
+  /* The second chest exposure, and the one that carries the stretch-biased
+     work: an incline press plus dips. Both curls live on Pull and Arms, so
+     this day is chest, back and the triceps rotation. */
+  hypUpper:  { title: 'Upper · Chest & Back', hyper: true, est: 60, items: [['incline', 4, 8], ['dip', 3, 10], ['latpull', 4, 10], ['ROTATE:coreAcc', 4, 12], ['latraise', 3, 15], ['ROTATE:tricepsAcc', 3, 12]] },
+  /* 30 min, and now two curls rather than one: biceps were the thinnest of the
+     three priority muscles at 11 weekly sets. The triceps rotation moved to
+     Upper to make room — triceps still get three exposures. */
+  hypArms:   { title: 'Arms & Core', hyper: true, est: 30, items: [['bbcurl', 4, 10], ['ROTATE:bicepsAcc', 3, 12], ['pushdown', 4, 12], ['ROTATE:coreAcc', 3, 12]] },
   /* The summer block's single lower day (v58). It replaced alternating
      Lower A / Lower B on the Monday, which looked reasonable and audited
      badly: quads took 13 sets one week and 2 the next, hams 8 then 3. That is
@@ -990,7 +991,11 @@ const TEMPLATES = {
      knowingly — but a steady weekly dose beats a sawtooth.
      Order matters: the ramp bumps the first four items, which here are the
      two big compounds and the two direct quad/ham lifts. */
-  hypLowerS: { title: 'Lower · Full', hyper: true, est: 62, items: [['squat', 4, 6], ['rdl', 4, 8], ['ROTATE:quadAcc', 3, 10], ['legcurl', 3, 12], ['ROTATE:calfStand', 5, 12], ['ROTATE:coreAcc', 3, 12], ['copen', 2, 30]] },
+  /* The one leg day, so it has to cover the patterns two used to: a squat, a
+     hinge, single-leg work (which a runner needs more than a second bilateral
+     quad lift), knee flexion, calves and adductors. Calves at 6 because 5 sat
+     under even a maintenance dose once this became their only exposure. */
+  hypLowerS: { title: 'Lower · Full', hyper: true, est: 62, items: [['squat', 4, 6], ['rdl', 4, 8], ['ROTATE:unilateral', 3, 10], ['legcurl', 3, 12], ['ROTATE:calfStand', 6, 12], ['ROTATE:coreAcc', 3, 12], ['copen', 2, 30]] },
 };
 
 /* =====================================================================
@@ -1077,18 +1082,22 @@ const HYPER_MESO_WEEKS = 4;
 /* Pool order = block order: index 0 in block 1 (weeks 1-4), index 1 in
    block 2 (weeks 5-8), index 2 (or back to 0) in the transition week. */
 const HYPER_POOLS = {
-  chestAcc:    ['cableflye', 'dbflye', 'incline', 'machpress', 'pullover'],
-  backAcc:     ['cablerow', 'dbrow', 'csrow', 'latpull', 'sealrow'],
+  /* Isolation only since v67 — incline and machpress are fixed lifts on the
+     Upper and Push days, so a pool holding them would surface the same
+     exercise twice in a week. */
+  chestAcc:    ['cableflye', 'dbflye', 'pullover'],
+  backAcc:     ['cablerow', 'dbrow', 'sealrow'],   // csrow and latpull are fixed lifts now
   /* Three deep as of v46. At two each these came back every eight weeks, so
      the twenty-one weeks to the February race held only two and a half
      cycles of the same two lifts — less variety than [H9] is asking for. */
   bicepsAcc:   ['hammercurl', 'preachercurl', 'cablecurl', 'dragcurl', 'concurl'],
-  tricepsAcc:  ['skullcrusher', 'dip', 'ropeext', 'closegrip', 'diamondpu'],
-  quadAcc:     ['legpress', 'hacksquat', 'frontsquat', 'gobletsquat', 'sissysquat'],
-  gluteAcc:    ['hipthrust', 'glutebridge', 'slhipthrust', 'pullthrough', 'backext'],
+  tricepsAcc:  ['skullcrusher', 'ropeext', 'closegrip', 'diamondpu'],   // dip is a fixed lift on Upper
+  /* quadAcc, gluteAcc and calfSeat retired in v67: with one leg day there is
+      no room for a second quad compound, a dedicated glute lift or a second
+      calf slot. Their exercises stay in the library as swap targets — a pool
+      with no template to surface it is dead weight, the exercises are not. */
   unilateral:  ['bss', 'revlunge', 'stepup', 'walkinglunge', 'slpress'],
   calfStand:   ['calfstand', 'slcalf', 'lpcalf', 'donkeycalf', 'smithcalf'], // straight-knee (gastroc) slot on Lower A
-  calfSeat:    ['calfseat', 'bkcalfpress', 'slcalfseat', 'seatedcalfdb'], // bent-knee (soleus) slot on Lower B — four, not five: genuinely distinct bent-knee patterns run out here
   /* Added v40. Core had 2 sets a week of one exercise (hangraise on the arms
      day) against 20 for glutes — the widest gap in the block, and abs are one
      of the three muscles this summer is actually for. It now rotates like any
@@ -1113,7 +1122,7 @@ const HYPER_POOLS = {
    the dated layout; this is the list the block retro reports against, and a
    test asserts the two agree — so this moves whenever HYPER_WEEK does. Upper
    A leads since v57. */
-const HYPER_ORDER = ['hypUpperA', 'hypLowerA', 'hypLowerB', 'hypUpperB', 'hypArms'];
+const HYPER_ORDER = ['hypPush', 'hypPull', 'hypLowerS', 'hypUpper', 'hypArms'];
 /* Volume ramp inside a mesocycle [H1]: item indexes that gain one set in
    block week 1, 2, 3. Week HYPER_MESO_WEEKS is the deload (sets halved). */
 const HYPER_RAMP = [[], [0, 1], [0, 1, 2, 3]];
@@ -1432,11 +1441,11 @@ const HYPER_WEEK = {
      sit two days apart rather than three, with only the Wednesday easy run
      between them — swapWarnings() does not flag it (they are not back to back
      and the Sunday run is easy, not long), but it is the trade being made. */
-  0: { kind: 'lift', tpl: 'hypUpperA' },
-  1: { kind: 'lift', tpl: 'hypLowerA' },
+  0: { kind: 'lift', tpl: 'hypPush' },
+  1: { kind: 'lift', tpl: 'hypPull' },
   2: { kind: 'run', title: 'Easy Run + Mobility', sub: EASY_RUN_SUB + ' · then the week\'s mobility session', mobility: true },
-  3: { kind: 'lift', tpl: 'hypLowerB' },
-  4: { kind: 'lift', tpl: 'hypUpperB' },
+  3: { kind: 'lift', tpl: 'hypLowerS' },
+  4: { kind: 'lift', tpl: 'hypUpper' },
   /* Arms & Core moved to Saturday and Sunday became a run of its own (v65, on
      request). It was the other way round: the short session stacked onto
      Sunday's run and Saturday was the block's one full rest day.
@@ -1452,11 +1461,11 @@ const HYPER_WEEK = {
    build wants a body that has run three times a week before it asks for
    a hard day. Base (week-1) volume, no ramp. */
 const TRANSITION_WEEK = {
-  0: { kind: 'lift', tpl: 'hypUpperA' },
+  0: { kind: 'lift', tpl: 'hypPush' },
   1: { kind: 'run', title: 'Easy Run', sub: '40 min conversational' },
-  2: { kind: 'lift', tpl: 'hypLowerA' },
+  2: { kind: 'lift', tpl: 'hypLowerS' },
   3: { kind: 'run', title: 'Easy Run + Mobility', sub: '40 min conversational · then the week\'s mobility session', mobility: true },
-  4: { kind: 'lift', tpl: 'hypUpperB' },
+  4: { kind: 'lift', tpl: 'hypPull' },
   5: { kind: 'rest', title: 'Rest' },
   6: { kind: 'run', title: 'Long Run', sub: '60 min easy — the first long-ish run since the race, no pace target' },
 };
@@ -1535,10 +1544,10 @@ function summerWeekLayout(weekN) {
   return {
     0: { kind: 'lift', tpl: summerLowerTpl(weekN) },
     1: { kind: 'lift', tpl: 'hypArms', run: true, runSub: tempoTue ? SUMMER_RUN_TEMPO : SUMMER_RUN_EASY },
-    2: { kind: 'lift', tpl: 'hypUpperA' },
+    2: { kind: 'lift', tpl: 'hypPush' },
     3: { kind: 'mobility', title: 'Rest + Mobility', sub: 'The week\'s mobility session, then nothing else. This is the rest day.', mobility: true },
     4: { kind: 'run', title: tempoTue ? 'Easy Run' : 'Tempo Run', sub: tempoTue ? SUMMER_RUN_EASY : SUMMER_RUN_TEMPO },
-    5: { kind: 'lift', tpl: 'hypUpperB' },
+    5: { kind: 'lift', tpl: 'hypPull' },
     6: { kind: 'run', title: 'Long Run', sub: SUMMER_RUN_LONG },
   };
 }
@@ -1547,7 +1556,7 @@ function summerWeekLayout(weekN) {
    so the week is lighter rather than a full taper. */
 function summerRaceWeekLayout(raceKey) {
   return {
-    0: { kind: 'lift', tpl: 'hypUpperA' },
+    0: { kind: 'lift', tpl: 'hypPush' },
     1: { kind: 'run', title: 'Easy Run', sub: SUMMER_RUN_EASY },
     2: { kind: 'lift', tpl: 'hypArms', title: 'Arms & Core (short)', sub: 'Last lift of the week — nothing heavy from here.' },
     3: { kind: 'mobility', title: 'Mobility only', sub: 'Easy stretch and rollout. Legs stay fresh.', mobility: true },
@@ -1696,8 +1705,11 @@ const DAY_OVERRIDES = {
      Wednesday's run, Friday's pull, Saturday's arms and Sunday's run are the
      week as generated. */
   '2026-09-21': { kind: 'rest', title: 'Rest — block starts tomorrow', sub: 'Pushed back a day on request. Nothing to log today.' },
-  '2026-09-22': { kind: 'lift', tpl: 'hypUpperA' },
-  '2026-09-24': { kind: 'rest', title: 'Rest — legs skipped this week', sub: 'Lower B sits this week out. Back to the full week from Mon 28 Sep.' },
+  '2026-09-22': { kind: 'lift', tpl: 'hypPush' },
+  /* Thursday is the block's only leg day, so skipping legs frees it rather
+     than emptying it: it takes the Pull session that Monday's shift displaced.
+     Four lifts this week, none of them legs. */
+  '2026-09-24': { kind: 'lift', tpl: 'hypPull' },
 };
 function applyDayOverrides(weeks) {
   const dates = Object.keys(DAY_OVERRIDES);

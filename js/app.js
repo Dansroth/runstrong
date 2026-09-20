@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 29;
+const SCHEMA_VERSION = 30;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -265,6 +265,20 @@ const MIGRATIONS = {
   // and it will need rebuilding again when the exception expires, which the
   // next schema bump or any later calendar change will do anyway.
   28: (s) => { s.program = buildProgram(); s.schemaVersion = 29; return s; },
+  /* 29 → 30: the split rebuilt around chest, biceps and abs. New templates
+     (hypPush / hypPull / hypUpper) replace the old upper/lower pair, legs
+     become one full session, and the calendar is rebuilt. A day-swap pointing
+     at a template that no longer exists is dropped rather than left dangling. */
+  29: (s) => {
+    s.program = buildProgram();
+    if (s.planOverrides) {
+      for (const d of Object.keys(s.planOverrides)) {
+        const o = s.planOverrides[d];
+        if (o && o.kind === 'lift' && !TEMPLATES[o.tpl]) delete s.planOverrides[d];
+      }
+    }
+    s.schemaVersion = 30; return s;
+  },
 };
 
 function migrate(s) {
@@ -318,7 +332,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v66';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v67';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');

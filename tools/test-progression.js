@@ -394,18 +394,60 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
     return { sets, perDay };
   };
   const w1 = weekSets(0), w3 = weekSets(2), w4 = weekSets(3), w5 = weekSets(4), w7 = weekSets(6);
-  for (const m of MAJOR) {
+  /* Two tiers since v67, because the block now has two jobs. GROWING a muscle
+     and MAINTAINING one are different doses: maintenance holds at roughly a
+     third of the volume and can do it on one day a week, which is the whole
+     reason the leg work could be compressed into a single session and the
+     freed sets given to chest, biceps and abs.
+     Splitting the thresholds is not a relaxation — each tier is asserted at
+     the level its job requires, and a growth muscle slipping into the
+     maintenance band still fails. */
+  const GROW = ['chest', 'back', 'shoulders', 'biceps', 'triceps'];
+  const MAINTAIN = ['quads', 'hams', 'glutes', 'calves'];
+  for (const m of GROW) {
     ok(`${m}: ≥10 hard sets in block week 1 [H1]`, (w1.sets[m] || 0) >= 10, `${w1.sets[m]}`);
     // 13 not 14: direct sets only — pull-ups/rows/presses train arms hard
     // but carry no arm tag, so the arm counts here understate real volume
     ok(`${m}: ≥13 hard sets by block week 3 [H1]`, (w3.sets[m] || 0) >= 13, `${w3.sets[m]}`);
     ok(`${m}: block-2 week 3 is at least as high`, (w7.sets[m] || 0) >= 13, `${w7.sets[m]}`);
-    ok(`${m}: deload week is ≤60% of week 3 [H10]`, (w4.sets[m] || 0) <= (w3.sets[m] || 0) * 0.6, `${w4.sets[m]} vs ${w3.sets[m]}`);
     ok(`${m}: trained on ≥2 days a week [H2]`, (w1.perDay[m] || new Set()).size >= 2, `${[...(w1.perDay[m] || [])]}`);
     ok(`${m}: still ≥2 days in block 2`, (w5.perDay[m] || new Set()).size >= 2);
   }
-  ok('calves: ≥8 sets a week', (w1.sets.calves || 0) >= 8, `${w1.sets.calves}`);
-  ok('nothing runs away: no muscle over 24 sets even in week 3 (junk-volume guard)', Object.values(w3.sets).every(n => n <= 24), JSON.stringify(w3.sets));
+  for (const m of MAINTAIN) {
+    ok(`${m}: ≥6 sets a week — a maintenance dose, not a growth one`, (w1.sets[m] || 0) >= 6, `${w1.sets[m]}`);
+    ok(`${m}: trained at least once a week`, (w1.perDay[m] || new Set()).size >= 1, `${[...(w1.perDay[m] || [])]}`);
+  }
+  /* The priority muscles are the point of the block, so they are asserted
+     against each other rather than only against a floor: if legs ever creep
+     back above chest, the split has drifted from what it was built for. */
+  const legTotal = MAINTAIN.reduce((a, m) => a + (w1.sets[m] || 0), 0);
+  const priorityTotal = ['chest', 'biceps', 'core'].reduce((a, m) => a + (w1.sets[m] || 0), 0);
+  ok('chest + biceps + core outweigh all leg work combined', priorityTotal > legTotal, `${priorityTotal} vs ${legTotal}`);
+  /* Measured on DIRECT work — the muscle each lift is actually for. On the
+     every-tag count back and shoulders always read high, because three upper
+     days of pressing and pulling credit them on the way past; that is an
+     artefact of the counting, not a priority. */
+  const direct = weekOffset => {
+    const monday = dadd(HYPER_START, weekOffset * 7);
+    const out = {};
+    for (let i = 0; i < 7; i++) {
+      const plan = HYPER_WEEK[i];
+      if (!plan || plan.kind !== 'lift') continue;
+      for (const [exId, n] of materializeTemplate(plan.tpl, dadd(monday, i), HYPER_START).items) {
+        const m0 = (MUSCLE_MAP[exId] || [])[0];
+        if (m0) out[m0] = (out[m0] || 0) + n;
+      }
+    }
+    return out;
+  };
+  const d1 = direct(0), d3 = direct(2);
+  ok('chest gets more direct work than any other muscle', Object.entries(d1).every(([m, n]) => m === 'chest' || n <= d1.chest), JSON.stringify(d1));
+  ok('biceps and core both sit in the top four', ['biceps', 'core'].every(m => Object.values(d1).filter(n => n > d1[m]).length <= 3), JSON.stringify(d1));
+  ok('core is trained on ≥3 days [H2]', (w1.perDay.core || new Set()).size >= 3, `${[...(w1.perDay.core || [])]}`);
+  for (const m of [...GROW, ...MAINTAIN]) {
+    ok(`${m}: deload week is ≤60% of week 3 [H10]`, (w4.sets[m] || 0) <= (w3.sets[m] || 0) * 0.6, `${w4.sets[m]} vs ${w3.sets[m]}`);
+  }
+  ok('nothing runs away: no muscle over 24 direct sets in week 3 (junk-volume guard)', Object.values(d3).every(n => n <= 24), JSON.stringify(d3));
   // rest: compounds 120-150 s, isolation 45-90 s [H5]
   /* Multi-joint lifts, which [H5] gives the longer rest. Extended in v54 when
      the pools widened: these are classified by what the movement is, not
@@ -507,8 +549,8 @@ group('summer block: 12 hypertrophy-led weeks, running owned by Runna');
   ok('…and every post-race week still resolves to a hypertrophy policy',
     post.every(w => ['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel(w.phase))));
   ok('the post-race block opens on mesocycle week 1, not mid-ramp',
-    P.materializeTemplate('hypLowerA', post[0].days[0].date, P.HYPER_START).items.reduce((a, i) => a + i[1], 0)
-    === TEMPLATES.hypLowerA.items.reduce((a, i) => a + i[1], 0));
+    P.materializeTemplate('hypLowerS', post[0].days[0].date, P.HYPER_START).items.reduce((a, i) => a + i[1], 0)
+    === TEMPLATES.hypLowerS.items.reduce((a, i) => a + i[1], 0));
   for (let i = 1; i < prog.weeks.length; i++) {
     const prev = prog.weeks[i - 1], cur = prog.weeks[i];
     const prevLast = prev.days[prev.days.length - 1].date;   // week 1 is the short Thu-Sun intro
@@ -586,9 +628,9 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   ok('lowerA is a lower template', isLowerTpl('lowerA'));
   ok('lowerB is a lower template', isLowerTpl('lowerB'));
   ok('upperA is not', !isLowerTpl('upperA'));
-  ok('hypLowerA is lower', isLowerTpl('hypLowerA'));
+  ok('hypLowerS is lower', isLowerTpl('hypLowerS'));
   ok('hypArms is not', !isLowerTpl('hypArms'));
-  ok('a ROTATE slot does not break classification', !isLowerTpl('hypUpperA'));
+  ok('a ROTATE slot does not break classification', !isLowerTpl('hypPush'));
   // swap mechanics
   const ov = swapDays(at(wk3, 0), at(wk3, 1));
   eq('the swap yields exactly two overrides', Object.keys(ov).length, 2);
@@ -637,7 +679,12 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
      Tue↔Thu, which under the previous Lower-first layout produced the
      collision and under this one produces nothing at all. */
   eq('hypertrophy: Tue ↔ Thu no longer collides — the run stays between the lower days', warnsFor(hw, 1, 3).length, 0, JSON.stringify(warnsFor(hw, 1, 3)));
-  ok('hypertrophy: moving the Wednesday run out (Wed↔Thu) puts the lower days back to back', warnsFor(hw, 2, 3).some(x => /back to back/.test(x)), JSON.stringify(warnsFor(hw, 2, 3)));
+  /* There is only one lower day since v67, so no arrangement of the week can
+      produce two in a row. That is the property worth pinning now — the old
+      fixture asserted a collision that is no longer reachable. */
+  const lowerDays = hw.days.filter(d => d.kind === 'lift' && P.isLowerTpl(d.tpl)).length;
+  eq('hypertrophy: exactly one lower-body day', lowerDays, 1);
+  eq('hypertrophy: Wed ↔ Thu is clean — one leg day cannot collide with itself', warnsFor(hw, 2, 3).length, 0, JSON.stringify(warnsFor(hw, 2, 3)));
 }
 /* ===================================================================
    6g. per-muscle weekly volume (PER-MUSCLE WEEKLY VOLUME header)
@@ -703,9 +750,19 @@ group('sets and tonnage per muscle: logged only, every mapped muscle credited');
   for (const m of PRIORITY_MUSCLES) {
     ok(`${m}: still ≥9 sets a week on four sessions`, (summerWk1[m] || 0) >= 9, `${summerWk1[m]}`);
   }
-  ok('the legs are what absorbed the cut, not the priority muscles',
-    summerWk1.glutes < plannedWk1.glutes && summerWk1.quads < plannedWk1.quads,
-    `glutes ${plannedWk1.glutes}→${summerWk1.glutes}, quads ${plannedWk1.quads}→${summerWk1.quads}`);
+  /* Legs are already a single maintenance session in BOTH blocks since v67,
+     so the old "summer cuts legs further" assertion no longer says anything.
+     What matters now is that dropping to four sessions does not come out of
+     the three muscles the block is for. */
+  /* Four lifting slots cannot give chest, biceps AND back two exposures each
+      alongside a leg day, so summer takes Push and Pull: biceps and back keep
+      their two, chest drops to one. Flagged rather than hidden — the balance
+      is worth revisiting before 30 Nov. What is asserted is the thing that
+      must not slip: the three priority muscles together still outweigh all
+      leg work. */
+  const sumPriority = ['chest', 'biceps', 'core'].reduce((a, m) => a + (summerWk1[m] || 0), 0);
+  const sumLegs = ['quads', 'hams', 'glutes', 'calves'].reduce((a, m) => a + (summerWk1[m] || 0), 0);
+  ok('summer: chest + biceps + core outweigh all leg work', sumPriority > sumLegs, `${sumPriority} vs ${sumLegs}`);
   ok('core is trained at least twice a week in both blocks [H2]', true);
   for (const [label, from, to] of [['hypertrophy', '2026-09-28', '2026-10-04'], ['summer', '2026-11-30', '2026-12-06']]) {
     const days = weeks.flatMap(w => w.days).filter(d => d.kind === 'lift' && d.date >= from && d.date <= to);
@@ -824,33 +881,40 @@ group('hypertrophy phase — periodized exercise rotation');
   }
   // the volume ramp [H1] and the deload [H10], read off the calendar date
   {
-    const base = TEMPLATES.hypLowerA.items.map(i => i[1]);
-    const wk2 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 7), REF_MESO_START).items.map(i => i[1]);
-    const wk3 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 14), REF_MESO_START).items.map(i => i[1]);
-    const wk4 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 21), REF_MESO_START).items.map(i => i[1]);
-    const wk5 = materializeTemplate('hypLowerA', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[1]);
+    const base = TEMPLATES.hypLowerS.items.map(i => i[1]);
+    const wk2 = materializeTemplate('hypLowerS', dadd(P.HYPER_START, 7), REF_MESO_START).items.map(i => i[1]);
+    const wk3 = materializeTemplate('hypLowerS', dadd(P.HYPER_START, 14), REF_MESO_START).items.map(i => i[1]);
+    const wk4 = materializeTemplate('hypLowerS', dadd(P.HYPER_START, 21), REF_MESO_START).items.map(i => i[1]);
+    const wk5 = materializeTemplate('hypLowerS', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[1]);
     const sum = a => a.reduce((x, y) => x + y, 0);
     eq('week 2 adds one set to each of the first two lifts', sum(wk2), sum(base) + 2);
     eq('week 3 adds one set to each of the first four lifts', sum(wk3), sum(base) + 4);
     ok('week 4 (deload) roughly halves the sets', sum(wk4) <= Math.ceil(sum(base) / 2) + 2 && sum(wk4) < sum(base) * 0.6, `${sum(wk4)} vs ${sum(base)}`);
     ok('the deload never zeroes a lift', wk4.every(n => n >= 1));
     eq('week 5 (block 2, week 1) is back to base volume', sum(wk5), sum(base));
-    eq('the deload leaves reps alone (intensity kept)', JSON.stringify(materializeTemplate('hypLowerA', dadd(P.HYPER_START, 21), REF_MESO_START).items.map(i => i[2])), JSON.stringify(TEMPLATES.hypLowerA.items.map(i => i[2])));
-    eq('the transition week (block week 9) is base volume', sum(materializeTemplate('hypLowerA', dadd(P.HYPER_START, 56), REF_MESO_START).items.map(i => i[1])), sum(base));
+    eq('the deload leaves reps alone (intensity kept)', JSON.stringify(materializeTemplate('hypLowerS', dadd(P.HYPER_START, 21), REF_MESO_START).items.map(i => i[2])), JSON.stringify(TEMPLATES.hypLowerS.items.map(i => i[2])));
+    eq('the transition week (block week 9) is base volume', sum(materializeTemplate('hypLowerS', dadd(P.HYPER_START, 56), REF_MESO_START).items.map(i => i[1])), sum(base));
   }
   // rotation flips on the 4-week boundary, and fixed lifts don't collide with the rotating slot
   {
-    const b1 = materializeTemplate('hypUpperA', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
-    const b2 = materializeTemplate('hypUpperA', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
-    ok('block 1 and block 2 resolve a different chest accessory', b1[1] !== b2[1], `${b1[1]} / ${b2[1]}`);
+    const b1 = materializeTemplate('hypPush', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
+    const b2 = materializeTemplate('hypPush', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
+    /* Found by slot rather than by index: the rotating chest accessory sits
+       at item 2 since v67 (bench and the machine press are fixed ahead of
+       it), and hard-coding the position made this assert that a fixed lift
+       had rotated, which it never will. */
+    const rot = TEMPLATES.hypPush.items.findIndex(([id]) => String(id).startsWith('ROTATE:chestAcc'));
+    ok('the chest accessory slot exists', rot >= 0);
+    ok('block 1 and block 2 resolve a different chest accessory', b1[rot] !== b2[rot], `${b1[rot]} / ${b2[rot]}`);
+    ok('…while the fixed presses either side of it do not move', b1[0] === b2[0] && b1[1] === b2[1], `${b1[0]}/${b2[0]} ${b1[1]}/${b2[1]}`);
     ok('the rotating chest slot never duplicates the fixed incline press on Upper B in the same week', ![b1[1], b2[1]].includes('incline'));
-    const ub1 = materializeTemplate('hypUpperB', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
-    const ub2 = materializeTemplate('hypUpperB', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
+    const ub1 = materializeTemplate('hypPull', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
+    const ub2 = materializeTemplate('hypPull', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
     ok('the rotating back slot never duplicates the fixed chest-supported row on Upper A', ![ub1[1], ub2[1]].includes('csrow'));
   }
   // anchor lifts must never be behind a ROTATE sentinel — they're what the
   // app's e1RM trajectory tracks across the whole block
-  const anchors = { hypLowerA: 'squat', hypUpperA: 'bench', hypLowerB: 'rdl', hypUpperB: 'pullup', hypArms: 'bbcurl' };
+  const anchors = { hypLowerS: 'squat', hypPush: 'bench', hypLowerS: 'rdl', hypPull: 'pullup', hypArms: 'bbcurl' };
   for (const [tp, anchor] of Object.entries(anchors)) {
     ok(`${tp}: anchor lift "${anchor}" is a literal exId in the raw template, not a pool`, TEMPLATES[tp].items.some(([id]) => id === anchor));
   }
@@ -1065,7 +1129,7 @@ group('dated exceptions: this week only, and they expire by themselves');
   const wk = prog.weeks.find(w => w.monday === '2026-09-21');
   ok('the week exists', !!wk);
   eq('Monday is off — the block starts a day later', wk.days[0].kind, 'rest');
-  eq('Tuesday is the upper day', wk.days[1].tpl, 'hypUpperA');
+  eq('Tuesday is the upper day', wk.days[1].tpl, 'hypPush');
   const isLower = t => t && P.isLowerTpl(t);
   ok('no lower-body session anywhere in the week', !wk.days.some(d => isLower(d.tpl)), wk.days.map(d => d.tpl || d.kind).join(','));
   const legSets = wk.days.filter(d => d.kind === 'lift')
@@ -1073,9 +1137,9 @@ group('dated exceptions: this week only, and they expire by themselves');
     .filter(([id]) => (MUSCLE_MAP[id] || []).some(m => ['quads', 'hams', 'glutes', 'calves'].includes(m)))
     .reduce((a, [, s]) => a + s, 0);
   eq('…and therefore no leg sets at all', legSets, 0);
-  eq('the two runs and the pull/arms days are untouched',
+  eq('four lifts, none of them legs, runs and arms as generated',
     wk.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
-    'rest,hypUpperA,run,rest,hypUpperB,hypArms,run');
+    'rest,hypPush,run,hypPull,hypUpper,hypArms,run');
 
   /* The property that makes this safe: it is the WEEK that changed, not the
      template. Editing HYPER_WEEK for a one-off would silently become the
@@ -1083,7 +1147,7 @@ group('dated exceptions: this week only, and they expire by themselves');
   const next = prog.weeks.find(w => w.monday === '2026-09-28');
   eq('the following week is the generated shape again',
     next.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
-    'hypUpperA,hypLowerA,run,hypLowerB,hypUpperB,hypArms,run');
+    'hypPush,hypPull,run,hypLowerS,hypUpper,hypArms,run');
   ok('…and every later hypertrophy week too', prog.weeks
     .filter(w => /hypertrophy/i.test(w.phase) && w.monday > '2026-09-28' && !w.days.some(d => DAY_OVERRIDES[d.date]))
     .every(w => w.days.filter(d => d.kind === 'lift').length === 5));
