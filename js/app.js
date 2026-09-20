@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 28;
+const SCHEMA_VERSION = 29;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -260,6 +260,11 @@ const MIGRATIONS = {
   // 27 → 28: Arms & Core moves to Saturday, Sunday becomes a run. Calendar
   // change, so the stored program is rebuilt.
   27: (s) => { s.program = buildProgram(); s.schemaVersion = 28; return s; },
+  // 28 → 29: a dated exception for the week of 21 Sep (start Tuesday, upper
+  // first, no leg days). Calendar change, so the stored program is rebuilt —
+  // and it will need rebuilding again when the exception expires, which the
+  // next schema bump or any later calendar change will do anyway.
+  28: (s) => { s.program = buildProgram(); s.schemaVersion = 29; return s; },
 };
 
 function migrate(s) {
@@ -313,7 +318,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v65';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v66';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');

@@ -323,7 +323,10 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
   eq(`there are ${HYPER_WEEKS} hypertrophy weeks`, hyper.length, HYPER_WEEKS);
   const off = buildOffseason();
   eq('buildOffseason returns the hypertrophy weeks and nothing else', off.length, HYPER_WEEKS);
-  for (const w of hyper.slice(0, HYPER_WEEKS - 1)) {
+  /* Weeks carrying a dated exception are not the generated shape by design —
+     they are checked in their own group below. */
+  const overridden = w => w.days.some(d => P.DAY_OVERRIDES[d.date]);
+  for (const w of hyper.slice(0, HYPER_WEEKS - 1).filter(w => !overridden(w))) {
     const lifts = w.days.filter(d => d.kind === 'lift').length;
     /* Since v39 the Sunday lift carries the day's easy run (day.run), so a
        run is either its own day or a flag on a lift day — the same shape
@@ -676,10 +679,14 @@ group('sets and tonnage per muscle: logged only, every mapped muscle credited');
   const weeks = P.buildProgram().weeks;
   /* Derived from HYPER_START, not hardcoded: the block start moved once
      already (the recovery week was dropped) and these silently followed. */
+  /* Measured against the SECOND mesocycle, not the first. Block week 1 carries
+     a dated exception (DAY_OVERRIDES — the week of 21 Sep skips both leg days),
+     so it is not a representative full week. Week 5 is the same thing without
+     it: first week of a mesocycle, base sets, no ramp. */
   const blockWeek = n => [dadd(HYPER_START, (n - 1) * 7), dadd(HYPER_START, (n - 1) * 7 + 6)];
-  const plannedWk1 = plannedSetsByMuscle(weeks, ...blockWeek(1), HYPER_START);
-  const plannedWk3 = plannedSetsByMuscle(weeks, ...blockWeek(3), HYPER_START);
-  const plannedDl = plannedSetsByMuscle(weeks, ...blockWeek(P.HYPER_MESO_WEEKS), HYPER_START);
+  const plannedWk1 = plannedSetsByMuscle(weeks, ...blockWeek(5), HYPER_START);
+  const plannedWk3 = plannedSetsByMuscle(weeks, ...blockWeek(7), HYPER_START);
+  const plannedDl = plannedSetsByMuscle(weeks, ...blockWeek(2 * P.HYPER_MESO_WEEKS), HYPER_START);
   ok('week 3 asks for more than week 1 (the ramp is in there)', plannedWk3.chest > plannedWk1.chest, `${plannedWk1.chest} → ${plannedWk3.chest}`);
   ok('the deload asks for less than week 1', plannedDl.chest < plannedWk1.chest, `${plannedDl.chest} vs ${plannedWk1.chest}`);
   /* Wednesday — the run-and-mobility day. Saturday used to be the rest day
@@ -1035,6 +1042,55 @@ group('parsing a Runna run screen: shape-matched, never positional');
   eq('undefined input is handled', Object.values(parseRunScreenshot(undefined)).filter(v => v !== null).length, 0);
   ok('an implausible heart rate is rejected rather than stored', parseRunScreenshot('AVG HR 999').hr === null);
   ok('an implausible cadence is rejected', parseRunScreenshot('CADENCE 12').cadence === null);
+}
+
+/* ===================================================================
+   6l. dated exceptions (DATED EXCEPTIONS header)
+   =================================================================== */
+group('dated exceptions: this week only, and they expire by themselves');
+{
+  const { DAY_OVERRIDES, buildProgram, TEMPLATES, MUSCLE_MAP, materializeTemplate, HYPER_START } = P;
+  const prog = buildProgram();
+  const dayOn = iso => prog.weeks.flatMap(w => w.days).find(d => d.date === iso);
+
+  // every override actually reaches the calendar
+  for (const iso of Object.keys(DAY_OVERRIDES)) {
+    const d = dayOn(iso);
+    ok(`${iso} exists on the calendar`, !!d);
+    eq(`${iso} takes the override's kind`, d.kind, DAY_OVERRIDES[iso].kind);
+    if (DAY_OVERRIDES[iso].tpl) eq(`${iso} takes the override's template`, d.tpl, DAY_OVERRIDES[iso].tpl);
+  }
+
+  // the week of 21 Sep, as requested: starts Tuesday, upper first, no legs
+  const wk = prog.weeks.find(w => w.monday === '2026-09-21');
+  ok('the week exists', !!wk);
+  eq('Monday is off — the block starts a day later', wk.days[0].kind, 'rest');
+  eq('Tuesday is the upper day', wk.days[1].tpl, 'hypUpperA');
+  const isLower = t => t && P.isLowerTpl(t);
+  ok('no lower-body session anywhere in the week', !wk.days.some(d => isLower(d.tpl)), wk.days.map(d => d.tpl || d.kind).join(','));
+  const legSets = wk.days.filter(d => d.kind === 'lift')
+    .flatMap(d => materializeTemplate(d.tpl, d.date, HYPER_START).items)
+    .filter(([id]) => (MUSCLE_MAP[id] || []).some(m => ['quads', 'hams', 'glutes', 'calves'].includes(m)))
+    .reduce((a, [, s]) => a + s, 0);
+  eq('…and therefore no leg sets at all', legSets, 0);
+  eq('the two runs and the pull/arms days are untouched',
+    wk.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
+    'rest,hypUpperA,run,rest,hypUpperB,hypArms,run');
+
+  /* The property that makes this safe: it is the WEEK that changed, not the
+     template. Editing HYPER_WEEK for a one-off would silently become the
+     programme for every week after it. */
+  const next = prog.weeks.find(w => w.monday === '2026-09-28');
+  eq('the following week is the generated shape again',
+    next.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
+    'hypUpperA,hypLowerA,run,hypLowerB,hypUpperB,hypArms,run');
+  ok('…and every later hypertrophy week too', prog.weeks
+    .filter(w => /hypertrophy/i.test(w.phase) && w.monday > '2026-09-28' && !w.days.some(d => DAY_OVERRIDES[d.date]))
+    .every(w => w.days.filter(d => d.kind === 'lift').length === 5));
+
+  // an empty override map must be a no-op, so removing the entries is enough to revert
+  ok('overrides are keyed by real dates, not week numbers',
+    Object.keys(DAY_OVERRIDES).every(k => /^\d{4}-\d{2}-\d{2}$/.test(k)));
 }
 
 /* =================================================================== */

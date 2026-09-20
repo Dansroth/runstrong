@@ -1674,9 +1674,44 @@ function swapWarnings(days) {
 /* The whole calendar, numbered continuously. ST.program stores the result
    (see the migrations in app.js), so any change here needs a migration
    that rebuilds it — sessions/runs/routines are keyed by date and survive. */
+/* =====================================================================
+   DATED EXCEPTIONS
+   =====================================================================
+   One-off changes to specific days, keyed by ISO date and applied as the last
+   step of buildProgram(), so they override whatever block that date falls in.
+
+   This is deliberately NOT the weekly layout. A "just this week" change made
+   by editing HYPER_WEEK silently becomes the template for every week after
+   it — which is how a temporary adjustment turns into a programme nobody
+   chose. Entries here expire by being in the past: the plan reverts on its
+   own the following Monday, with nothing to remember to undo.
+
+   The app's own day-swap (planOverrides, v36) does the same job from the Plan
+   tab and is the right tool when you have the phone in your hand. This exists
+   because a change requested here has to reach the device through the code.
+   ===================================================================== */
+const DAY_OVERRIDES = {
+  /* Week of 21 Sep 2026, on request: start the block on the Tuesday instead
+     of the Monday, upper body on that first day, and no leg work this week.
+     Wednesday's run, Friday's pull, Saturday's arms and Sunday's run are the
+     week as generated. */
+  '2026-09-21': { kind: 'rest', title: 'Rest — block starts tomorrow', sub: 'Pushed back a day on request. Nothing to log today.' },
+  '2026-09-22': { kind: 'lift', tpl: 'hypUpperA' },
+  '2026-09-24': { kind: 'rest', title: 'Rest — legs skipped this week', sub: 'Lower B sits this week out. Back to the full week from Mon 28 Sep.' },
+};
+function applyDayOverrides(weeks) {
+  const dates = Object.keys(DAY_OVERRIDES);
+  if (!dates.length) return weeks;
+  return weeks.map(w => ({
+    ...w,
+    days: w.days.map(d => (DAY_OVERRIDES[d.date] ? dayFromPlan(d.date, DAY_OVERRIDES[d.date]) : d)),
+  }));
+}
 function buildProgram() {
   const feb = RACES.find(r => r.key === 'feb2027');
-  const weeks = buildRaceBlock().concat(buildOffseason(), buildSummer(feb.date, feb.key), buildPostRace(feb.date));
+  const weeks = applyDayOverrides(
+    buildRaceBlock().concat(buildOffseason(), buildSummer(feb.date, feb.key), buildPostRace(feb.date))
+  );
   weeks.forEach((w, i) => { w.num = i + 1; });
   return { startDate: PROGRAM_START, weeks };
 }
@@ -2363,7 +2398,7 @@ if (typeof module !== 'undefined' && module.exports) {
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
-    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, POST_RACE_WEEKS, buildPostRace,
+    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, POST_RACE_WEEKS, buildPostRace, DAY_OVERRIDES,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
     weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, readinessMean, parseRunScreenshot, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
