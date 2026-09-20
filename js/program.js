@@ -81,6 +81,13 @@ const EXERCISES = {
   slhipthrust:{ name: 'Single-Leg Hip Thrust', group: 'lower', mode: 'reps', perSide: true, rest: 90, rpe: [8, 8], swaps: [], equip: [], cue: 'Hips level throughout.' },
   glutebridge:{ name: 'Barbell Glute Bridge', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: [], equip: ['barbell'], cue: 'From floor, hard squeeze.' },
   bkcalfpress:{ name: 'Bent-Knee Calf Press', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: [], equip: ['machine'], cue: 'Leg press, knees bent ~30°.' },
+  /* Added v46 to deepen three rotation pools that held only two exercises
+     each, so the same lift came back every eight weeks. Over the twenty-one
+     weeks from here to the February race that was two and a half cycles of
+     the same two curls — thinner variety than [H9] asks for. */
+  cablecurl:  { name: 'Cable Curl', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['hammercurl', 'bbcurl'], equip: ['cable'], cue: 'Elbows pinned at your sides, no swing — the cable keeps tension at the top.' },
+  ropeext:    { name: 'Overhead Rope Extension', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['overheadext', 'pushdown'], equip: ['cable'], cue: 'Rope behind your head, upper arms still, split the rope at lockout.' },
+  slcalfseat: { name: 'Single-Leg Seated Calf Raise', group: 'lower', mode: 'reps', perSide: true, rest: 60, rpe: [8, 8], swaps: ['calfseat', 'bkcalfpress'], equip: ['machine'], cue: 'Bent knee, one foot at a time — the weaker side sets the reps.' },
   dbbench:    { name: 'DB Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['dumbbell', 'bench'], cue: 'Weight = per dumbbell.' },
   machpress:  { name: 'Machine Chest Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['machine'], cue: 'Full range, controlled.' },
   latpull:    { name: 'Lat Pulldown', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'machine', swaps: [], equip: ['machine'], cue: 'To upper chest, no lean-back heave.' },
@@ -148,6 +155,9 @@ const INSIGHTS = {
   lpcalf:    { why: 'Heavy calf loading without balance as the limiter — big, safe doses for stride-impact armour.', deep: 'The leg-press position lets you load the calf complex heavily with zero balance demand, useful for pushing weight beyond what standing raises allow. Depth of stretch is the quality marker — let the heel travel fully down each rep.' },
   calfseat:  { why: 'The soleus takes the highest forces of any muscle when you run — bent-knee raises target exactly it.', deep: 'With the knee bent, the gastrocnemius goes slack and the soleus — the deep, flat endurance workhorse of the calf — does the lifting. Modelling studies put peak soleus forces during running above any other muscle. It responds to high reps and hates being ignored; sore shins and Achilles problems often trace back here.' },
   bkcalfpress:{ why: 'Soleus loading on the leg press — the deep calf endurance muscle, trained heavy and safe.', deep: 'Same logic as the seated raise: bent knee isolates the soleus. The press machine version suits heavier loading with a controlled range — drive through the ball of the foot and pause the stretch.' },
+  cablecurl:  { why: 'A curl that stays heavy at the top, where a dumbbell goes light — biceps volume for its own sake this block.', deep: 'Free-weight curls lose tension as the forearm passes vertical, because gravity stops fighting you. A cable pulls horizontally the whole way, so the biceps keeps working through the lockout. This is here to grow arms, not to help you run — the honest reason it exists is that this is a hypertrophy block.' },
+  ropeext:    { why: 'The long head of the triceps only loads properly with the arm overhead, and a rope lets it finish the lockout.', deep: 'Two of the three triceps heads cross only the elbow; the long head also crosses the shoulder, so it is stretched — and best trained — with the upper arm overhead [H6]. A rope splits at lockout, letting the forearms rotate out to complete a contraction a straight bar cuts short. Arm size, not stride.' },
+  slcalfseat: { why: 'One calf at a time, bent knee — the side that is quietly weaker stops hiding behind the strong one.', deep: 'Two-legged calf work lets the dominant side take more than its share, and calves are among the most asymmetric muscles most people own. Loading one at a time exposes that and makes the lagging side do its own reps. The bent knee keeps it on the soleus, so it slots straight into the seated calf rotation.' },
   copen:     { why: 'Adductor strength is groin-injury insurance, and your inner thigh quietly stabilises every crossover step on cambered roads.', deep: 'The Copenhagen plank is the best-evidenced groin-injury prevention exercise in field sports, and runners share the mechanism: the adductors co-stabilise the pelvis in single-leg stance and control side-to-side drift. Cambered roads and late-race fatigue both raise adductor demand — a short isometric dose covers it.' },
   sideplank: { why: 'Lateral hip and trunk endurance — keeps your pelvis level so each stride lands under a stable platform.', deep: 'The side plank with leg lift trains glute medius and the lateral trunk wall together — the anti-drop system that keeps your pelvis level in single-leg stance. Pelvic drop under fatigue is linked to ITB and knee irritation; this is the direct antidote, trained in seconds not sets.' },
   adductor:  { why: 'Machine-loaded groin strength — same injury insurance as the Copenhagen, dialled by pin.', deep: 'The adductor machine trains the same groin musculature as the Copenhagen plank with easier load selection. Slow negatives matter more than the number on the stack — the eccentric portion is where tendon-protective adaptation happens.' },
@@ -256,6 +266,9 @@ const HOWTO = {
   slcalf:      { steps: ['Stand on one foot on a step, holding something for balance, a dumbbell in the other hand if you have one.', 'Lower the heel all the way down for a full stretch.', 'Rise as high as you can onto the ball of the foot, pause at the top.', 'Slow on the way down — all reps on one leg, then switch.'] },
   bkcalfpress: { steps: ['Sit in the leg press with your knees bent to about 90°, balls of your feet on the platform edge.', 'Keep the knee bend fixed — the bent knee is what makes this soleus work.', 'Press through the balls of your feet, pause at the top.', 'Lower slowly into a full stretch before the next rep.'] },
   revlunge:    { steps: ['Stand tall, dumbbells at your sides.', 'Step one foot back and lower until the back knee grazes the floor, front shin near vertical.', 'Drive through the front heel to stand, bringing the back foot forward.', 'All reps on one leg, then switch — or alternate if balance is the limiter.'] },
+  cablecurl:   { steps: ['Stand a pace back from a low pulley, bar or handle in both hands, palms up.', 'Pin your elbows to your sides — they are a hinge, not a lever.', 'Curl up without letting the elbows drift forward.', 'Lower under control all the way to a straight arm; the cable keeps pulling, so do not let it snatch you back.'] },
+  ropeext:     { steps: ['Set the pulley high, take the rope and turn away from the stack.', 'Rope behind your head, upper arms beside your ears and staying there.', 'Extend to straight, splitting the two ends of the rope apart at the top.', 'Let the elbows bend back to a deep stretch behind your head before the next rep.'] },
+  slcalfseat:  { steps: ['Sit at the calf machine with one foot on the platform, the other resting aside.', 'Lower that heel slowly into a full stretch.', 'Press up as high as the joint allows and pause at the top.', 'Finish the set, then match the reps exactly on the other side — the weaker leg sets the number.'] },
   stepup:      { steps: ['Face a box or bench about knee height, dumbbells at your sides.', 'Put one whole foot on the box and drive through that heel to stand up on it.', 'Don\'t push off the bottom foot — the top leg does all of it.', 'Step down under control, same leg leading each rep, then switch.'] },
   landmine:    { steps: ['Bar in a landmine (or wedged in a corner), end of the bar held at your shoulder, half-kneeling or standing.', 'Brace the core, then press the bar up and forward until your arm is straight.', 'Lower under control back to the shoulder.', 'Weight is the plates only — the angled path is easier on cranky shoulders than a straight overhead press.'] },
   legpress:    { steps: ['Feet mid-platform, about shoulder width, back and hips flat against the pad.', 'Unlock, then lower the sled until your knees are near your chest — as deep as your hips stay down.', 'Drive through the whole foot, knees tracking over your toes.', 'Stop just short of locking the knees at the top.'] },
@@ -291,7 +304,8 @@ const MUSCLE_MAP = {
   slrdl:['hams','glutes'], bstance:['hams','glutes'], cableslrdl:['hams','glutes'],
   rdl:['hams','glutes','back'], trapbar:['hams','glutes','back'], goodmorning:['hams','back'],
   hipthrust:['glutes'], slhipthrust:['glutes'], glutebridge:['glutes'],
-  calfstand:['calves'], slcalf:['calves'], lpcalf:['calves'], calfseat:['calves'], bkcalfpress:['calves'],
+  calfstand:['calves'], slcalf:['calves'], lpcalf:['calves'], calfseat:['calves'], bkcalfpress:['calves'], slcalfseat:['calves'],
+  cablecurl:['biceps'], ropeext:['triceps'],
   copen:['adductors','core'], sideplank:['core','glutes'], adductor:['adductors'],
   boxjump:['calves','quads'], broadjump:['glutes','quads'], depthdrop:['quads','calves'],
   bench:['chest','shoulders'], dbbench:['chest','shoulders'], machpress:['chest','shoulders'],
@@ -979,13 +993,16 @@ const HYPER_MESO_WEEKS = 4;
 const HYPER_POOLS = {
   chestAcc:    ['cableflye', 'dbflye', 'incline'],     // block 1 cable flye, block 2 DB flye (incline is fixed on Upper B)
   backAcc:     ['cablerow', 'dbrow', 'csrow'],         // block 1 cable row, block 2 DB row (csrow is fixed on Upper A)
-  bicepsAcc:   ['hammercurl', 'preachercurl'],
-  tricepsAcc:  ['skullcrusher', 'dip'],
+  /* Three deep as of v46. At two each these came back every eight weeks, so
+     the twenty-one weeks to the February race held only two and a half
+     cycles of the same two lifts — less variety than [H9] is asking for. */
+  bicepsAcc:   ['hammercurl', 'preachercurl', 'cablecurl'],
+  tricepsAcc:  ['skullcrusher', 'dip', 'ropeext'],
   quadAcc:     ['legpress', 'hacksquat', 'frontsquat'], // the second quad compound after the squat
   gluteAcc:    ['hipthrust', 'glutebridge', 'slhipthrust'],
   unilateral:  ['bss', 'revlunge', 'stepup'],
   calfStand:   ['calfstand', 'slcalf', 'lpcalf'],      // straight-knee (gastroc) slot on Lower A
-  calfSeat:    ['calfseat', 'bkcalfpress'],            // bent-knee (soleus) slot on Lower B
+  calfSeat:    ['calfseat', 'bkcalfpress', 'slcalfseat'], // bent-knee (soleus) slot on Lower B
   /* Added v40. Core had 2 sets a week of one exercise (hangraise on the arms
      day) against 20 for glutes — the widest gap in the block, and abs are one
      of the three muscles this summer is actually for. It now rotates like any
