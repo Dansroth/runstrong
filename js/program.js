@@ -1139,7 +1139,7 @@ function hyperWeekInBlock(startISO, dateISO) { return (weeksSince(startISO, date
    no calendar to re-anchor against. */
 function rampAnchor(dateISO, rotStartISO) {
   if (rotStartISO && rotStartISO !== HYPER_START) return rotStartISO;
-  return dateISO >= SUMMER_START ? SUMMER_START : HYPER_START;
+  return HYPER_START;   // one continuous block since v68 — nothing to re-anchor against
 }
 
 /* Whole weeks elapsed between two ISO dates. Pure — both dates are inputs,
@@ -1403,15 +1403,13 @@ function buildRaceBlock() {
    dayFor(), adherence and streaks count them, and (later) days can be
    swapped between each other like any other day.
 
-   • Hypertrophy block, Mon 21 Sep → Sun 29 Nov (HYPER_WEEKS = 10): two
-     4-week mesocycles (3 loading weeks + 1 deload each), a ninth loading
-     week opening a third, and a transition
-     week that eases running back to three days before the summer block
-     starts on SUMMER_START. HYPER_WEEK is the weekly layout — 5 lifts
-     (four of 60 min Mon/Tue/Thu/Fri, one of 30 min on Sunday stacked with
-     that day's easy run), 2 easy runs, 1 mobility session carried on the
-     Wednesday run day, and Saturday off. Templates and the evidence for
-     the lifting itself live in the HYPERTROPHY PHASE section above.
+   • One continuous block, Mon 21 Sep 2026 → Sun 18 Apr 2027 (BLOCK_WEEKS
+     = 30), in four-week mesocycles of three loading weeks and a deload.
+     HYPER_WEEK is the weekly layout — 5 lifts (four of 60 min, one of
+     30 min on Saturday), 2 easy runs, 1 mobility session on the Wednesday
+     run day. Templates and the evidence live in the HYPERTROPHY PHASE
+     section above; the reasoning for a block this long is in the ONE
+     CONTINUOUS BLOCK header.
    ===================================================================== */
 /* The post-race recovery week (Mon 21 → Sun 27 Sep) was removed on the user's
    instruction the evening of the Geelong Half: they wanted the block to start
@@ -1421,13 +1419,11 @@ function buildRaceBlock() {
    went with it; `recoverySession` and inRecoveryWeek() stay, because the legacy
    free-form maintenance mode has its own recovery week and still uses both. */
 const HYPER_START = '2026-09-21';       // Monday of block week 1; also the accessory-rotation anchor
-const HYPER_WEEKS = 10;                 // 4 + 4 + 1 loading + transition, ending Sun 29 Nov
 /* Phase label per block week (1-based). phaseKeyFromLabel() maps these to
    PHASE_POLICY: loading weeks → 'hypertrophy', deloads → 'hyperDeload'.
-   Generalised for any HYPER_WEEKS: with ten weeks, 1-4 and 5-8 are the two
-   full mesocycles, 9 opens a third, and the last week is the transition. */
+   Kept as the shared labeller; blockPhaseLabel() is the same rule and the
+   one the calendar calls. */
 function hyperPhaseLabel(weekN) {
-  if (weekN === HYPER_WEEKS) return 'Transition — into the summer block';
   const block = Math.floor((weekN - 1) / HYPER_MESO_WEEKS) + 1;
   const inBlock = ((weekN - 1) % HYPER_MESO_WEEKS) + 1;
   return inBlock === HYPER_MESO_WEEKS ? `Hypertrophy — block ${block} deload` : `Hypertrophy — block ${block} · week ${inBlock}`;
@@ -1457,160 +1453,70 @@ const HYPER_WEEK = {
   5: { kind: 'lift', tpl: 'hypArms' },
   6: { kind: 'run', title: 'Easy Run', sub: '45–60 min conversational. The week has no rest day now — take this one off if the legs want it.' },
 };
-/* Transition week: three lifts, three runs, mobility kept — the running
-   build wants a body that has run three times a week before it asks for
-   a hard day. Base (week-1) volume, no ramp. */
-const TRANSITION_WEEK = {
-  0: { kind: 'lift', tpl: 'hypPush' },
-  1: { kind: 'run', title: 'Easy Run', sub: '40 min conversational' },
-  2: { kind: 'lift', tpl: 'hypLowerS' },
-  3: { kind: 'run', title: 'Easy Run + Mobility', sub: '40 min conversational · then the week\'s mobility session', mobility: true },
-  4: { kind: 'lift', tpl: 'hypPull' },
-  5: { kind: 'rest', title: 'Rest' },
-  6: { kind: 'run', title: 'Long Run', sub: '60 min easy — the first long-ish run since the race, no pace target' },
-};
-function buildOffseason() {
-  const weeks = [];
-  const mk = (monday, phase, layout) => ({
-    phase, monday,
-    days: Array.from({ length: 7 }, (_, i) => dayFromPlan(dadd(monday, i), layout[i] || { kind: 'rest', title: 'Rest' })),
-  });
-  for (let n = 1; n <= HYPER_WEEKS; n++) {
-    const monday = dadd(HYPER_START, (n - 1) * 7);
-    weeks.push(mk(monday, hyperPhaseLabel(n), n === HYPER_WEEKS ? TRANSITION_WEEK : HYPER_WEEK));
-  }
-  return weeks;
-}
-
 /* =====================================================================
-   SUMMER BLOCK — 12 weeks, hypertrophy-led, running owned by Runna
+   ONE CONTINUOUS BLOCK (v68)
    =====================================================================
-   This replaces the 12-week half-marathon build that used to occupy these
-   weeks (RUN_BUILD_PLAN / buildRunBuild, deleted 2026-09-20). The February
-   race became the Carman's Classic 10 km rather than the half, and there
-   is no race build for it: the gym stays the point through summer and the
-   running comes from the user's Runna plan.
+   The calendar used to be four things in a row: a nine-week hypertrophy
+   block, a twelve-week summer block where running took over and lifting
+   dropped to four days, a transition week to prepare for it, and an
+   eight-week post-race block. The user has decided not to switch to a
+   running programme, so all of that collapses into one block running the
+   same five-day split from 21 Sep 2026 to 18 Apr 2027 — thirty weeks.
 
-   Three runs a week that RunStrong does NOT prescribe. Runna owns the
-   sessions, so these days carry the distance band and nothing else — no
-   paces, no intervals, no long-run progression table:
-     Tue / Fri   one easy 5-10 km and one tempo 5-10 km, alternating week
-                 to week (SUMMER_TEMPO_TUE_FIRST flips which comes first)
-     Sun         long run, 10-16 km
+   What extending a block this long actually needs, and what it does not:
 
-   Lifting is four touches a week around them, per the user's answers on
-   2026-09-20: 60 min on Mon, Wed and Sat, plus a 30 min session stacked
-   onto Tuesday's run so that day still costs about an hour (day.run — the
-   lift is the part the app drives, the run is logged as usual). Thursday
-   is the rest day and carries the week's mobility. Saturday is
-   deliberately upper/arms-dominant so the Sunday long run starts on fresh
-   legs. Same-day lifting and running costs nothing here [H11].
+   • Mesocycle rhythm stays: three loading weeks then a deload, indefinitely.
+     [H10] found a mid-programme deload neither helped nor hurt growth over
+     nine weeks, so this is fatigue management rather than a growth tool, and
+     it is not claimed as one. Over thirty weeks it matters more than it did
+     over nine.
+   • Overload comes from LOAD, not from ratcheting volume. Weekly sets stay
+     in [H1]'s productive band and nextPrescription() raises weight against
+     logged RPE [H4]. Adding sets month after month would run past the point
+     where the dose-response flattens and only fatigue keeps climbing.
+   • Selection keeps rotating every mesocycle [H9]. With pools three to five
+     deep an exercise returns after twelve to twenty weeks, which over this
+     span is variation, not repetition.
+   • Rep ranges stay where they are. [H3] finds 6–20+ reps grow equally when
+     sets are taken near failure, so periodising them would be motion without
+     effect.
 
-   Monday is the one lower day, so it alternates quad-led and hinge-led to
-   keep both patterns alive. That is one lower session a week against [H2]'s
-   twice — a deliberate trade, taken because three Runna runs already load
-   the legs and because chest, biceps and core are the stated priority.
-
-   Deloads keep the block rhythm: every HYPER_MESO_WEEKS-th week halves
-   sets and holds load (PHASE_POLICY.hyperDeload). SUMMER_WEEKS is 12 = 3
-   mesocycles exactly, so race week IS the third deload — the lighter week
-   the race wanted anyway, with nothing heavy after the Wednesday.
+   The February 10 km stays on the calendar. It is a race being run, not
+   peaked for, so it gets one lighter week rather than a taper block — the
+   week it falls in swaps the heavy sessions for the short one and keeps the
+   legs fresh from the Wednesday.
    ===================================================================== */
-const SUMMER_START = '2026-11-30';      // Monday after the last hypertrophy week
-const SUMMER_WEEKS = 12;                // 30 Nov → race Sunday 2027-02-21
-const SUMMER_TEMPO_TUE_FIRST = false;   // wk 1 = easy Tue / tempo Fri, then alternating
-const SUMMER_RUN_EASY = '5–10 km easy — your Runna session, conversational';
-const SUMMER_RUN_TEMPO = '5–10 km tempo — your Runna session, run it as written';
-const SUMMER_RUN_LONG = '10–16 km long — your Runna session';
-/* Tuesday and Friday swap easy/tempo week to week. One constant, one place
-   to flip it if the Runna plan reads the other way round. */
-function summerTempoOnTue(weekN) {
-  return SUMMER_TEMPO_TUE_FIRST ? weekN % 2 === 1 : weekN % 2 === 0;
-}
-/* Monday is one blended lower session every week, not Lower A and Lower B in
-   alternation (v58). See the hypLowerS comment: alternating meant each lower
-   muscle got a real dose fortnightly, which is not what [H2] asks for. The
-   argument takes weekN so the signature survives if the block ever wants a
-   rotation again. */
-function summerLowerTpl(weekN) { return 'hypLowerS'; }
-function summerPhaseLabel(weekN) {
+const BLOCK_WEEKS = 30;                 // 21 Sep 2026 → Sun 18 Apr 2027
+function blockPhaseLabel(weekN) {
   const block = Math.floor((weekN - 1) / HYPER_MESO_WEEKS) + 1;
   const inBlock = ((weekN - 1) % HYPER_MESO_WEEKS) + 1;
-  if (weekN === SUMMER_WEEKS) return 'Race week — 10 km, and block 3 deload';
-  return inBlock === HYPER_MESO_WEEKS ? `Summer — block ${block} deload` : `Summer — block ${block} · week ${inBlock}`;
+  return inBlock === HYPER_MESO_WEEKS
+    ? `Hypertrophy — block ${block} deload`
+    : `Hypertrophy — block ${block} · week ${inBlock}`;
 }
-function summerWeekLayout(weekN) {
-  const tempoTue = summerTempoOnTue(weekN);
-  return {
-    0: { kind: 'lift', tpl: summerLowerTpl(weekN) },
-    1: { kind: 'lift', tpl: 'hypArms', run: true, runSub: tempoTue ? SUMMER_RUN_TEMPO : SUMMER_RUN_EASY },
-    2: { kind: 'lift', tpl: 'hypPush' },
-    3: { kind: 'mobility', title: 'Rest + Mobility', sub: 'The week\'s mobility session, then nothing else. This is the rest day.', mobility: true },
-    4: { kind: 'run', title: tempoTue ? 'Easy Run' : 'Tempo Run', sub: tempoTue ? SUMMER_RUN_EASY : SUMMER_RUN_TEMPO },
-    5: { kind: 'lift', tpl: 'hypPull' },
-    6: { kind: 'run', title: 'Long Run', sub: SUMMER_RUN_LONG },
-  };
-}
-/* Race week: the third deload with the race on the end of it. Nothing
-   heavy after Wednesday — the 10 km is a race being run, not peaked for,
-   so the week is lighter rather than a full taper. */
-function summerRaceWeekLayout(raceKey) {
+/* Race week: the two 60 min upper days stay because they do not touch the
+   legs, the leg day and the second upper day give way to the short session
+   and mobility, and nothing heavy lands after the Wednesday. */
+function raceWeekLayout(raceKey) {
   return {
     0: { kind: 'lift', tpl: 'hypPush' },
-    1: { kind: 'run', title: 'Easy Run', sub: SUMMER_RUN_EASY },
-    2: { kind: 'lift', tpl: 'hypArms', title: 'Arms & Core (short)', sub: 'Last lift of the week — nothing heavy from here.' },
+    1: { kind: 'run', title: 'Easy Run', sub: '30–40 min conversational' },
+    2: { kind: 'lift', tpl: 'hypArms', sub: 'Last lift of the week — nothing heavy from here.' },
     3: { kind: 'mobility', title: 'Mobility only', sub: 'Easy stretch and rollout. Legs stay fresh.', mobility: true },
     4: { kind: 'run', title: 'Easy Run', sub: '25–30 min easy + 4 × 20 s relaxed strides. Short on purpose.' },
     5: { kind: 'rest', title: 'Rest / shake-out', sub: 'Optional 15 min shake-out + 3 strides. Feet up.' },
     6: { kind: 'race', race: raceKey },
   };
 }
-/* =====================================================================
-   POST-RACE — the calendar does not stop at the race (v49)
-   =====================================================================
-   Before this, the plan ended on race day and Home offered "Program complete"
-   into the free-form maintenance mode with no calendar. That was right when
-   this was a race app. It is backwards now: the 10 km is incidental and the
-   hypertrophy block is the point, so the morning after the race the user was
-   pushed out of the very structure building the muscle.
-
-   Eight weeks — two mesocycles — on the five-day HYPER_WEEK layout, which is
-   the no-race shape: five lifts, two easy runs, mobility, Saturday off. No
-   recovery week: a 10 km off this much lifting is a Sunday out, not a race
-   that wrecks you, and week 1 of a mesocycle carries no ramp anyway.
-
-   The labels keep the "Hypertrophy —" prefix so phaseKeyFromLabel() maps them
-   without a new rule, and rampAnchor() already counts from SUMMER_START, which
-   the post-race Monday sits exactly twelve weeks after — so the block opens on
-   mesocycle week 1 on its own.
-   ===================================================================== */
-const POST_RACE_WEEKS = 8;
-function buildPostRace(raceISO) {
+function buildOffseason(raceISO, raceKey) {
   const weeks = [];
-  const start = dadd(raceISO, 1);   // race is a Sunday, so this is the Monday
-  for (let n = 1; n <= POST_RACE_WEEKS; n++) {
-    const monday = dadd(start, (n - 1) * 7);
-    const block = Math.floor((n - 1) / HYPER_MESO_WEEKS) + 1;
-    const inBlock = ((n - 1) % HYPER_MESO_WEEKS) + 1;
-    const phase = inBlock === HYPER_MESO_WEEKS
-      ? `Hypertrophy — post-race block ${block} deload`
-      : `Hypertrophy — post-race block ${block} · week ${inBlock}`;
+  for (let n = 1; n <= BLOCK_WEEKS; n++) {
+    const monday = dadd(HYPER_START, (n - 1) * 7);
+    const isRaceWeek = !!raceISO && raceISO >= monday && raceISO <= dadd(monday, 6);
+    const layout = isRaceWeek ? raceWeekLayout(raceKey) : HYPER_WEEK;
     weeks.push({
-      phase, monday,
-      days: Array.from({ length: 7 }, (_, i) => dayFromPlan(dadd(monday, i), HYPER_WEEK[i] || { kind: 'rest', title: 'Rest' })),
-    });
-  }
-  return weeks;
-}
-function buildSummer(raceISO, raceKey) {
-  const weeks = [];
-  const startMonday = dadd(raceISO, -(SUMMER_WEEKS * 7 - 1));
-  for (let w = 0; w < SUMMER_WEEKS; w++) {
-    const weekN = w + 1;
-    const monday = dadd(startMonday, w * 7);
-    const layout = weekN === SUMMER_WEEKS ? summerRaceWeekLayout(raceKey) : summerWeekLayout(weekN);
-    weeks.push({
-      phase: summerPhaseLabel(weekN), monday,
+      phase: isRaceWeek ? 'Race week — 10 km, and a lighter week' : blockPhaseLabel(n),
+      monday,
       days: Array.from({ length: 7 }, (_, i) => dayFromPlan(dadd(monday, i), layout[i] || { kind: 'rest', title: 'Rest' })),
     });
   }
@@ -1722,7 +1628,7 @@ function applyDayOverrides(weeks) {
 function buildProgram() {
   const feb = RACES.find(r => r.key === 'feb2027');
   const weeks = applyDayOverrides(
-    buildRaceBlock().concat(buildOffseason(), buildSummer(feb.date, feb.key), buildPostRace(feb.date))
+    buildRaceBlock().concat(buildOffseason(feb.date, feb.key))
   );
   weeks.forEach((w, i) => { w.num = i + 1; });
   return { startDate: PROGRAM_START, weeks };
@@ -2198,8 +2104,8 @@ function phaseKeyFromLabel(label) {
   /* The summer block is a hypertrophy block that happens to end on a race,
      so its weeks load and deload like any other block week. These sit above
      the /race week/ rule deliberately: summer race week IS the third
-     deload (SUMMER_WEEKS = 3 × HYPER_MESO_WEEKS), and treating it as a
-     taper-style 'raceweek' would cut load the deload already holds. */
+     race week is a lighter week by layout rather than by policy, so treating
+     it as a taper-style 'raceweek' would cut load twice. */
   if (/summer.*deload|block \d+ deload/.test(s)) return 'hyperDeload';
   if (/summer/.test(s)) return 'hypertrophy';
   if (/down week/.test(s)) return 'down';
@@ -2409,10 +2315,10 @@ if (typeof module !== 'undefined' && module.exports) {
     stretchRoutine, stretchDur, STRETCH_ESSENTIALS, TRAINED_SHARE,
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
-    HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
-    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, POST_RACE_WEEKS, buildPostRace, DAY_OVERRIDES,
+    HYPER_START, HYPER_WEEK, hyperPhaseLabel, mesoAnchor, rampAnchor, DAY_OVERRIDES,
+    BLOCK_WEEKS, blockPhaseLabel, raceWeekLayout,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
-    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, readinessMean, parseRunScreenshot, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, readinessMean, parseRunScreenshot,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

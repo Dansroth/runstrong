@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 30;
+const SCHEMA_VERSION = 31;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -279,6 +279,10 @@ const MIGRATIONS = {
     }
     s.schemaVersion = 30; return s;
   },
+  // 30 → 31: no switch to a running programme on 30 Nov. The summer block,
+  // its transition week and the post-race block collapse into one continuous
+  // thirty-week block on the same split. Calendar rebuilt.
+  30: (s) => { s.program = buildProgram(); s.schemaVersion = 31; return s; },
 };
 
 function migrate(s) {
@@ -332,7 +336,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v67';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v68';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1410,12 +1414,11 @@ window.openChecklist = function (key) {
    reachable as a fallback for anyone who wants no calendar at all. */
 function offerRecoveryMode() {
   const m = $('#modal');
-  const hyperEnd = dadd(SUMMER_START, -1);
+  const blockEnd = dadd(HYPER_START, BLOCK_WEEKS * 7 - 1);
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
-    <div class="wksum-li">• <b>Hypertrophy block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(hyperEnd))}, starting the morning after the race at your request. Five lifts (four of 60 min Mon/Tue/Thu/Fri, a 30 min arms-and-core session on Sunday with that day's run), two easy runs, one mobility session, Saturday off. Deload at the end of each 4-week block, then a transition week that brings running back to three days.</div>
-    <div class="wksum-li dim">No recovery week — you asked to start straight away. Week 1 is the lightest week of the block, and the readiness check will still pull a session back if the legs say so.</div>
-    <div class="wksum-li">• <b>Summer block</b> — from ${esc(fmtDate(SUMMER_START))}, twelve weeks to ${esc(finalRace().name)}. Lifting stays the point: three 60 min sessions plus a short one on your Tuesday run, with three Runna runs a week around them.</div>
+    <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Push, Pull, Lower, Upper, and a 30 min Arms & Core), two easy runs and a mobility session, in four-week mesocycles of three loading weeks and a deload.</div>
+    <div class="wksum-li dim">The February 10 km sits inside it as one lighter week rather than a running block.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
     <button class="linkbtn" onclick="closeModal()">Close</button></div>`;
@@ -3482,12 +3485,8 @@ const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory
    so from 30 Nov it would have shown "week 9 of 9" for the whole summer and
    counted adherence against five templates the user had stopped doing, with
    the sessions they were actually doing absent from the list. */
-function reportBlock(t) {
-  const raceDay = finalRace().date;
-  if (t > raceDay) return { since: dadd(raceDay, 1), weeks: POST_RACE_WEEKS, name: 'Post-race block' };
-  return t >= SUMMER_START
-    ? { since: SUMMER_START, weeks: SUMMER_WEEKS, name: 'Summer block' }
-    : { since: HYPER_START, weeks: HYPER_WEEKS, name: 'Hypertrophy block' };
+function reportBlock() {
+  return { since: HYPER_START, weeks: BLOCK_WEEKS, name: 'Hypertrophy block' };
 }
 window.showHyperRetro = function () {
   const t = today();
@@ -3558,12 +3557,9 @@ window.showHyperRetro = function () {
    paragraphs. Nothing here is new data — it is planWeeks() read at a
    different altitude. */
 function programmeBlocks() {
-  const raceDay = finalRace().date;
   return [
     { name: 'Geelong block', until: dadd(HYPER_START, -1), note: 'the six-week build that ended on race day' },
-    { name: 'Hypertrophy block', until: dadd(SUMMER_START, -1), note: '5 lifts · 2 easy runs · mobility · Saturday off' },
-    { name: 'Summer block', until: raceDay, note: '3 full lifts + a short one on Tuesday · 3 Runna runs' },
-    { name: 'Post-race block', until: '9999-12-31', note: 'back to the five-day week' },
+    { name: 'Hypertrophy block', until: '9999-12-31', note: 'Push · Pull · Lower · Upper · Arms + 2 easy runs' },
   ];
 }
 function dayMark(d) {
@@ -3760,7 +3756,7 @@ function vSettings() {
     ${ST.maintenance.active
       ? `<div class="dim small" style="margin-bottom:8px">Maintenance mode is on${ST.maintenance.startedOn ? ' (since ' + fmtDate(ST.maintenance.startedOn) + ')' : ''}: 3 flexible gym workouts a week, no calendar, no race clock.</div>
          <button class="btn big" onclick="if(confirm('Back to the calendar? Today\\'s plan takes over from the flexible workouts.')){ST.maintenance={active:false,startedOn:null,program:'balanced',mesoStart:null};save();render();}">Back to the calendar</button>`
-      : `<div class="dim small" style="margin-bottom:8px">The calendar runs the race block, the recovery week, the hypertrophy block (${fmtDate(HYPER_START)} → ${fmtDate(dadd(SUMMER_START, -1))}) and the summer block. Today: ${esc(phaseLabel(today()))}.</div>
+      : `<div class="dim small" style="margin-bottom:8px">The calendar runs the Geelong race block, then one continuous hypertrophy block (${fmtDate(HYPER_START)} → ${fmtDate(dadd(HYPER_START, BLOCK_WEEKS * 7 - 1))}). Today: ${esc(phaseLabel(today()))}.</div>
          <button class="btn big" onclick="if(confirm('Switch to maintenance mode? The calendar is replaced by 3 flexible workouts a week. You can switch back here any time.'))startMaintenance('balanced')">Switch to 3 flexible workouts (no calendar)</button>`}
     <div class="section-label">Backup</div>
     ${localStorage.getItem('runstrong.backup.v4') ? `<div class="dim small" style="margin-bottom:6px">A pre-Strava backup of your data was saved automatically (schema v4). <button class="mini" onclick="restoreV4Backup()">Restore it</button> <button class="mini" onclick="downloadV4Backup()">Download it</button></div>` : ''}
