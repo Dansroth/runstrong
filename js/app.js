@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 21;
+const SCHEMA_VERSION = 22;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -15,7 +15,7 @@ function defaultEquip() { const e = {}; for (const k of EQUIP_KEYS) e[k] = true;
 function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, disclaimerSeen: false, notifPrimed: false },
+    settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, disclaimerSeen: false, notifPrimed: false, reminder: { on: false, time: '17:30' } },
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
@@ -196,6 +196,13 @@ const MIGRATIONS = {
     }
     s.schemaVersion = 21; return s;
   },
+  // 21 → 22: the daily reminder setting. Additive and off by default — an app
+  // that switches its own notifications on is an app people mute.
+  21: (s) => {
+    s.settings = s.settings || {};
+    s.settings.reminder = s.settings.reminder || { on: false, time: '17:30' };
+    s.schemaVersion = 22; return s;
+  },
 };
 
 function migrate(s) {
@@ -249,7 +256,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v46';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v47';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -891,7 +898,8 @@ function vHome() {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
   const radar = deloadRadar();
-  const radarCard = radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '';
+  const radarCard = (() => { try { return reminderCard(); } catch (e) { return ''; } })()
+    + (radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '');
   // Runs older than yesterday used to be a queue of modal sheets on every launch.
   // They're a card you can ignore now — the data still matters (pace trend, deload
   // radar), but not enough to stand between you and today's workout.
@@ -2764,6 +2772,82 @@ function volumeByMuscleBody() {
     <div class="dim small" style="margin-top:8px">★ = what this block is for. Logged sets against what the plan asked for, so a set you skipped is not counted. A set credits every muscle its exercise is tagged with — a bench press counts for chest and shoulders both — which is why the pressing and pulling muscles read high. Only direct work is tagged, so presses and rows carry no arm tag and the arm numbers understate what your arms actually did.</div>
   </details>`;
 }
+/* ================= daily reminder (v47) =================
+   The app only works if it gets opened, and until now nothing ever asked it
+   to be: notifications existed solely for the rest timer.
+
+   Be straight about the limits. A PWA with no push server cannot reliably
+   wake itself at a chosen time — that needs a server pushing to the device,
+   which this app deliberately does not have (everything stays local). Two
+   mechanisms, best first, and the Settings copy says which one you are on:
+
+   1. Notification Triggers (TimestampTrigger): the service worker fires the
+      notification at the time even with the app shut. Chromium-only and not
+      guaranteed, hence the capability check rather than a claim.
+   2. An in-app nudge on Home: opened after the reminder time on a training
+      day with nothing logged, you get a card. Weaker — it cannot reach you
+      if you never open the app — but it never lies about what it is.
+
+   Never on a rest day, and never once the session is logged. A reminder that
+   fires on a day the plan gave you off is how people learn to ignore an app. */
+function reminderCanSchedule() {
+  return typeof window !== 'undefined' && 'Notification' in window
+    && 'showTrigger' in (window.Notification.prototype || {}) && 'TimestampTrigger' in window;
+}
+/* The next moment we would want to nudge: today's reminder time if it is
+   still ahead, otherwise tomorrow's. Pure given `now`. */
+function nextReminderAt(now, hhmm) {
+  const [h, m] = String(hhmm || '17:30').split(':').map(Number);
+  const at = new Date(now); at.setHours(h || 0, m || 0, 0, 0);
+  if (at <= now) at.setDate(at.getDate() + 1);
+  return at;
+}
+/* Is `date` a day the plan expects a session, still unlogged? */
+function reminderDue(date) {
+  const day = dayFor(date);
+  if (!day || day.kind !== 'lift' || day.optional) return false;
+  return !(ST.sessions[date] && ST.sessions[date].status === 'done');
+}
+window.toggleReminder = async function () {
+  const r = ST.settings.reminder;
+  if (r.on) { r.on = false; save(); render(); return; }
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { await Notification.requestPermission(); } catch (e) { /* denied is fine — the Home nudge still works */ }
+  }
+  r.on = true; save(); scheduleReminder(); render();
+};
+async function scheduleReminder() {
+  const r = ST.settings.reminder;
+  if (!r || !r.on || !reminderCanSchedule() || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    // clear any previously scheduled one so changing the time doesn't stack
+    for (const n of await reg.getNotifications({ includeTriggered: true, tag: 'rs-daily' })) n.close();
+    const at = nextReminderAt(new Date(), r.time);
+    const iso = dstr(at);
+    if (!reminderDue(iso)) return;            // tomorrow is a rest day — nothing to nudge about
+    const day = dayFor(iso);
+    await reg.showNotification('RunStrong', {
+      tag: 'rs-daily', body: `${day.title} today.`, icon: './icons/icon-192.png',
+      showTrigger: new TimestampTrigger(at.getTime()),
+    });
+  } catch (e) { /* unsupported or blocked — the Home nudge covers it */ }
+}
+/* The fallback: a card on Home when the app is opened past the reminder time
+   on a training day that hasn't been logged. */
+function reminderCard() {
+  const r = ST.settings.reminder;
+  if (!r || !r.on) return '';
+  const t = today();
+  if (!reminderDue(t)) return '';
+  const [h, m] = String(r.time || '17:30').split(':').map(Number);
+  const now = new Date();
+  if (now.getHours() * 60 + now.getMinutes() < (h || 0) * 60 + (m || 0)) return '';
+  const day = dayFor(t);
+  return `<div class="card"><div class="card-kicker">⏰ Reminder</div>
+    <div class="card-sub">${esc(day.title)} is still on today's plan. Twenty minutes counts — so does deciding not to.</div></div>`;
+}
+
 /* ---------- bodyweight (v43) ----------
    Deliberately plain. The chart leads with the trailing mean because one
    morning's number is mostly water and dinner, and there is no goal line, no
@@ -3555,6 +3639,10 @@ function vSettings() {
     <div class="dim small" style="margin-bottom:8px">Used by the plate calculator on barbell lifts — standard plates (25/20/15/10/5/2.5/1.25 kg) assumed per side.</div>
     <div class="set-row"><span>Rest chime</span>${toggleBtn(ST.settings.sound, "ST.settings.sound=!ST.settings.sound;save();render()")}</div>
     <div class="set-row"><span>Vibration</span>${toggleBtn(ST.settings.vibrate, "ST.settings.vibrate=!ST.settings.vibrate;save();render()")}</div>
+    <div class="set-row"><span>Daily reminder</span>${toggleBtn(ST.settings.reminder.on, "toggleReminder()")}</div>
+    ${ST.settings.reminder.on ? `<div class="set-row"><span>Remind me at</span>
+      <input type="time" value="${esc(ST.settings.reminder.time)}" onchange="ST.settings.reminder.time=this.value;save();scheduleReminder();render()"></div>` : ''}
+    <div class="dim small" style="margin-bottom:8px">A nudge on training days only — never on a rest day, and never once the session is logged.${ST.settings.reminder.on && !reminderCanSchedule() ? ' <b>Your browser can\'t schedule notifications in the background</b>, so this shows as a prompt on the Home tab when you next open the app instead. Adding RunStrong to your home screen makes that more reliable.' : ''}</div>
     <div class="section-label">Equipment on hand</div>
     <div class="dim small" style="margin-bottom:8px">Turn off anything you don't have — the ⇄ swap-exercise list in a workout ranks compatible variants first.</div>
     ${EQUIP_KEYS.map(k => `<div class="set-row"><span>${esc(EQUIP_LABEL[k])}</span>${toggleBtn(ST.settings.equip[k], `ST.settings.equip['${k}']=!ST.settings.equip['${k}'];save();render()`)}</div>`).join('')}
@@ -3712,7 +3800,7 @@ document.addEventListener('click', ensureAudio, { once: true });
 let swReg = null;
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('sw.js').then(r => { swReg = r; r.update().catch(() => {}); }).catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(r => { swReg = r; r.update().catch(() => {}); scheduleReminder(); }).catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) return; // first install, not an update
     if (document.getElementById('updatebar')) return;
