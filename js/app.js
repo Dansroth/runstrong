@@ -259,7 +259,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v54';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v55';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -670,7 +670,7 @@ let elapsedInterval = null;
 function render() {
   // 'history' and 'trends' stay mapped as aliases of the merged Progress tab so any
   // older deep link (or a stale service-worker page) still lands somewhere sensible.
-  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, daypreview: vDayPreview, settings: vSettings, stretch: vStretch, catalogue: vCatalogue, progress: vProgress, history: vProgress, trends: vProgress };
+  const views = { home: vHome, schedule: vSchedule, session: vSession, summary: vSummary, exdetail: vExDetail, daypreview: vDayPreview, settings: vSettings, stretch: vStretch, catalogue: vCatalogue, programme: vProgramme, progress: vProgress, history: vProgress, trends: vProgress };
   invalidateMergedRuns(); invalidateExHistory(); invalidatePlan();   // one build per render, never a stale one
   const keepScroll = view.name === 'session' ? window.scrollY : null;   // logging a set must not move the page
   // a crashing view must never leave the app silently frozen — show what broke instead
@@ -2589,6 +2589,7 @@ function vSchedule() {
   const w = weekFor(t);
   const ad = adherence();
   return `<header class="top"><h1 class="phase">${esc(phaseLabel(t))}</h1>${raceCountdowns()}
+    <button class="mini" style="margin-top:6px" onclick="go('programme')">📋 Whole programme ›</button>
     <div class="dim small" style="margin-top:6px">💪 ${ad.done} of ${ad.planned} workouts${ad.streak != null && ad.streak >= 2 ? ` · 🔥 ${ad.streak}-workout streak` : ''}</div></header>
   <main>
   ${planWeeks().map(wk => `
@@ -3693,6 +3694,77 @@ window.showHyperRetro = function () {
     <button class="btn primary big" onclick="closeModal()">Close</button></div>`;
   m.classList.add('open');
 };
+
+/* ================= whole programme (v55) =================
+   The Plan tab is a scroll of 36 weeks, one day per row, which answers "what
+   is Thursday" and never answers "what am I actually doing between now and
+   April". This is the second question: every week on one screen, grouped by
+   block, with the shape of the week visible as seven marks rather than seven
+   paragraphs. Nothing here is new data — it is planWeeks() read at a
+   different altitude. */
+function programmeBlocks() {
+  const raceDay = finalRace().date;
+  return [
+    { name: 'Geelong block', until: dadd(HYPER_START, -1), note: 'the six-week build that ended on race day' },
+    { name: 'Hypertrophy block', until: dadd(SUMMER_START, -1), note: '5 lifts · 2 easy runs · mobility · Saturday off' },
+    { name: 'Summer block', until: raceDay, note: '3 full lifts + a short one on Tuesday · 3 Runna runs' },
+    { name: 'Post-race block', until: '9999-12-31', note: 'back to the five-day week' },
+  ];
+}
+function dayMark(d) {
+  if (d.kind === 'race') return { c: 'race', t: '🏁' };
+  if (d.kind === 'lift') return { c: d.run ? 'lift run' : 'lift', t: d.run ? '🏋️🏃' : '🏋️' };
+  if (d.kind === 'run') return { c: d.mobility ? 'run mob' : 'run', t: d.mobility ? '🏃🧘' : '🏃' };
+  if (d.kind === 'mobility') return { c: 'mob', t: '🧘' };
+  return { c: 'rest', t: '·' };
+}
+function vProgramme() {
+  const t = today();
+  const weeks = planWeeks();
+  const cur = weekFor(t);
+  const blocks = programmeBlocks();
+  let bi = 0, out = '';
+  for (const wk of weeks) {
+    while (bi < blocks.length - 1 && wk.monday > blocks[bi].until) bi++;
+    const b = blocks[bi];
+    if (!b.open) {
+      if (bi > 0) out += '</div>';
+      const inBlock = weeks.filter(w => w.monday <= b.until && (bi === 0 || w.monday > blocks[bi - 1].until));
+      const last = inBlock[inBlock.length - 1];
+      out += `<div class="section-label">${esc(b.name)}</div>
+        <div class="dim small" style="margin-bottom:6px">${fmtDate(inBlock[0].monday)} → ${fmtDate(last.days[6].date)} · ${inBlock.length} week${inBlock.length === 1 ? '' : 's'} · ${esc(b.note)}</div><div class="pgm">`;
+      b.open = true;
+    }
+    const isCur = cur && wk.num === cur.num;
+    const deload = phaseKeyFromLabel(wk.phase) === 'hyperDeload' || /deload|down week/i.test(wk.phase);
+    // the block name is already the section heading — don't repeat it per row
+    const short = wk.phase.replace(/^(Hypertrophy|Summer)\s*—\s*/i, '').replace(/^post-race\s*/i, '');
+    out += `<div class="pgm-wk${isCur ? ' cur' : ''}${deload ? ' deload' : ''}">
+      <span class="pgm-n">${wk.num}</span>
+      <span class="pgm-days">${(() => {
+        /* Place each day in its real weekday column rather than in sequence.
+           Week 1 of the programme is a partial Thu-Sun intro, and laid out in
+           sequence it would put a Thursday under every other week's Monday —
+           which breaks the one thing a grid like this is for. */
+        const slots = Array(7).fill(null);
+        for (const d of wk.days) slots[(new Date(d.date + 'T00:00:00').getDay() + 6) % 7] = d;
+        return slots.map(d => {
+          if (!d) return '<i class="pgm-d empty"></i>';
+          const m = dayMark(d);
+          const done = ST.sessions[d.date] && ST.sessions[d.date].status === 'done';
+          return `<i class="pgm-d ${m.c}${done ? ' done' : ''}${d.date === t ? ' today' : ''}" title="${esc(fmtDate(d.date))} — ${esc(d.title || 'Rest')}">${m.t}</i>`;
+        }).join('');
+      })()}</span>
+      <span class="pgm-ph">${esc(short)}</span>
+    </div>`;
+  }
+  out += '</div>';
+  return `<header class="top"><h1 class="phase">Whole programme</h1>
+    <div class="dim small">${weeks.length} weeks · ${fmtDate(weeks[0].monday)} → ${fmtDate(weeks[weeks.length - 1].days[6].date)}. Mon→Sun left to right; a filled mark is a session you logged.</div></header>
+  <main>${out}
+    <div class="dim small" style="margin-top:14px">🏋️ lift · 🏋️🏃 lift + run · 🏃 run · 🏃🧘 run + mobility · 🧘 mobility · 🏁 race · · rest. Shaded rows are deload weeks.</div>
+  </main>${navBar()}`;
+}
 
 /* ================= exercise catalogue (v53) =================
    753 strength/plyo/olympic entries from free-exercise-db (Unlicense, public

@@ -414,3 +414,24 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 /* v51: div-based tap targets are keyboard-reachable now (role=button +
    tabindex), so they need the focus ring a real button gets for free. */
 [role="button"]:focus-visible { outline: 2px solid var(--acc, #b5d94c); outline-offset: 2px; }
+
+/* v55: whole-programme overview — one row per week, seven marks per row.
+   Fixed-width day cells so the weeks line up into columns you can read
+   down: Mondays under Mondays. */
+.pgm { margin-bottom: 14px; }
+.pgm-wk { display: grid; grid-template-columns: 26px auto 1fr; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; }
+.pgm-wk.cur { background: rgba(181, 217, 76, .14); }
+.pgm-wk.deload { opacity: .62; }
+.pgm-n { font-size: .7rem; text-align: right; opacity: .55; }
+.pgm-days { display: grid; grid-template-columns: repeat(7, 22px); gap: 2px; }
+.pgm-d { display: block; font-size: .72rem; line-height: 20px; height: 20px; text-align: center; border-radius: 4px; font-style: normal;
+         background: rgba(127, 127, 127, .12); overflow: hidden; }
+.pgm-d.rest { opacity: .35; }
+.pgm-d.empty { background: none; }
+/* A day carrying two activities (lift + run, run + mobility) only has room for
+   the first emoji, so the second is marked with an underline rather than lost. */
+.pgm-d.lift.run, .pgm-d.run.mob { box-shadow: inset 0 -2.5px 0 var(--acc, #b5d94c); }
+.pgm-d.done { background: rgba(181, 217, 76, .3); }
+.pgm-d.today { outline: 1.5px solid var(--acc, #b5d94c); }
+.pgm-ph { font-size: .72rem; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 380px) { .pgm-days { grid-template-columns: repeat(7, 18px); } .pgm-d { font-size: .62rem; } }
