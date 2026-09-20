@@ -399,7 +399,12 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
   ok('calves: ≥8 sets a week', (w1.sets.calves || 0) >= 8, `${w1.sets.calves}`);
   ok('nothing runs away: no muscle over 24 sets even in week 3 (junk-volume guard)', Object.values(w3.sets).every(n => n <= 24), JSON.stringify(w3.sets));
   // rest: compounds 120-150 s, isolation 45-90 s [H5]
-  const COMPOUND = new Set(['squat', 'legpress', 'hacksquat', 'frontsquat', 'bench', 'incline', 'dbbench', 'ohp', 'dbshoulder', 'landmine', 'pullup', 'latpull', 'rdl', 'trapbar', 'hipthrust', 'dip']);
+  /* Multi-joint lifts, which [H5] gives the longer rest. Extended in v54 when
+     the pools widened: these are classified by what the movement is, not
+     trimmed to fit the accessory rest band — a close-grip bench is a press
+     and gets a press's recovery. */
+  const COMPOUND = new Set(['squat', 'legpress', 'hacksquat', 'frontsquat', 'bench', 'incline', 'dbbench', 'ohp', 'dbshoulder', 'landmine', 'pullup', 'latpull', 'rdl', 'trapbar', 'hipthrust', 'dip',
+    'machpress', 'sealrow', 'closegrip', 'diamondpu', 'gobletsquat', 'walkinglunge', 'slpress']);
   // exercise selection changes every block [H9]: every session has a rotating
   // slot, and every pool resolves differently in block 2 than in block 1
   for (const tp of HYPER_ORDER) ok(`${tp} has at least one rotating slot`, TEMPLATES[tp].items.some(([id]) => String(id).startsWith('ROTATE:')));
