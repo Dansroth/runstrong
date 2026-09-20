@@ -197,8 +197,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .ex-nav .btn { margin-top: 14px; }
 
 /* strava */
-.svbadge { display: inline-block; font-size: .7rem; font-weight: 800; letter-spacing: .04em; background: #fc4c02; color: #fff; border-radius: 8px; padding: 2px 7px; vertical-align: middle; text-transform: uppercase; }
-.svbadge.garmin { background: #007cc3; }
+/* .svbadge (Strava orange / Garmin blue source tags) removed with the run sync in v63 — nothing renders a source badge now that every run is manually logged. */
 
 /* hold timer + next-exercise hand-off */
 .holdbtn { margin: 4px 0 10px; border-color: var(--acc); }

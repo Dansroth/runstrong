@@ -1,5 +1,5 @@
 /* RunStrong service worker — cache-first, fully offline after first load */
-const CACHE = 'runstrong-v62';
+const CACHE = 'runstrong-v63';
 const ASSETS = [
   './',
   './index.html',
@@ -62,7 +62,7 @@ self.addEventListener('fetch', e => {
     )));
     return;
   }
-  if (u.origin !== location.origin) return; // Strava API calls bypass the cache entirely
+  if (u.origin !== location.origin) return; // anything else cross-origin is left alone
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(hit =>
       hit ||
