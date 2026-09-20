@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -181,6 +181,21 @@ const MIGRATIONS = {
   // one number per entry, weekly. Nothing else is stored and nothing is
   // derived from it; see the BODYWEIGHT header in program.js for why.
   19: (s) => { s.weights = s.weights || {}; s.schemaVersion = 20; return s; },
+  // 20 → 21: the block starts Mon 2026-09-21 instead of 09-28 — the user asked
+  // to begin the morning after Geelong, so the post-race recovery week is gone
+  // and the block is ten weeks rather than nine (it still ends 29 Nov, so the
+  // summer block is untouched). Calendar change, so the stored program is
+  // rebuilt; a swap pointing at a day that no longer exists is dropped.
+  20: (s) => {
+    s.program = buildProgram();
+    if (s.planOverrides) {
+      for (const d of Object.keys(s.planOverrides)) {
+        const o = s.planOverrides[d];
+        if (o && o.kind === 'lift' && !TEMPLATES[o.tpl]) delete s.planOverrides[d];
+      }
+    }
+    s.schemaVersion = 21; return s;
+  },
 };
 
 function migrate(s) {
@@ -234,7 +249,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v43';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v44';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1533,8 +1548,8 @@ function offerRecoveryMode() {
   const hyperEnd = dadd(SUMMER_START, -1);
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
-    <div class="wksum-li">• <b>Recovery week</b> — ${esc(fmtDate(RECOVERY_MONDAY))} to ${esc(fmtDate(dadd(RECOVERY_MONDAY, 6)))}. Walk, eat, sleep; an optional light session Thursday; an easy jog Sunday if the legs say yes.</div>
-    <div class="wksum-li">• <b>Hypertrophy block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(hyperEnd))}. Five lifts, two easy runs and one mobility session a week, in two 4-week blocks with a deload at the end of each, then a transition week that brings running back to three days.</div>
+    <div class="wksum-li">• <b>Hypertrophy block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(hyperEnd))}, starting the morning after the race at your request. Five lifts (four of 60 min Mon/Tue/Thu/Fri, a 30 min arms-and-core session on Sunday with that day's run), two easy runs, one mobility session, Saturday off. Deload at the end of each 4-week block, then a transition week that brings running back to three days.</div>
+    <div class="wksum-li dim">No recovery week — you asked to start straight away. Week 1 is the lightest week of the block, and the readiness check will still pull a session back if the legs say so.</div>
     <div class="wksum-li">• <b>Summer block</b> — from ${esc(fmtDate(SUMMER_START))}, twelve weeks to ${esc(finalRace().name)}. Lifting stays the point: three 60 min sessions plus a short one on your Tuesday run, with three Runna runs a week around them.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>

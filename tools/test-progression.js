@@ -291,13 +291,13 @@ group('race block ends on Geelong with an 8-day taper (GEELONG TAPER header)');
 /* ===================================================================
    6c. the off-season is a dated calendar (OFF-SEASON header in program.js)
    =================================================================== */
-group('off-season calendar: recovery week + 9-week hypertrophy block, no gaps');
+group('off-season calendar: the hypertrophy block starts the day after the race, no gaps');
 {
-  const { RACES, RECOVERY_MONDAY, HYPER_START, HYPER_WEEKS, SUMMER_START, hyperPhaseLabel, buildOffseason, buildRaceBlock, mesoAnchor } = P;
+  const { RACES, HYPER_START, HYPER_WEEKS, SUMMER_START, hyperPhaseLabel, buildOffseason, buildRaceBlock, mesoAnchor } = P;
   const prog = buildProgram();
   const race = buildRaceBlock();
   eq('the race block is unchanged by the off-season (6 weeks)', race.length, 6);
-  eq('the whole calendar is race block + recovery + hypertrophy + summer', prog.weeks.length, 6 + 1 + HYPER_WEEKS + P.SUMMER_WEEKS);
+  eq('the whole calendar is race block + hypertrophy + summer', prog.weeks.length, 6 + HYPER_WEEKS + P.SUMMER_WEEKS);
   // continuity
   for (let i = 1; i < prog.weeks.length; i++) {
     const prev = prog.weeks[i - 1], cur = prog.weeks[i];
@@ -305,24 +305,22 @@ group('off-season calendar: recovery week + 9-week hypertrophy block, no gaps');
     eq(`week ${cur.num} is numbered continuously`, cur.num, prev.num + 1);
     eq(`week ${cur.num} has 7 days`, cur.days.length, 7);
   }
-  eq('recovery week starts the day after the race', RECOVERY_MONDAY, dadd(RACES[0].date, 1));
-  eq('the hypertrophy block starts the Monday after recovery week', HYPER_START, dadd(RECOVERY_MONDAY, 7));
+  eq('the block starts the day after the race — no recovery week', HYPER_START, dadd(RACES[0].date, 1));
+  ok('…and nothing on the calendar is still labelled a recovery week', !prog.weeks.some(w => /recovery week/i.test(w.phase)));
   eq('the summer block starts the Monday after the last hypertrophy week', SUMMER_START, dadd(HYPER_START, HYPER_WEEKS * 7));
   eq('…which is 12 weeks before the February 10 km (2027-02-21)', dadd(SUMMER_START, 12 * 7 - 1), '2027-02-21');
-  // recovery week
-  const rec = prog.weeks.find(w => w.phase === 'Recovery week');
-  ok('recovery week exists', !!rec);
-  eq('recovery week resolves to the deload policy', phaseKeyFromLabel(rec.phase), 'deload');
-  const recLifts = rec.days.filter(d => d.kind === 'lift');
-  eq('recovery week has one lift…', recLifts.length, 1);
-  ok('…and it is optional (does not count against adherence)', recLifts[0].optional === true);
-  eq('…and very light (the recovery session)', recLifts[0].tpl, 'recoverySession');
-  ok('recovery week ends with an easy run at most', rec.days[6].kind === 'run' && /Easy/.test(rec.days[6].title));
+  /* Week 1 is the lightest week of a mesocycle — the only protection left
+     once the recovery week went, so it is worth an assertion. */
+  const wk1 = prog.weeks.find(w => w.monday === HYPER_START);
+  const wk2 = prog.weeks.find(w => w.monday === dadd(HYPER_START, 7));
+  const sets = w => w.days.filter(d => d.kind === 'lift')
+    .reduce((a, d) => a + P.materializeTemplate(d.tpl, d.date, HYPER_START).items.reduce((x, i) => x + i[1], 0), 0);
+  ok('block week 1 carries no ramp — it is the lightest loading week', sets(wk1) < sets(wk2), `${sets(wk1)} vs ${sets(wk2)}`);
   // hypertrophy weeks
   const hyper = prog.weeks.filter(w => /hypertrophy|transition/i.test(w.phase));
   eq(`there are ${HYPER_WEEKS} hypertrophy weeks`, hyper.length, HYPER_WEEKS);
   const off = buildOffseason();
-  eq('buildOffseason returns recovery + hypertrophy weeks', off.length, 1 + HYPER_WEEKS);
+  eq('buildOffseason returns the hypertrophy weeks and nothing else', off.length, HYPER_WEEKS);
   for (const w of hyper.slice(0, HYPER_WEEKS - 1)) {
     const lifts = w.days.filter(d => d.kind === 'lift').length;
     /* Since v39 the Sunday lift carries the day's easy run (day.run), so a
@@ -633,19 +631,23 @@ group('sets and tonnage per muscle: logged only, every mapped muscle credited');
   ok('…but carries no tonnage', !(tonnageByMuscle(bw, '2026-10-05', '2026-10-11').core));
   // planned side: materialised, so the ramp and the deload are in the numbers
   const weeks = P.buildProgram().weeks;
-  const plannedWk1 = plannedSetsByMuscle(weeks, '2026-09-28', '2026-10-04', HYPER_START);
-  const plannedWk3 = plannedSetsByMuscle(weeks, '2026-10-12', '2026-10-18', HYPER_START);
-  const plannedDl = plannedSetsByMuscle(weeks, '2026-10-19', '2026-10-25', HYPER_START);
+  /* Derived from HYPER_START, not hardcoded: the block start moved once
+     already (the recovery week was dropped) and these silently followed. */
+  const blockWeek = n => [dadd(HYPER_START, (n - 1) * 7), dadd(HYPER_START, (n - 1) * 7 + 6)];
+  const plannedWk1 = plannedSetsByMuscle(weeks, ...blockWeek(1), HYPER_START);
+  const plannedWk3 = plannedSetsByMuscle(weeks, ...blockWeek(3), HYPER_START);
+  const plannedDl = plannedSetsByMuscle(weeks, ...blockWeek(P.HYPER_MESO_WEEKS), HYPER_START);
   ok('week 3 asks for more than week 1 (the ramp is in there)', plannedWk3.chest > plannedWk1.chest, `${plannedWk1.chest} → ${plannedWk3.chest}`);
   ok('the deload asks for less than week 1', plannedDl.chest < plannedWk1.chest, `${plannedDl.chest} vs ${plannedWk1.chest}`);
-  ok('a week with no lift days plans nothing', !Object.keys(plannedSetsByMuscle(weeks, '2026-09-21', '2026-09-22', HYPER_START)).length);
+  const sat = dadd(HYPER_START, 5);   // the block's rest day
+  ok('a day with no lift plans nothing', !Object.keys(plannedSetsByMuscle(weeks, sat, sat, HYPER_START)).length);
   // the priority muscles this block is for actually clear [H1]'s threshold
   for (const m of PRIORITY_MUSCLES) {
     ok(`${m} is a real muscle tag`, Object.values(MUSCLE_MAP).some(list => list.includes(m)));
     ok(`${m}: the plan asks for ≥10 sets in block week 1 [H1]`, (plannedWk1[m] || 0) >= 10, `${plannedWk1[m]}`);
   }
   // …and hold up in the summer block, where the session count drops to four
-  const summerWk1 = plannedSetsByMuscle(weeks, '2026-11-30', '2026-12-06', HYPER_START);
+  const summerWk1 = plannedSetsByMuscle(weeks, P.SUMMER_START, dadd(P.SUMMER_START, 6), HYPER_START);
   for (const m of PRIORITY_MUSCLES) {
     ok(`${m}: still ≥9 sets a week on four sessions`, (summerWk1[m] || 0) >= 9, `${summerWk1[m]}`);
   }
