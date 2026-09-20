@@ -1,5 +1,5 @@
 /* RunStrong service worker — cache-first, fully offline after first load */
-const CACHE = 'runstrong-v61';
+const CACHE = 'runstrong-v62';
 const ASSETS = [
   './',
   './index.html',
@@ -25,9 +25,20 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
+/* The OCR engine (tesseract.js: wrapper, wasm core, English model) is ~15 MB
+   and comes from a CDN, so it is deliberately NOT in ASSETS — it would treble
+   a first install for a feature most launches never touch. It is cached at
+   runtime on first use instead, into its own bucket that survives version
+   bumps: the engine does not change when the app does, and re-downloading
+   15 MB on every deploy would be indefensible. */
+const VENDOR = 'runstrong-vendor-v1';
+const VENDOR_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com'];
+
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE && k !== VENDOR).map(k => caches.delete(k))
+    )).then(() => self.clients.claim())
   );
 });
 
@@ -41,7 +52,17 @@ self.addEventListener('notificationclick', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  if (new URL(e.request.url).origin !== location.origin) return; // Strava API calls bypass the cache entirely
+  const u = new URL(e.request.url);
+  /* Vendor assets: cache-first into the bucket that outlives version bumps, so
+     the OCR engine is downloaded once and then works offline like the rest of
+     the app. Everything else cross-origin (the Strava API) still bypasses. */
+  if (VENDOR_HOSTS.includes(u.host)) {
+    e.respondWith(caches.open(VENDOR).then(c => c.match(e.request).then(hit =>
+      hit || fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; })
+    )));
+    return;
+  }
+  if (u.origin !== location.origin) return; // Strava API calls bypass the cache entirely
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(hit =>
       hit ||

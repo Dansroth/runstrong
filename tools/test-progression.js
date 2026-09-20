@@ -971,6 +971,65 @@ group('readiness: the pre-session score, averaged over a window');
     readinessMean([s('2026-09-21', 5, 5)], '2026-09-21', '2026-09-27') > readinessMean([s('2026-09-21', 1, 1)], '2026-09-21', '2026-09-27'));
 }
 
+/* ===================================================================
+   6k. run-screenshot parsing (RUN SCREENSHOT PARSING header)
+   =================================================================== */
+group('parsing a Runna run screen: shape-matched, never positional');
+{
+  const { parseRunScreenshot } = P;
+  /* The real screenshot, flattened the way OCR delivers it: the three stat
+     tiles become a row of labels followed by a row of values. */
+  const real = [
+    '6:46', 'Geelong Running', 'Long Run  · 22.11km', '20 Sep 2026 at 07:01',
+    'Geelong, VIC, Australia', 'View on Strava',
+    'DISTANCE TIME AVG PACE', '22.11 km 2:01:50 5:30 /km',
+    'ELEVATION GAIN AVG HR CADENCE', '▲ 219 m 166 164',
+    'CALORIES', '1,719', 'Share', 'Private notes', 'Sources',
+  ].join('\n');
+  const r = parseRunScreenshot(real);
+  eq('distance', r.km, 22.11);
+  eq('duration in minutes, to the second', r.min, 121.83);
+  eq('average heart rate', r.hr, 166);
+  eq('cadence', r.cadence, 164);
+  eq('elevation', r.elevM, 219);
+  eq('date', r.date, '2026-09-20');
+  eq('pace in seconds per km', r.paceSec, 330);
+
+  /* The three failures this parser was written around. */
+  eq('the status-bar clock is not mistaken for a duration',
+    parseRunScreenshot('6:46 ▲ 5 km 28:30 5:42 /km').min, 28.5);
+  ok('a decimal distance is not read as a pace — "22.11 km" is not 22:11/km',
+    parseRunScreenshot('22.11 km').paceSec === null, String(parseRunScreenshot('22.11 km').paceSec));
+  const zip = parseRunScreenshot('ELEVATION GAIN AVG HR CADENCE 219 166 164');
+  eq('stat tiles zip by position, not by proximity', [zip.elevM, zip.hr, zip.cadence].join(','), '219,166,164');
+
+  // distance and pace both present, neither contaminating the other
+  const d = parseRunScreenshot('DISTANCE 10.5 km AVG PACE 4:45 /km');
+  eq('distance beside a pace', d.km, 10.5);
+  eq('…and the pace itself', d.paceSec, 285);
+
+  // the cross-check: a misread that makes the three quantities disagree
+  const bad = parseRunScreenshot('10 km 50:00 9:99 /km');
+  eq('distance and duration survive…', `${bad.km}/${bad.min}`, '10/50');
+  eq('…and an impossible pace is dropped rather than trusted', bad.paceSec, null);
+  const good = parseRunScreenshot('10 km 50:00 5:00 /km');
+  eq('a consistent pace is kept', good.paceSec, 300);
+
+  // formatting variation
+  eq('comma decimal', parseRunScreenshot('12,50 km').km, 12.5);
+  eq('no space before the unit', parseRunScreenshot('8.2km').km, 8.2);
+  eq('date without the trailing time', parseRunScreenshot('3 March 2027').date, '2027-03-03');
+  eq('abbreviated month with a full stop', parseRunScreenshot('9 Feb. 2027').date, '2027-02-09');
+
+  // nothing found is null, never a guess
+  const empty = parseRunScreenshot('Share  Private notes  Sources');
+  eq('a screenshot with no numbers yields nothing', Object.values(empty).filter(v => v !== null).length, 0);
+  eq('empty input is handled', Object.values(parseRunScreenshot('')).filter(v => v !== null).length, 0);
+  eq('undefined input is handled', Object.values(parseRunScreenshot(undefined)).filter(v => v !== null).length, 0);
+  ok('an implausible heart rate is rejected rather than stored', parseRunScreenshot('AVG HR 999').hr === null);
+  ok('an implausible cadence is rejected', parseRunScreenshot('CADENCE 12').cadence === null);
+}
+
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));
 if (fail) {

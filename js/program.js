@@ -1866,6 +1866,121 @@ function readinessMean(sessions, fromISO, toISO) {
   return n ? sum / n : null;
 }
 
+/* =====================================================================
+   RUN SCREENSHOT PARSING (v62)
+   =====================================================================
+   Turns the text an OCR pass pulls off a Runna run screen into a run record.
+   Pure and heavily tested, because OCR output is the messiest input this app
+   takes: line order is not guaranteed, labels and their values often land on
+   separate lines (they are columns on screen), digits get mangled, and a
+   wrong number saved silently is worse than no number at all.
+
+   So: everything is matched on shape rather than position, every field is
+   independent, and anything not confidently found comes back null for the
+   form to leave at its default. Nothing here decides to save — it fills a
+   sheet the user confirms.
+
+   The ambiguity that matters is m:ss. "2:01:50" is a duration and "5:30 /km"
+   is a pace, and both are colon-separated digits. Duration is taken from the
+   h:mm:ss form first; a bare m:ss only counts as duration when it is not
+   followed by a /km marker.
+   ===================================================================== */
+function parseRunScreenshot(text) {
+  const t = String(text || '').replace(/[–—]/g, '-').replace(/\s+/g, ' ');
+  const out = { km: null, min: null, hr: null, cadence: null, elevM: null, date: null, paceSec: null };
+  if (!t) return out;
+
+  /* Pace first, so its digits can be excluded from the duration hunt. */
+  /* The slash is required. Without it "22.11 km" reads as a pace of 22:11,
+     because a tolerant separator that accepts "." for a misread ":" cannot
+     tell a decimal distance from a colon. Every app that shows a pace shows
+     the per-unit slash with it, so requiring it costs nothing. */
+  const pace = t.match(/(\d{1,2})\s*[:.]\s*(\d{2})\s*\/\s*(?:km|k m)\b/i);
+  if (pace && +pace[2] < 60) out.paceSec = (+pace[1]) * 60 + (+pace[2]);
+
+  /* Duration: h:mm:ss anywhere, else a m:ss that is not a pace. */
+  const hms = t.match(/\b(\d{1,2})\s*:\s*(\d{2})\s*:\s*(\d{2})\b/);
+  if (hms) {
+    out.min = (+hms[1]) * 60 + (+hms[2]) + (+hms[3]) / 60;
+  } else {
+    /* A bare m:ss. Two things to dodge: the pace (the lookahead) and the
+       phone's status-bar clock, which OCR reads first and which looks exactly
+       like a 6-to-23-minute run. The clock is only discarded when there is
+       another candidate to prefer — a genuinely short run whose screenshot
+       got cropped to just the duration should still parse. */
+    const re = /\b(\d{1,3})\s*:\s*(\d{2})\b(?!\s*\/?\s*km)/gi;
+    const cands = [];
+    let m;
+    while ((m = re.exec(t))) {
+      const secs = +m[2];
+      if (secs > 59) continue;
+      const mins = (+m[1]) + secs / 60;
+      if (mins >= 3 && mins <= 600) cands.push({ mins, i: m.index });
+    }
+    const later = cands.filter(c => c.i >= 8);
+    const pick = (later.length ? later : cands)[0];
+    if (pick) out.min = pick.mins;
+  }
+  if (out.min != null) out.min = Math.round(out.min * 100) / 100;
+
+  /* Distance: a number followed by km, but not the "30" in "5:30 /km". */
+  const dist = t.match(/(?<![:.\d])(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:km|k m)\b/i);
+  if (dist) {
+    const v = parseFloat(dist[1].replace(',', '.'));
+    if (v > 0 && v < 500) out.km = v;
+  }
+
+  /* Elevation, HR and cadence are three stat tiles side by side, so on screen
+     they are a row of labels above a row of values. OCR flattens that to
+     "ELEVATION GAIN AVG HR CADENCE 219 166 164" — every label precedes every
+     value, which makes "first number after the label" pick the elevation
+     three times over. They have to be zipped by position instead: a run of
+     consecutive labels claims the run of numbers that follows it, in order.
+     Falls out correctly for a single label-then-value pair too. */
+  const FIELD = [
+    [/^elevation(\s+gain)?/i, 'elevM', 0, 9999],
+    [/^(avg|average)\s*hr|^heart\s*rate/i, 'hr', 60, 235],
+    [/^cadence/i, 'cadence', 100, 260],
+    [/^calories/i, null, 0, 99999],          // parsed only so it cannot be mistaken for a stat
+  ];
+  const toks = [];
+  for (let i = 0; i < t.length;) {
+    const rest = t.slice(i);
+    const lbl = FIELD.find(f => f[0].test(rest));
+    if (lbl) { const m = rest.match(lbl[0]); toks.push({ label: lbl }); i += m[0].length; continue; }
+    const num = rest.match(/^(\d{1,3}(?:,\d{3})*|\d+)(?![:.\d])/);
+    if (num) { toks.push({ n: +num[1].replace(/,/g, '') }); i += num[0].length; continue; }
+    i++;
+  }
+  let pending = [];
+  for (const tok of toks) {
+    if (tok.label) { pending.push(tok.label); continue; }
+    if (!pending.length) continue;
+    const f = pending.shift();
+    if (f[1] && out[f[1]] == null && tok.n >= f[2] && tok.n <= f[3]) out[f[1]] = tok.n;
+  }
+
+  /* Date: "20 Sep 2026", with or without the time that follows it. */
+  const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const d = t.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{4})\b/);
+  if (d) {
+    const mi = MON.indexOf(d[2].slice(0, 3).toLowerCase());
+    const day = +d[1];
+    if (mi >= 0 && day >= 1 && day <= 31) {
+      out.date = d[3] + '-' + String(mi + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+  }
+
+  /* Cross-check: distance, duration and pace are not independent. If all
+     three were read and they disagree by more than 8%, one of them was
+     misread — drop the pace rather than silently trust a bad set. */
+  if (out.km && out.min && out.paceSec) {
+    const implied = out.min * 60 / out.km;
+    if (Math.abs(implied - out.paceSec) / out.paceSec > 0.08) out.paceSec = null;
+  }
+  return out;
+}
+
 /* The muscles this block is for, in the order the summer brief names them.
    Shown first so "is chest holding?" is answerable without scanning. */
 const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
@@ -2248,7 +2363,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
     SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, POST_RACE_WEEKS, buildPostRace,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
-    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, readinessMean, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
+    weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, readinessMean, parseRunScreenshot, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,

@@ -266,7 +266,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v61';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v62';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -867,7 +867,8 @@ function vHome() {
       return mr
         ? `<div class="run-logged">✓ ${mr.km} km · ${mr.min} min${mr.feel ? ` · felt ${esc(mr.feel)}` : ''}</div>`
         : `<div class="card-sub dim">🏃 ${esc(day.runSub || 'A run today as well — either side of the lift.')}</div>
-           <button class="btn" onclick="event.stopPropagation();openRunLog('${t}')">🏃 Log this run</button>`;
+           <button class="btn" onclick="event.stopPropagation();openRunShot('${t}')">📷 Upload run screenshot</button>
+           <button class="mini" onclick="event.stopPropagation();openRunLog('${t}')">or enter it manually</button>`;
     })();
     card = done
       ? `<div class="card"><div class="card-kicker">Done today ✓</div><div class="card-title">${esc(day.title)}</div><button class="btn" onclick="event.stopPropagation();go('summary',{sid:'${t}'})">View summary</button>${runRow}</div>`
@@ -893,7 +894,8 @@ function vHome() {
          ${coolBtn}<button class="mini" onclick="openRunLog('${t}')">${mr.feel ? 'edit' : 'add feel'}</button>`
       : skippedManual
         ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openRunLog('${t}')">log anyway</button>`
-        : `${prepBtn}<button class="btn big" onclick="openRunLog('${t}')">🏃 Log this run</button>`;
+        : `${prepBtn}<button class="btn big" onclick="openRunShot('${t}')">📷 Upload run screenshot</button>
+           <button class="mini" onclick="openRunLog('${t}')">or enter it manually</button>`;
     const raceHere = day.kind === 'race' ? RACES.find(r => r.date === t) : null;
     const raceBtn = raceHere && !ST.races[raceHere.key].result ? `<button class="btn big" onclick="openRaceResult('${raceHere.key}')" style="margin-top:8px">🏁 Log official result</button>` : '';
     // the mobility session is its own thing — reachable whether or not the run is logged yet
@@ -942,7 +944,79 @@ function parseSplit(str) {
 }
 function isHardRun(date) { const d = dayFor(date); return d && d.title === 'Hard Run'; }
 
-window.openRunLog = function (date) {
+/* ================= run screenshot → run log (v62) =================
+   Point the camera roll at a Runna run screen and let the app read it, rather
+   than tapping a distance in half-kilometre steps.
+
+   Two decisions worth stating. The OCR engine (tesseract.js, ~15 MB with its
+   wasm core and English model) loads from a CDN on first use and is cached by
+   the service worker in a bucket that survives version bumps — bundling it
+   would treble a first install for a feature most launches never touch, and
+   re-downloading it on every deploy would be worse.
+
+   And nothing is ever saved from a parse. The numbers land in the normal run
+   sheet with everything editable and a Save you still have to press. OCR is
+   confident and occasionally wrong, which is the combination that quietly
+   corrupts a training log. Reading the screen for you is the feature; deciding
+   what is true is not. */
+const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+let ocrLoad = null;
+function loadOcr() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!ocrLoad) {
+    ocrLoad = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = OCR_SRC;
+      s.onload = res;
+      s.onerror = () => { ocrLoad = null; rej(new Error('load failed')); };
+      document.head.appendChild(s);
+    });
+  }
+  return ocrLoad;
+}
+window.openRunShot = function (date) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => { if (inp.files && inp.files[0]) readRunShot(date, inp.files[0]); };
+  inp.click();
+};
+async function readRunShot(date, file) {
+  const m = $('#modal');
+  const say = (s, sub) => {
+    m.innerHTML = `<div class="sheet"><h2>📷 Reading your screenshot</h2>
+      <div class="card-sub">${esc(s)}</div>${sub ? `<div class="dim small">${esc(sub)}</div>` : ''}
+      <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+    m.classList.add('open');
+  };
+  say('Starting up…', 'The first screenshot takes longer — the text reader downloads once, then works offline.');
+  let worker;
+  try {
+    await loadOcr();
+    say('Reading the numbers…', 'This takes a few seconds.');
+    worker = await Tesseract.createWorker('eng');
+    const { data } = await worker.recognize(file);
+    const p = parseRunScreenshot(data.text);
+    if (p.km == null && p.min == null) {
+      m.innerHTML = `<div class="sheet"><h2>Couldn't read that one</h2>
+        <div class="card-sub">No distance or time found. A full-screen shot of the run summary usually works best — or enter it by hand.</div>
+        <button class="btn primary big" onclick="openRunLog('${date}')">Enter it manually</button>
+        <button class="linkbtn" onclick="openRunShot('${date}')">Try another screenshot</button>
+        <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+      return;
+    }
+    closeModal();
+    openRunLog(date, p);
+  } catch (e) {
+    m.innerHTML = `<div class="sheet"><h2>Couldn't read that one</h2>
+      <div class="card-sub">${window.Tesseract ? 'Something went wrong reading the image.' : 'The text reader needs one online visit before it works offline.'}</div>
+      <button class="btn primary big" onclick="openRunLog('${date}')">Enter it manually</button>
+      <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  } finally {
+    if (worker) { try { await worker.terminate(); } catch (e) {} }
+  }
+}
+
+window.openRunLog = function (date, shot) {
   const day = dayFor(date);
   const sr = stravaRunOn(date);
   if (sr) {   // Strava already has the numbers — just capture how it felt (feeds the deload radar)
@@ -960,9 +1034,23 @@ window.openRunLog = function (date) {
     return;
   }
   const r = ST.runs[date] && !ST.runs[date].skipped ? ST.runs[date] : { km: day && day.title === 'Long Run' ? 20 : day && (day.kind === 'race') ? 21.1 : day && day.title === 'Hard Run' ? 10 : 8, min: 60, feel: null, note: '', hr: '', splits: [] };
+  /* Values read off a screenshot override the defaults but nothing else — the
+     sheet stays fully editable and still needs a deliberate Save. */
+  if (shot) {
+    if (shot.km != null) r.km = shot.km;
+    if (shot.min != null) r.min = Math.round(shot.min);
+    if (shot.hr != null) r.hr = shot.hr;
+  }
+  /* A screenshot of a different day's run is an easy mistake to make and an
+     annoying one to find later, so it is said out loud rather than silently
+     filed against whatever day you happened to tap. */
+  const shotNote = shot && shot.date && shot.date !== date
+    ? `<div class="card-sub dim">⚠️ That screenshot is dated ${esc(fmtDate(shot.date))}, but you're logging ${esc(fmtDate(date))}.</div>` : '';
+  const shotRead = shot
+    ? `<div class="card-sub dim">📷 Read from your screenshot${shot.paceSec ? ` · ${Math.floor(shot.paceSec / 60)}:${String(shot.paceSec % 60).padStart(2, '0')} /km` : ''}${shot.elevM != null ? ` · ${shot.elevM} m↑` : ''}${shot.cadence != null ? ` · ${shot.cadence} spm` : ''}. Check it before saving.</div>` : '';
   const hard = isHardRun(date);
   const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><h2>${esc(day ? day.title : 'Run')} — ${fmtDate(date)}</h2>
+  m.innerHTML = `<div class="sheet"><h2>${esc(day ? day.title : 'Run')} — ${fmtDate(date)}</h2>${shotNote}${shotRead}
     <div class="stepper"><div class="stepper-lbl">Distance (km)</div><div class="stepper-row">
       <button class="stepbtn" onclick="runStep('km',-0.5)">−</button><div class="stepval" id="rv-km">${r.km}</div><button class="stepbtn" onclick="runStep('km',0.5)">+</button></div></div>
     <div class="stepper"><div class="stepper-lbl">Time (minutes)</div><div class="stepper-row">
