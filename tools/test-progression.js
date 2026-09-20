@@ -297,7 +297,7 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
   const prog = buildProgram();
   const race = buildRaceBlock();
   eq('the race block is unchanged by the off-season (6 weeks)', race.length, 6);
-  eq('the whole calendar is race block + hypertrophy + summer', prog.weeks.length, 6 + HYPER_WEEKS + P.SUMMER_WEEKS);
+  eq('the whole calendar is race block + hypertrophy + summer + post-race', prog.weeks.length, 6 + HYPER_WEEKS + P.SUMMER_WEEKS + P.POST_RACE_WEEKS);
   // continuity
   for (let i = 1; i < prog.weeks.length; i++) {
     const prev = prog.weeks[i - 1], cur = prog.weeks[i];
@@ -317,7 +317,9 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
     .reduce((a, d) => a + P.materializeTemplate(d.tpl, d.date, HYPER_START).items.reduce((x, i) => x + i[1], 0), 0);
   ok('block week 1 carries no ramp — it is the lightest loading week', sets(wk1) < sets(wk2), `${sets(wk1)} vs ${sets(wk2)}`);
   // hypertrophy weeks
-  const hyper = prog.weeks.filter(w => /hypertrophy|transition/i.test(w.phase));
+  // the post-race block reuses the "Hypertrophy —" prefix so phaseKeyFromLabel
+  // needs no new rule; this group is about the pre-summer block only
+  const hyper = prog.weeks.filter(w => /hypertrophy|transition/i.test(w.phase) && !/post-race/i.test(w.phase));
   eq(`there are ${HYPER_WEEKS} hypertrophy weeks`, hyper.length, HYPER_WEEKS);
   const off = buildOffseason();
   eq('buildOffseason returns the hypertrophy weeks and nothing else', off.length, HYPER_WEEKS);
@@ -481,7 +483,19 @@ group('summer block: 12 hypertrophy-led weeks, running owned by Runna');
   ok('race-day copy does not call a B race "the one it was all for"', !/all for/.test(build[11].days[6].sub), build[11].days[6].sub);
   // the whole calendar is continuous through race day
   const prog = buildProgram();
-  eq('the calendar\'s last day is the February race', prog.weeks[prog.weeks.length - 1].days[6].date, feb.date);
+  eq('the summer block ends on the February race', build[SUMMER_WEEKS - 1].days[6].date, feb.date);
+  /* …and the calendar carries on past it. Before v49 it stopped here and Home
+     offered "Program complete" into a mode with no calendar at all — backwards
+     when the block, not the race, is the point. */
+  const post = prog.weeks.filter(w => /post-race/i.test(w.phase));
+  eq(`${P.POST_RACE_WEEKS} post-race weeks follow the race`, post.length, P.POST_RACE_WEEKS);
+  eq('…starting the Monday after race Sunday', post[0].monday, dadd(feb.date, 1));
+  ok('…on the five-day no-race layout', post[0].days.filter(d => d.kind === 'lift').length === 5);
+  ok('…and every post-race week still resolves to a hypertrophy policy',
+    post.every(w => ['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel(w.phase))));
+  ok('the post-race block opens on mesocycle week 1, not mid-ramp',
+    P.materializeTemplate('hypLowerA', post[0].days[0].date, P.HYPER_START).items.reduce((a, i) => a + i[1], 0)
+    === TEMPLATES.hypLowerA.items.reduce((a, i) => a + i[1], 0));
   for (let i = 1; i < prog.weeks.length; i++) {
     const prev = prog.weeks[i - 1], cur = prog.weeks[i];
     const prevLast = prev.days[prev.days.length - 1].date;   // week 1 is the short Thu-Sun intro

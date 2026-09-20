@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 22;
+const SCHEMA_VERSION = 23;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -203,6 +203,9 @@ const MIGRATIONS = {
     s.settings.reminder = s.settings.reminder || { on: false, time: '17:30' };
     s.schemaVersion = 22; return s;
   },
+  // 22 -> 23: the calendar no longer stops at the February race — eight
+  // post-race weeks follow it (buildPostRace). Program rebuilt.
+  22: (s) => { s.program = buildProgram(); s.schemaVersion = 23; return s; },
 };
 
 function migrate(s) {
@@ -256,7 +259,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v48';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v49';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -3585,6 +3588,8 @@ const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory
    counted adherence against five templates the user had stopped doing, with
    the sessions they were actually doing absent from the list. */
 function reportBlock(t) {
+  const raceDay = finalRace().date;
+  if (t > raceDay) return { since: dadd(raceDay, 1), weeks: POST_RACE_WEEKS, name: 'Post-race block' };
   return t >= SUMMER_START
     ? { since: SUMMER_START, weeks: SUMMER_WEEKS, name: 'Summer block' }
     : { since: HYPER_START, weeks: HYPER_WEEKS, name: 'Hypertrophy block' };
@@ -3616,12 +3621,33 @@ window.showHyperRetro = function () {
   const runsPlanned = planWeeks().filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => (d.kind === 'run' || d.run) && d.date <= t).length, 0);
   const mobilityDone = Object.keys(ST.routines || {}).filter(d => d >= since && routineDone(d, 'stretch') && (dayFor(d) || {}).mobility).length;
   const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, t)].name}`);
+  /* The block's arc: first four weeks against the last four, per muscle and
+     per week. The weekly view answers "did I hit this week"; over a block the
+     question people actually care about is "what has changed since I started",
+     and nothing in the app answered it. Needs eight weeks of block for the two
+     windows not to overlap, so it simply does not render before then. */
+  const arc = (() => {
+    if (weeksSince(since, t) < 8) return '';
+    const all = Object.values(ST.sessions);
+    const early = setsByMuscle(all, since, dadd(since, 27));
+    const late = setsByMuscle(all, dadd(t, -27), t);
+    const muscles = [...new Set([...Object.keys(early), ...Object.keys(late)])]
+      .sort((a, b) => (PRIORITY_MUSCLES.includes(b) ? 1 : 0) - (PRIORITY_MUSCLES.includes(a) ? 1 : 0) || (late[b] || 0) - (late[a] || 0));
+    if (!muscles.length) return '';
+    const rows = muscles.map(m => {
+      const e = (early[m] || 0) / 4, l = (late[m] || 0) / 4, d = l - e;
+      return `<div class="wksum-li">${PRIORITY_MUSCLES.includes(m) ? '★ ' : ''}${esc(m)}: ${e.toFixed(1)} → ${l.toFixed(1)} sets/wk${Math.abs(d) >= 0.5 ? ` (${d > 0 ? '+' : ''}${d.toFixed(1)})` : ''}</div>`;
+    }).join('');
+    return `<div class="wksum-sec"><div class="wksum-h">📈 First four weeks → last four</div>${rows}
+      <div class="wksum-li dim">Logged sets per week, not prescribed. ★ is what this block is for.</div></div>`;
+  })();
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h2>🏋️ ${esc(blk.name)}, in numbers</h2>
     <div class="dim small" style="margin-bottom:10px">Week ${weeksIn} of ${blk.weeks} · rotation block ${blockNum} (accessories rotate every ${HYPER_MESO_WEEKS} weeks)</div>
     <div class="wksum-sec"><div class="wksum-h">📅 Sessions this block</div>${dayLines.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
     <div class="wksum-sec"><div class="wksum-h">🏋️ Anchor lifts (est. 1RM change)</div>
       ${lifters.length ? lifters.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('') : '<div class="wksum-li dim">Not enough repeat sessions yet to compare.</div>'}</div>
+    ${arc}
     <div class="wksum-sec"><div class="wksum-h">🔄 Currently rotating in</div>${rotation.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
     <div class="wksum-sec"><div class="wksum-h">🏃 Easy running · 🧘 mobility</div><div class="wksum-li">${runsInPhase} of ${runsPlanned} planned run${runsPlanned === 1 ? '' : 's'} logged · ${mobilityDone} mobility session${mobilityDone === 1 ? '' : 's'} done</div></div>
     <div class="wksum-sec"><div class="wksum-h">📦 Totals</div><div class="wksum-li">${doneSessions.length} gym sessions · ${totTon} t lifted</div></div>

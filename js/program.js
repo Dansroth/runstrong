@@ -1449,6 +1449,43 @@ function summerRaceWeekLayout(raceKey) {
     6: { kind: 'race', race: raceKey },
   };
 }
+/* =====================================================================
+   POST-RACE — the calendar does not stop at the race (v49)
+   =====================================================================
+   Before this, the plan ended on race day and Home offered "Program complete"
+   into the free-form maintenance mode with no calendar. That was right when
+   this was a race app. It is backwards now: the 10 km is incidental and the
+   hypertrophy block is the point, so the morning after the race the user was
+   pushed out of the very structure building the muscle.
+
+   Eight weeks — two mesocycles — on the five-day HYPER_WEEK layout, which is
+   the no-race shape: five lifts, two easy runs, mobility, Saturday off. No
+   recovery week: a 10 km off this much lifting is a Sunday out, not a race
+   that wrecks you, and week 1 of a mesocycle carries no ramp anyway.
+
+   The labels keep the "Hypertrophy —" prefix so phaseKeyFromLabel() maps them
+   without a new rule, and rampAnchor() already counts from SUMMER_START, which
+   the post-race Monday sits exactly twelve weeks after — so the block opens on
+   mesocycle week 1 on its own.
+   ===================================================================== */
+const POST_RACE_WEEKS = 8;
+function buildPostRace(raceISO) {
+  const weeks = [];
+  const start = dadd(raceISO, 1);   // race is a Sunday, so this is the Monday
+  for (let n = 1; n <= POST_RACE_WEEKS; n++) {
+    const monday = dadd(start, (n - 1) * 7);
+    const block = Math.floor((n - 1) / HYPER_MESO_WEEKS) + 1;
+    const inBlock = ((n - 1) % HYPER_MESO_WEEKS) + 1;
+    const phase = inBlock === HYPER_MESO_WEEKS
+      ? `Hypertrophy — post-race block ${block} deload`
+      : `Hypertrophy — post-race block ${block} · week ${inBlock}`;
+    weeks.push({
+      phase, monday,
+      days: Array.from({ length: 7 }, (_, i) => dayFromPlan(dadd(monday, i), HYPER_WEEK[i] || { kind: 'rest', title: 'Rest' })),
+    });
+  }
+  return weeks;
+}
 function buildSummer(raceISO, raceKey) {
   const weeks = [];
   const startMonday = dadd(raceISO, -(SUMMER_WEEKS * 7 - 1));
@@ -1532,7 +1569,7 @@ function swapWarnings(days) {
    that rebuilds it — sessions/runs/routines are keyed by date and survive. */
 function buildProgram() {
   const feb = RACES.find(r => r.key === 'feb2027');
-  const weeks = buildRaceBlock().concat(buildOffseason(), buildSummer(feb.date, feb.key));
+  const weeks = buildRaceBlock().concat(buildOffseason(), buildSummer(feb.date, feb.key), buildPostRace(feb.date));
   weeks.forEach((w, i) => { w.num = i + 1; });
   return { startDate: PROGRAM_START, weeks };
 }
@@ -2086,7 +2123,7 @@ if (typeof module !== 'undefined' && module.exports) {
     STRETCH_AREAS, areaStretchRoutine, AREA_TARGET_SECS, sorePattern, volumeShiftNote,
     warmupPlan, e1rm, buildProgram, buildRaceBlock, buildOffseason, PLATE_SET, platesPerSide,
     HYPER_START, HYPER_WEEKS, HYPER_WEEK, TRANSITION_WEEK, hyperPhaseLabel, mesoAnchor,
-    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor,
+    SUMMER_START, SUMMER_WEEKS, buildSummer, rampAnchor, POST_RACE_WEEKS, buildPostRace,
     setsByMuscle, tonnageByMuscle, plannedSetsByMuscle, PRIORITY_MUSCLES,
     weightSeries, daysSinceWeight, WEIGHT_AVG_OVER, streakCount, longestStreakCount, hardSetShare, HARD_SET_RPE, summerPhaseLabel, summerWeekLayout, summerLowerTpl, summerTempoOnTue,
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
