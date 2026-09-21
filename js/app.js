@@ -3978,7 +3978,14 @@ function vProgramme() {
           if (!d) return '<i class="pgm-d empty"></i>';
           const m = dayMark(d);
           const done = ST.sessions[d.date] && ST.sessions[d.date].status === 'done';
-          return `<i class="pgm-d ${m.c}${done ? ' done' : ''}${d.date === t ? ' today' : ''}" title="${esc(fmtDate(d.date))} — ${esc(d.title || 'Rest')}">${m.t}</i>`;
+          /* v72: the glyph is the ONLY encoding of what each day is, and an
+             emoji inside an <i> has no accessible name — a screen reader
+             reads it as whatever Unicode happens to call the character, or
+             skips it. `title` gave a hover tooltip, which is no use on a
+             phone and is not reliably announced. role="img" plus aria-label
+             gives it the name the sighted user gets from the shape. */
+          const label = `${fmtDate(d.date)} — ${d.title || 'Rest'}${done ? ' (logged)' : ''}`;
+          return `<i class="pgm-d ${m.c}${done ? ' done' : ''}${d.date === t ? ' today' : ''}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${m.t}</i>`;
         }).join('');
       })()}</span>
       <span class="pgm-ph">${esc(short)}</span>

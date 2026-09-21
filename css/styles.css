@@ -621,34 +621,54 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 /* v55: whole-programme overview — one row per week, seven marks per row.
    Fixed-width day cells so the weeks line up into columns you can read
    down: Mondays under Mondays. */
-.pgm { margin-bottom: 14px; }
-.pgm-wk { display: grid; grid-template-columns: 26px auto 1fr; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; }
-.pgm-wk.cur { background: rgba(181, 217, 76, .14); }
+/* ---- the programme overview (v72) ----
+   Thirty week rows, each an expandable summary, each 26px tall: the densest
+   thing in the app and the only screen where the audit found the 44px floor
+   broken at scale — 36 targets under it, and the week numbers at 10.54px.
+   Density is the point of this screen, so the fix is not to abandon it but to
+   pay for it in height: rows go to the floor and the day cells grow enough
+   that the glyphs are legible rather than merely present. Thirty rows at 44px
+   is a longer scroll than thirty at 26px, and a list you can actually hit is
+   worth the scroll. */
+.pgm { margin-bottom: var(--s-4); }
+.pgm-wk { display: grid; grid-template-columns: 24px auto 1fr; align-items: center; gap: var(--s-2); min-height: var(--tap); padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); }
+.pgm-wk.cur { background: var(--accent-wash); box-shadow: inset 2px 0 0 var(--accent); }
 .pgm-wk.deload { opacity: .62; }
-.pgm-n { font-size: .7rem; text-align: right; opacity: .55; }
-.pgm-days { display: grid; grid-template-columns: repeat(7, 22px); gap: 2px; }
-.pgm-d { display: block; font-size: .72rem; line-height: 20px; height: 20px; text-align: center; border-radius: 4px; font-style: normal;
+.pgm-n { font-size: var(--t-micro); line-height: var(--lh-micro); text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
+/* 24px cells on a 2px gutter, not 26 on 4: the bigger cells cost the phase
+   label 40px of width and started truncating it to Intro — co... Legible
+   glyphs and a readable phase both fit at these numbers. */
+.pgm-days { display: grid; grid-template-columns: repeat(7, 24px); gap: 2px; }
+.pgm-d { display: block; font-size: var(--t-body); line-height: 30px; height: 30px; text-align: center; border-radius: var(--r-sm); font-style: normal;
          background: rgba(127, 127, 127, .12); overflow: hidden; }
 .pgm-d.rest { opacity: .35; }
 .pgm-d.empty { background: none; }
 /* A day carrying two activities (lift + run, run + mobility) only has room for
    the first emoji, so the second is marked with an underline rather than lost. */
 .pgm-d.lift.run, .pgm-d.run.mob { box-shadow: inset 0 -2.5px 0 var(--accent); }
-.pgm-d.done { background: rgba(181, 217, 76, .3); }
+.pgm-d.done { background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent-fill); }
 .pgm-d.today { outline: 1.5px solid var(--accent); }
-.pgm-ph { font-size: .72rem; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 380px) { .pgm-days { grid-template-columns: repeat(7, 18px); } .pgm-d { font-size: .62rem; } }
+.pgm-ph { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* v72: this fired at 380px, so it was shrinking the grid on a perfectly
+   ordinary 375px phone and taking the glyphs to 10.54px — the last text in
+   the app under the 12.75px floor. The cells only actually need to shrink
+   below ~360px, and they shrink to the floor rather than through it. */
+@media (max-width: 360px) {
+  .pgm-days { grid-template-columns: repeat(7, 22px); }
+  .pgm-d { font-size: var(--t-micro); line-height: 26px; height: 26px; }
+  .pgm-wk { gap: var(--s-2); }
+}
 
 /* v56: the whole-programme rows open to their actual sessions. The summary IS
    the week row, so it keeps the grid and loses the default disclosure marker. */
 .pgm-det > summary { list-style: none; cursor: pointer; }
 .pgm-det > summary::-webkit-details-marker { display: none; }
-.pgm-det[open] > summary { background: rgba(127, 127, 127, .1); }
-.pgm-body { padding: 2px 0 10px 34px; }
-.pgm-day { margin: 8px 0 0; }
-.pgm-day > b { display: inline-block; min-width: 30px; opacity: .6; font-size: .72rem; }
-.pgm-day > span { font-size: .84rem; }
-.pgm-ex { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0 1px 30px; font-size: .78rem; }
+.pgm-det[open] > summary { background: var(--surface-2); }
+.pgm-body { padding: var(--s-1) 0 var(--s-3) var(--s-6); }
+.pgm-day { margin: var(--s-3) 0 0; }
+.pgm-day > b { display: inline-block; min-width: 34px; color: var(--text-2); font-size: var(--t-micro); text-transform: uppercase; letter-spacing: .06em; }
+.pgm-day > span { font-size: var(--t-label); }
+.pgm-ex { display: flex; justify-content: space-between; gap: var(--s-3); padding: var(--s-1) 0 var(--s-1) var(--s-8); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .pgm-ex > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pgm-ex > span:last-child { white-space: nowrap; }
 
