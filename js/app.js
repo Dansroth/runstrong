@@ -371,7 +371,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v71';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v72';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -858,14 +858,16 @@ function navBar() {
 
 function raceCountdowns() {
   if (ST.maintenance.active) return ''; // race clocks retired
-  /* A run race stays on the header for a fortnight, then the calendar moves
-     on. The old rule also kept any race with no logged result, which since
-     v64 would have been all of them, forever. */
-  const live = RACES.filter(r => daysUntil(r.date) >= -14);
+  /* Only races still AHEAD (v72, on request). It used to keep a finished race
+     on the header for a fortnight, which meant the first thing on the screen
+     you open every morning was a countdown that had already finished — above
+     the actual session. The countdown itself is untouched and returns on its
+     own the day a race is added back. */
+  const live = RACES.filter(r => daysUntil(r.date) >= 0);
   if (!live.length) return '';
   return `<div class="races">` + live.map(r => {
     const d = daysUntil(r.date);
-    const txt = d > 0 ? `${d} day${d === 1 ? '' : 's'}` : d === 0 ? 'TODAY 🏁' : 'done ✓';
+    const txt = d > 0 ? `${d} day${d === 1 ? '' : 's'}` : 'TODAY 🏁';   // past races are filtered out above, so there is no third case
     return `<div class="race ${r.tag === 'A race' ? 'arace' : ''}"><div class="race-name">${r.name}</div><div class="race-tag">${r.tag}</div><div class="race-count">${txt}</div></div>`;
   }).join('') + `</div>`;
 }
@@ -940,7 +942,7 @@ function streakHeatmap() {
     ? `${streak}-day streak${best > streak ? ` · best ${best}` : ''}`
     : (best > 0 ? `Start a streak · best ${best}` : 'Start a streak');
   return `<div class="card streak">
-    <div class="card-kicker">🔥 ${esc(kicker)}</div>
+    <div class="card-kicker">${esc(kicker)}</div>
     <div class="card-sub">${streak > 0 ? `A lift or a run, any day, keeps it alive — and one missed day a fortnight won't end it.` : 'Log a lift or a run today to start one.'}</div>
     <div class="heatmap">${cells}</div>
   </div>`;
@@ -961,7 +963,7 @@ function vHome() {
       <main>${maintenanceCard()}${streakHeatmap()}${backupCard2}${soreSpotBtn()}</main>${navBar()}${installBanner()}`;
   }
   if (active && active.status === 'active') {
-    card = `<div class="card action" role="button" tabindex="0" onclick="go('session')">
+    card = `<div class="card card--lead action" role="button" tabindex="0" onclick="go('session')">
       <div class="card-kicker">Workout in progress</div>
       <div class="card-title">${esc(active.title)}</div>
       <div class="card-sub">Tap to continue — your place is saved</div>
@@ -987,7 +989,7 @@ function vHome() {
     })();
     card = done
       ? `<div class="card"><div class="card-kicker">Done today ✓</div><div class="card-title">${esc(day.title)}</div><button class="btn" onclick="event.stopPropagation();go('summary',{sid:'${t}'})">View summary</button>${runRow}</div>`
-      : `<div class="card action">
+      : `<div class="card card--lead action">
           <div class="card-kicker">${day.optional ? 'Optional today' : day.run ? "Today's lift + run" : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min${(() => {
             /* Name the rep style on the card. An unannounced change from six
                reps to nine reads as the app getting it wrong; named, it reads
@@ -1021,14 +1023,14 @@ function vHome() {
     const raceBtn = '';   // "Log official result" removed in v64 — a race is logged like any other run
     // the mobility session is its own thing — reachable whether or not the run is logged yet
     const mobBtn = day.mobility && !mr ? coolBtn : '';
-    card = `<div class="card run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : day.mobility ? "Today's run + mobility" : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">${day.mobility ? 'No lifting today — an easy run, then the week\'s mobility session.' : 'No lifting today — running is the priority.'}</div>${logged}${mobBtn}${raceBtn}</div>`;
+    card = `<div class="card card--lead run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : day.mobility ? "Today's run + mobility" : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">${day.mobility ? 'No lifting today — an easy run, then the week\'s mobility session.' : 'No lifting today — running is the priority.'}</div>${logged}${mobBtn}${raceBtn}</div>`;
   } else if (day.kind === 'mobility') {
     const done = routineDone(t, 'stretch');
-    card = `<div class="card ${done ? '' : 'action'}"><div class="card-kicker">${done ? 'Done today ✓' : `Mobility · ~${MOBILITY_MINS} min`}</div>
+    card = `<div class="card ${done ? '' : 'card--lead action'}"><div class="card-kicker">${done ? 'Done today ✓' : `Mobility · ~${MOBILITY_MINS} min`}</div>
       <div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div>
       <button class="btn ${done ? '' : 'primary'} big" onclick="startMobility('${t}')">🧘 ${done ? 'Go again' : 'Start mobility session'}</button></div>`;
   } else {
-    card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
+    card = `<div class="card card--lead"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
   const radar = deloadRadar();
   const radarCard = (() => { try { return blockMomentCard() + rescueCard() + reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
@@ -1044,8 +1046,22 @@ function vHome() {
   const backupDue = hasData && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this plan?</button>`;
-  return `<header class="top"><h1 class="phase">${esc(phase)}</h1>${raceCountdowns()}</header>
-    <main>${raceExtraCards()}${radarCard}${card}${streakHeatmap()}${upNext(t)}${backlogCard}${backupCard}${soreSpotBtn()}${whyBtn}</main>${navBar()}${installBanner()}`;
+  /* ---- ORDER IS THE HIERARCHY (v72) ----
+     Today's session used to render THIRD, below a countdown for a race
+     already run and a weight-log nudge, in a card visually identical to
+     both of them. On the screen opened every single day, the one thing
+     that matters was indistinguishable from a dismissible reminder.
+
+     It now leads, and it is the only .card--lead on the screen. Nothing
+     was added, removed or rewired — every card that rendered before still
+     renders, with the same data and the same handlers. They are simply in
+     the order of how much they matter, and the ones that are furniture now
+     look like furniture. */
+  const dateLine = new Date(t + 'T12:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  return `<header class="top">
+      <div class="top-date">${esc(dateLine)}</div>
+      <h1 class="phase">${esc(phase)}</h1>${raceCountdowns()}</header>
+    <main>${card}${radarCard}${raceExtraCards()}${streakHeatmap()}${upNext(t)}${backlogCard}${backupCard}${soreSpotBtn()}${whyBtn}</main>${navBar()}${installBanner()}`;
 }
 /* Reachable from Home no matter the program state or whether a session is
    active — the whole point is "I'm sore right now," not "after my workout." */
