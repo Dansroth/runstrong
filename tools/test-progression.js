@@ -340,7 +340,15 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
        because it was the reverse two commits ago and the rest day was the
        whole point of that change — if it comes back, this is where it shows. */
     eq(`week ${w.num}: lifts sit Mon/Tue/Thu/Fri/Sat`, w.days.map((d, i) => d.kind === 'lift' ? i : null).filter(i => i !== null).join(','), '0,1,3,4,5');
-    eq(`week ${w.num}: Saturday is the short Arms & Core session`, w.days[5].tpl, 'hypArms');
+    /* v70: Saturday is the short Arms & Core session in a loading week and
+       the benchmark in a deload week. Asserted as a function of the week
+       rather than loosened to "either of two templates", so a benchmark
+       landing in a loading week — or going missing from a deload — fails. */
+    /* Off the phase label, not off w.num: w.num counts program weeks from the
+       race block, so it is not the block week and 'every fourth' is not four. */
+    const dl = /deload/i.test(w.phase);
+    eq(`week ${w.num}: Saturday is ${dl ? 'the benchmark' : 'the short Arms & Core session'}`,
+      w.days[5].tpl, dl ? 'hypBench' : 'hypArms');
     eq(`week ${w.num}: Sunday is a run on its own, not stacked on a lift`, w.days[6].kind + '/' + !!w.days[6].run, 'run/false');
     eq(`week ${w.num}: seven training days, no rest day`, w.days.filter(d => d.kind === 'rest').length, 0);
     ok(`week ${w.num}: has no rest-less 8-slot day problem (every day is one plan)`, w.days.every(d => ['lift', 'run', 'mobility', 'rest'].includes(d.kind)));
@@ -507,7 +515,12 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
   // the calendar actually schedules the block templates
   const off = buildOffseason();
   const blockWeeks = off.filter(w => /hypertrophy/i.test(w.phase));
-  ok('every hypertrophy week schedules exactly HYPER_ORDER', blockWeeks.every(w => JSON.stringify(w.days.filter(d => d.kind === 'lift').map(d => d.tpl)) === JSON.stringify(HYPER_ORDER)));
+  /* HYPER_ORDER is the loading-week shape. A deload week swaps its last
+     entry — Saturday's arms session — for the benchmark, and nothing else. */
+  const orderFor = phase => (/deload/i.test(phase) ? HYPER_ORDER.slice(0, -1).concat('hypBench') : HYPER_ORDER);
+  ok('every hypertrophy week schedules exactly HYPER_ORDER (benchmark for arms in a deload)',
+    blockWeeks.every(w => JSON.stringify(w.days.filter(d => d.kind === 'lift').map(d => d.tpl)) === JSON.stringify(orderFor(w.phase))),
+    JSON.stringify((blockWeeks.find(w => JSON.stringify(w.days.filter(d => d.kind === 'lift').map(d => d.tpl)) !== JSON.stringify(orderFor(w.phase))) || {}).phase));
 }
 
 /* ===================================================================
@@ -527,7 +540,8 @@ group('one continuous block: the same split for thirty weeks, race week aside');
      not race week and carries no dated exception is the same five lifts. */
   const normal = block.filter(w => !w.days.some(d => d.kind === 'race' || DAY_OVERRIDES[d.date]));
   ok('every ordinary week is the same five lifts', normal.every(w =>
-    w.days.filter(d => d.kind === 'lift').map(d => d.tpl).join(',') === 'hypPush,hypPull,hypLowerS,hypUpper,hypArms'));
+    w.days.filter(d => d.kind === 'lift').map(d => d.tpl).join(',')
+      === (/deload/i.test(w.phase) ? 'hypPush,hypPull,hypLowerS,hypUpper,hypBench' : 'hypPush,hypPull,hypLowerS,hypUpper,hypArms')));
   ok('…and two runs', normal.every(w => w.days.filter(d => d.kind === 'run').length === 2));
   ok('…and one mobility session', normal.every(w => w.days.filter(d => d.kind === 'mobility' || d.mobility).length === 1));
   ok('…and exactly one leg day', normal.every(w => w.days.filter(d => d.kind === 'lift' && isLowerTpl(d.tpl)).length === 1));
@@ -835,7 +849,11 @@ group('hypertrophy phase — periodized exercise rotation');
     const rot = TEMPLATES.hypPush.items.findIndex(([id]) => String(id).startsWith('ROTATE:chestAcc'));
     ok('the chest accessory slot exists', rot >= 0);
     ok('block 1 and block 2 resolve a different chest accessory', b1[rot] !== b2[rot], `${b1[rot]} / ${b2[rot]}`);
-    ok('…while the fixed presses either side of it do not move', b1[0] === b2[0] && b1[1] === b2[1], `${b1[0]}/${b2[0]} ${b1[1]}/${b2[1]}`);
+    /* v70: only the bench is fixed here now. The second press became a
+       rotating slot (pressAcc), so what this guards is the anchor — the
+       lift the e1RM trajectory follows for the whole thirty weeks. */
+    ok('…while the anchor bench press does not move', b1[0] === b2[0] && b1[0] === 'bench', `${b1[0]}/${b2[0]}`);
+    ok('…and the second press slot does rotate', b1[1] !== b2[1], `${b1[1]}/${b2[1]}`);
     ok('the rotating chest slot never duplicates the fixed incline press on Upper B in the same week', ![b1[1], b2[1]].includes('incline'));
     const ub1 = materializeTemplate('hypPull', P.HYPER_START, REF_MESO_START).items.map(i => i[0]);
     const ub2 = materializeTemplate('hypPull', dadd(P.HYPER_START, 28), REF_MESO_START).items.map(i => i[0]);
@@ -847,7 +865,12 @@ group('hypertrophy phase — periodized exercise rotation');
   for (const [tp, anchor] of Object.entries(anchors)) {
     ok(`${tp}: anchor lift "${anchor}" is a literal exId in the raw template, not a pool`, TEMPLATES[tp].items.some(([id]) => id === anchor));
   }
-  for (const anchor of ['squat', 'bench', 'rdl', 'pullup', 'ohp', 'bbcurl', 'overheadext']) {
+  /* overheadext left this list in v70: it became the tricepsLong rotation
+     rather than a fixed lift. The anchors that remain are the ones the
+     e1RM trajectory is drawn from, one per movement pattern, plus the two
+     arm anchors that exist precisely so there is always one curl and one
+     pushdown number that runs the length of the block. */
+  for (const anchor of ['squat', 'bench', 'rdl', 'pullup', 'ohp', 'bbcurl', 'pushdown', 'incline', 'latpull']) {
     ok(`anchor "${anchor}" is in no rotation pool`, !Object.values(HYPER_POOLS).some(pool => pool.includes(anchor)));
   }
 
@@ -1084,6 +1107,200 @@ group('dated exceptions: this week only, and they expire by themselves');
   // an empty override map must be a no-op, so removing the entries is enough to revert
   ok('overrides are keyed by real dates, not week numbers',
     Object.keys(DAY_OVERRIDES).every(k => /^\d{4}-\d{2}-\d{2}$/.test(k)));
+}
+
+/* ===================================================================
+   7. v70 — the things that keep an eight-month block worth opening
+   =================================================================== */
+group('benchmark day: a dated test four weeks out, always');
+{
+  const { buildOffseason, TEMPLATES, EXERCISES, INSIGHTS, HOWTO, MUSCLE_MAP, HYPER_MESO_WEEKS, BLOCK_WEEKS, nextPrescription } = P;
+  const block = buildOffseason(null, null);
+  const benchWeeks = block.filter(w => w.days.some(d => d.tpl === 'hypBench'));
+  eq('one benchmark per mesocycle, for the whole block', benchWeeks.length, Math.floor(BLOCK_WEEKS / HYPER_MESO_WEEKS));
+  ok('every benchmark falls in a deload week', benchWeeks.every(w => /deload/i.test(w.phase)), benchWeeks.map(w => w.phase).join(' | '));
+  ok('every deload week has one', block.filter(w => /deload/i.test(w.phase)).every(w => w.days.some(d => d.tpl === 'hypBench')));
+  ok('it always lands on the Saturday', benchWeeks.every(w => w.days[5].tpl === 'hypBench'));
+  ok('…and carries the explanation with it', benchWeeks.every(w => /reps are the score/i.test(w.days[5].sub || '')));
+  /* Never more than a mesocycle away: the whole reason it exists is that the
+     calendar had nothing dated on it after the race was removed. */
+  const dates = block.flatMap(w => w.days.filter(d => d.tpl === 'hypBench').map(d => d.date)).sort();
+  for (let i = 1; i < dates.length; i++) {
+    const gap = Math.round((new Date(dates[i]) - new Date(dates[i - 1])) / 86400000);
+    eq('benchmarks sit exactly a mesocycle apart (' + dates[i - 1] + ' → ' + dates[i] + ')', gap, HYPER_MESO_WEEKS * 7);
+  }
+  /* Not block volume: a ramped or deload-halved test is not a test. */
+  ok('the benchmark template is not part of the volume ramp', !TEMPLATES.hypBench.hyper);
+  eq('three single all-out sets', TEMPLATES.hypBench.items.map(i => i[1]).join(','), '1,1,1');
+  const TESTS = ['benchmax', 'chinmax', 'abmax'];
+  eq('…of exactly the three test lifts', TEMPLATES.hypBench.items.map(i => i[0]).join(','), TESTS.join(','));
+  ok('a press, a pull and the trunk', ['chest', 'back', 'core'].every((m, i) => MUSCLE_MAP[TESTS[i]].includes(m)));
+  for (const id of TESTS) {
+    ok(id + ': flagged as a test lift', EXERCISES[id].test === true);
+    ok(id + ': carries no RPE target — a test set is maximal by definition', EXERCISES[id].rpe == null);
+    ok(id + ': has the full contract', !!(EXERCISES[id].name && EXERCISES[id].cue && INSIGHTS[id] && INSIGHTS[id].why && INSIGHTS[id].deep && HOWTO[id] && HOWTO[id].steps.length >= 3));
+    ok(id + ': MUSCLE_MAP tags are in the vocabulary', MUSCLE_MAP[id].every(m => ['quads', 'glutes', 'hams', 'calves', 'adductors', 'hipflex', 'chest', 'back', 'shoulders', 'core', 'biceps', 'triceps'].includes(m)));
+  }
+  /* The point of separate ids. A rep-out logged against the training lift
+     would hand nextPrescription() an RPE 10 and trigger a back-off on the
+     real bench press every fourth week — the bug this design exists to
+     prevent, asserted rather than assumed. */
+  ok('test lifts are distinct exercise ids from the lifts they mirror', TESTS.every(id => !['bench', 'pullup', 'hangraise'].includes(id)));
+  const maximal = [{ date: '2026-10-17', sets: [{ weight: 80, reps: 9, rpe: 10, failed: true }] }];
+  const p = nextPrescription('benchmax', maximal, 1, 8, { phase: 'hypertrophy' });
+  eq('a maximal test does not move the load next time', p.weight, 80);
+  ok('…and reports the reps to beat', /9 reps/.test(p.reason), p.reason);
+  ok('…with no back-off warning', !p.warn, String(p.warn));
+  const first = nextPrescription('benchmax', [], 1, 8, { phase: 'hypertrophy' });
+  eq('the first benchmark prescribes no weight', first.weight, null);
+  ok('…and says to pick one that can be reused', /future test reuses it/i.test(first.reason), first.reason);
+  /* The same RPE 10 on the TRAINING lift must still back off — the ladder is
+     not being weakened, it is being routed around for three exercises. */
+  const real = nextPrescription('bench', maximal, 1, 6, { phase: 'hypertrophy' });
+  ok('the real bench press still backs off from an RPE 10', real.weight < 80, real.weight + ' — ' + real.reason);
+}
+
+group('rep styles: variation that costs nothing, and never resyncs');
+{
+  const { REP_STYLES, repStyleFor, styledReps, materializeTemplate, HYPER_START, HYPER_ORDER, HYPER_POOLS, HYPER_MESO_WEEKS, BLOCK_WEEKS, TEMPLATES, EXERCISES } = P;
+  eq('block 1 runs the baseline, so nothing about week 1 changed', repStyleFor(HYPER_START, HYPER_START).delta, 0);
+  ok('every style is named and explained', REP_STYLES.every(st => st.key && st.name && st.note));
+  ok('the styles are distinct', new Set(REP_STYLES.map(st => st.delta)).size === REP_STYLES.length);
+  /* Clamped inside the band each lift already occupies: a heavy block is not
+     a strength block and a volume block is not a pump circuit. [H3] */
+  for (const st of REP_STYLES) {
+    for (const base of [5, 6, 8, 10]) {
+      const r = styledReps(base, st);
+      ok(st.key + ': a ' + base + '-rep compound stays inside 5-10 (got ' + r + ')', r >= 5 && r <= 10);
+    }
+    /* 10 is the boundary and the code assigns it to the COMPOUND band, which
+       matches how the templates use it: the 10-rep slots are rows, dips,
+       pulldowns and the barbell curl, never a lateral raise. Isolation work
+       in this block is prescribed at 12 or 15. */
+    for (const base of [12, 15]) {
+      const r = styledReps(base, st);
+      ok(st.key + ': a ' + base + '-rep isolation lift stays inside 10-15 (got ' + r + ')', r >= 10 && r <= 15);
+    }
+    eq(st.key + ': 10 reps is treated as the compound band', styledReps(10, st) >= 5 && styledReps(10, st) <= 10, true);
+  }
+  /* Timed work logs seconds in the reps column — a 30 s Copenhagen plank must
+     never become a 34 s one because the block turned over. */
+  for (let b = 0; b < 6; b++) {
+    const items = materializeTemplate('hypLowerS', dadd(HYPER_START, b * HYPER_MESO_WEEKS * 7), HYPER_START).items;
+    const timed = items.filter(([id]) => EXERCISES[id] && EXERCISES[id].mode !== 'reps' && EXERCISES[id].mode !== 'bw');
+    ok('block ' + (b + 1) + ': timed and carry work is not restyled', timed.every(([id, , r]) => {
+      const base = TEMPLATES.hypLowerS.items.find(it => it[0] === id || String(it[0]).startsWith('ROTATE:'));
+      return r === 30 || r === 20 || !!base;
+    }));
+    ok('block ' + (b + 1) + ': the Copenhagen plank is still 30 seconds', (items.find(i => i[0] === 'copen') || [])[2] === 30);
+  }
+  /* The resync bug this was written to kill. Three styles against three-deep
+     pools shared a period: week 13 came back with 20 of 29 slots identical to
+     week 1 — the exact point the athlete said the boredom lands. Four styles
+     against three-deep pools cannot repeat a (slot, reps) combination inside
+     the block, and this is what proves it stays that way. */
+  const sig = wk => HYPER_ORDER.flatMap(tp => materializeTemplate(tp, dadd(HYPER_START, wk * 7), HYPER_START).items.map(i => i[0] + '@' + i[2])).join(',');
+  const seen = new Map();
+  for (let wk = 0; wk < BLOCK_WEEKS; wk += HYPER_MESO_WEEKS) {
+    const k = sig(wk);
+    ok('week ' + (wk + 1) + ': this exact week has not been run before', !seen.has(k), 'matches week ' + (seen.get(k) + 1));
+    seen.set(k, wk);
+  }
+  const poolLens = new Set(Object.values(HYPER_POOLS).map(p2 => p2.length));
+  ok('no pool is as long as the style list, or the two would share a period',
+    !poolLens.has(REP_STYLES.length), [...poolLens].join(','));
+  /* And the softer promise: a session three months in is still mostly new. */
+  const base = sig(0).split(',');
+  for (const wk of [4, 8, 12, 16, 20, 24, 28]) {
+    const same = sig(wk).split(',').filter((x, i) => x === base[i]).length;
+    ok('week ' + (wk + 1) + ': fewer than half its slots match week 1 (' + same + '/' + base.length + ')', same * 2 < base.length);
+  }
+}
+
+group('rotation pools: disjoint where it matters, and pickable');
+{
+  const { HYPER_POOLS, HYPER_ORDER, TEMPLATES, EXERCISES, INSIGHTS, HOWTO, MUSCLE_MAP, hyperExId, materializeTemplate, HYPER_START, HYPER_MESO_WEEKS } = P;
+  /* materializeTemplate() resolves each ROTATE slot independently, so two
+     pools that share a member can and eventually will put the same exercise
+     on the board twice in one session. Nothing else catches that. */
+  for (const tp of HYPER_ORDER) {
+    const pools = TEMPLATES[tp].items.map(([id]) => String(id)).filter(id => id.startsWith('ROTATE:')).map(id => id.slice(7));
+    for (let i = 0; i < pools.length; i++) for (let j = i + 1; j < pools.length; j++) {
+      const shared = HYPER_POOLS[pools[i]].filter(x => HYPER_POOLS[pools[j]].includes(x));
+      ok(tp + ': ' + pools[i] + ' and ' + pools[j] + ' share no exercise', !shared.length, shared.join(','));
+    }
+    /* A pool must also not contain a lift the same template pins in a fixed
+       slot — the other way the same exercise lands twice in one session. */
+    const fixed = TEMPLATES[tp].items.map(([id]) => String(id)).filter(id => !id.startsWith('ROTATE:'));
+    for (const pn of pools) for (const f of fixed) {
+      ok(tp + ': pool ' + pn + ' does not contain the fixed lift ' + f, !HYPER_POOLS[pn].includes(f));
+    }
+    /* Whatever any block resolves to, no session may list a lift twice. */
+    for (let b = 0; b < 8; b++) {
+      const ids = materializeTemplate(tp, dadd(HYPER_START, b * HYPER_MESO_WEEKS * 7), HYPER_START).items.map(i => i[0]);
+      eq(tp + ' block ' + (b + 1) + ': no exercise appears twice', new Set(ids).size, ids.length);
+    }
+  }
+  // every member of every pool owes the user the same contract as a fixed lift
+  for (const [pn, members] of Object.entries(HYPER_POOLS)) for (const id of members) {
+    ok(pn + '/' + id + ': exists with a cue', !!(EXERCISES[id] && EXERCISES[id].cue));
+    ok(pn + '/' + id + ': has an INSIGHTS why/deep', !!(INSIGHTS[id] && INSIGHTS[id].why && INSIGHTS[id].deep));
+    ok(pn + '/' + id + ': has HOWTO steps', !!(HOWTO[id] && HOWTO[id].steps && HOWTO[id].steps.length >= 3));
+    ok(pn + '/' + id + ': is in MUSCLE_MAP', !!(MUSCLE_MAP[id] || []).length);
+  }
+  /* The block used to freeze 18 of its 29 slots for thirty weeks. */
+  const slots = HYPER_ORDER.flatMap(tp => TEMPLATES[tp].items.map(([id]) => String(id)));
+  const frozen = slots.filter(id => !id.startsWith('ROTATE:'));
+  /* Asserted as the exact roster rather than a count, because which lifts
+     are frozen is a decision and not a budget. Each one is either an e1RM
+     anchor (a number that has to run the length of the block for the
+     trajectory chart to mean anything) or a lift with no honest
+     alternative in the library. Freezing anything else — or thawing one of
+     these — should be a deliberate edit here, not a silent drift. */
+  eq('exactly these slots stay fixed, and they are all anchors',
+    frozen.join(','), 'bench,pullup,squat,rdl,legcurl,copen,incline,dip,latpull,bbcurl,pushdown');
+  ok('…and they are a minority of the block (' + frozen.length + ' of ' + slots.length + ')', frozen.length * 2 < slots.length);
+  /* ---- picks: the athlete's own choice wins, a stale one cannot ---- */
+  const pool = HYPER_POOLS.chestAcc;
+  const auto = hyperExId(pool, HYPER_START, HYPER_START, null, null, 'chestAcc');
+  const other = pool.find(x => x !== auto);
+  eq('a pick for this mesocycle is honoured', hyperExId(pool, HYPER_START, HYPER_START, null, { 0: { chestAcc: other } }, 'chestAcc'), other);
+  eq('…only for the mesocycle it was made in', hyperExId(pool, HYPER_START, HYPER_START, null, { 3: { chestAcc: other } }, 'chestAcc'), auto);
+  eq('a pick naming an exercise the pool no longer holds falls through to the rotation',
+    hyperExId(pool, HYPER_START, HYPER_START, null, { 0: { chestAcc: 'squat' } }, 'chestAcc'), auto);
+  eq('a pick for another pool is ignored', hyperExId(pool, HYPER_START, HYPER_START, null, { 0: { backAcc: other } }, 'chestAcc'), auto);
+  eq('no picks at all is the old behaviour exactly', hyperExId(pool, HYPER_START, HYPER_START, null, undefined, 'chestAcc'), auto);
+  // and it reaches the materialised session
+  const picked = materializeTemplate('hypPush', HYPER_START, HYPER_START, { 0: { chestAcc: other } });
+  ok('a pick reaches the session the athlete actually opens', picked.items.some(i => i[0] === other), picked.items.map(i => i[0]).join(','));
+}
+
+group('rep-target changes steer the load instead of reading as a miss');
+{
+  const { nextPrescription } = P;
+  const ctx = { phase: 'hypertrophy' };
+  /* All reps, RPE on target, but the block just moved 6 → 9 reps. Without
+     tplReps on the history entry this read as three missed reps and cut the
+     load; with it, the engine scales the bar down for the longer set and
+     says why. */
+  const onTarget = [{ date: '2026-10-05', tplReps: 6, sets: [{ weight: 100, reps: 6, rpe: 8 }, { weight: 100, reps: 6, rpe: 8 }] }];
+  const up = nextPrescription('bench', onTarget, 1, 6, ctx);
+  ok('same rep target: the ladder behaves exactly as before', up.weight >= 100, up.weight + ' — ' + up.reason);
+  const longer = nextPrescription('bench', onTarget, 1, 9, ctx);
+  ok('9 reps asked of a 6-rep session: the bar comes down', longer.weight < 100, longer.weight + ' — ' + longer.reason);
+  ok('…and it is not blamed on missed reps', !/of 9 reps/.test(longer.reason), longer.reason);
+  ok('…the reason names the change', /6→9/.test(longer.reason), longer.reason);
+  const shorter = nextPrescription('bench', onTarget, 1, 5, ctx);
+  ok('5 reps asked of a 6-rep session: the bar goes up', shorter.weight > 100, shorter.weight + ' — ' + shorter.reason);
+  /* A genuine miss must still be a miss. */
+  const missed = [{ date: '2026-10-05', tplReps: 6, sets: [{ weight: 100, reps: 4, rpe: 9.5 }, { weight: 100, reps: 4, rpe: 9.5 }] }];
+  const m = nextPrescription('bench', missed, 1, 6, ctx);
+  ok('short of the target it was given: still a back-off', m.weight < 100, m.weight + ' — ' + m.reason);
+  ok('…and still says so', /of 6 reps/.test(m.reason), m.reason);
+  /* History written before v70 has no tplReps and must behave as it always did. */
+  const legacy = [{ date: '2026-10-05', sets: [{ weight: 100, reps: 6, rpe: 8 }] }];
+  eq('pre-v70 history is judged against the current target, as before',
+    nextPrescription('bench', legacy, 1, 6, ctx).reason, nextPrescription('bench', onTarget, 1, 6, ctx).reason);
 }
 
 /* =================================================================== */

@@ -447,3 +447,18 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .pgm-ex { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0 1px 30px; font-size: .78rem; }
 .pgm-ex > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pgm-ex > span:last-child { white-space: nowrap; }
+
+/* ---- v70: the new-block moment ---- */
+.card.blockmoment { border-left: 3px solid var(--accent, #4ade80); }
+.pickrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.pickchip {
+  flex: 1 1 auto; min-width: 44%; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line, #333); background: transparent; color: var(--fg, #eee);
+  font: inherit; font-size: .88rem; text-align: left; cursor: pointer;
+}
+.pickchip.on { border-color: var(--accent, #4ade80); background: rgba(74, 222, 128, .12); font-weight: 600; }
+/* The benchmark sparkline: one bar per test, oldest on the left.
+   Deliberately tiny — it lives inside a summary row, and its job is to
+   show a direction, not to be read off. */
+.bmspark { display: inline-flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: 8px; }
+.bmspark i { width: 5px; border-radius: 1px; background: var(--accent, #4ade80); opacity: .8; }

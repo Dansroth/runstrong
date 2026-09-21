@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 32;
+const SCHEMA_VERSION = 33;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -15,6 +15,8 @@ function defaultEquip() { const e = {}; for (const k of EQUIP_KEYS) e[k] = true;
 function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
+    picks: {},          // v70: { [mesoIndex]: { [pool]: exId } } — the athlete's own rotation choice
+    blockSeen: null,    // v70: the last mesocycle whose review card was acknowledged
     settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, disclaimerSeen: false, notifPrimed: false, reminder: { on: false, time: '17:30' } },
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
@@ -291,6 +293,30 @@ const MIGRATIONS = {
     s.program = buildProgram();
     s.schemaVersion = 32; return s;
   },
+  /* 32 → 33: the four things that make a thirty-week block worth opening —
+     a benchmark day in every deload week, rotation on the accessory slots
+     that were frozen, a rep style per mesocycle, and a choice at each block
+     boundary. The calendar changes (Saturday of a deload week is now the
+     benchmark), so the stored program is rebuilt.
+
+     Nothing is discarded. Logged sessions are keyed by date and untouched;
+     the lifts that left the templates keep their history and their PRs,
+     because an exercise dropping out of a rotation has never meant its
+     history should vanish — the same rule v67 followed when it retired three
+     pools. `picks` starts empty, which is exactly the behaviour before this
+     migration: no pick means the computed rotation. `blockSeen` is seeded to
+     the CURRENT mesocycle rather than to null so an upgrade mid-block does
+     not open on a review of four weeks the athlete has already lived
+     through; the card appears at the next real boundary. */
+  32: (s) => {
+    s.program = buildProgram();
+    s.picks = s.picks || {};
+    if (s.blockSeen == null) {
+      const t = today();
+      s.blockSeen = t >= HYPER_START ? mesoIndex(HYPER_START, t) : null;
+    }
+    s.schemaVersion = 33; return s;
+  },
 };
 
 function migrate(s) {
@@ -344,7 +370,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v69';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v70';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -429,7 +455,14 @@ function exHistoryIndex() {
       if (!sets.length) continue;
       let arr = idx.get(e.exId);
       if (!arr) { arr = []; idx.set(e.exId, arr); }
-      arr.push({ date: s.date, sets });
+      /* tplReps travels with the entry (v70). nextPrescription() judges a
+         session against the rep target it was actually prescribed, which is
+         no longer always the current one — the rep style turns over every
+         mesocycle. Sessions logged before v70 already carry tplReps because
+         buildSession() has always written it, so this is retroactive for
+         free; the engine falls back to the current target where it is
+         missing. */
+      arr.push({ date: s.date, sets, tplReps: e.tplReps });
     }
   }
   _exHistCache = idx;
@@ -621,6 +654,14 @@ function computeGuidance(date, sore, fat) {
    the week's program phase normally, 'deload' when the day is being run reduced
    (readiness downgrade) or during the post-race recovery week, 'maint' in
    maintenance mode. The load side of periodisation is decided by this key. */
+/* Every caller that turns a template id into real exercises goes through
+   here, so the athlete's rotation picks (v70) reach the day preview, the
+   Home card, the warm-up and the session itself without five call sites
+   having to remember to pass them. materializeTemplate() stays pure and
+   takes them as an argument; this is the one function that reads ST. */
+function matTpl(tplId, date) {
+  return materializeTemplate(tplId, date, mesoAnchor(ST.maintenance), ST.picks);
+}
 function progressionCtx(date, downgrade) {
   if (downgrade) return { phase: 'deload' };
   if (ST.maintenance.active) return { phase: inRecoveryWeek() ? 'deload' : 'maint' };   // legacy balanced fallback
@@ -635,7 +676,7 @@ function buildSession(date, tplId, downgrade) {
   // materializeTemplate resolves hypertrophy-phase 'ROTATE:<pool>' sentinels
   // into real exIds for this date; every other template has no sentinel and
   // passes through unchanged, so this is safe for every tplId.
-  const tpl = materializeTemplate(tplId, date, mesoAnchor(ST.maintenance));
+  const tpl = matTpl(tplId, date);
   const ctx = progressionCtx(date, downgrade);
   // Block volume (weekly ramp, deload halving) is already applied by
   // materializeTemplate; only the readiness downgrade is decided here.
@@ -939,9 +980,15 @@ function vHome() {
     card = done
       ? `<div class="card"><div class="card-kicker">Done today ✓</div><div class="card-title">${esc(day.title)}</div><button class="btn" onclick="event.stopPropagation();go('summary',{sid:'${t}'})">View summary</button>${runRow}</div>`
       : `<div class="card action">
-          <div class="card-kicker">${day.optional ? 'Optional today' : day.run ? "Today's lift + run" : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min</div>
+          <div class="card-kicker">${day.optional ? 'Optional today' : day.run ? "Today's lift + run" : "Today's lift"} · ~${TEMPLATES[day.tpl].est} min${(() => {
+            /* Name the rep style on the card. An unannounced change from six
+               reps to nine reads as the app getting it wrong; named, it reads
+               as the block it is. */
+            const st = matTpl(day.tpl, t).style;
+            return st && st.delta ? ` · ${esc(st.name)} block` : '';
+          })()}</div>
           <div class="card-title">${esc(day.title)}</div>${day.sub ? `<div class="card-sub">${esc(day.sub)}</div>` : ''}
-          <div class="card-sub" role="button" tabindex="0" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${materializeTemplate(day.tpl, t, mesoAnchor(ST.maintenance)).items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
+          <div class="card-sub" role="button" tabindex="0" onclick="event.stopPropagation();go('daypreview',{tpl:'${day.tpl}',date:'${t}'})">${matTpl(day.tpl, t).items.map(i => esc(EXERCISES[i[0]].name)).join(' · ')} ›</div>
           <button class="btn primary big" onclick="openReadiness('${t}','${day.tpl}')">Start workout</button>${runRow}</div>`;
   } else if (day.kind === 'run' || day.kind === 'race') {
     const mr = mergedRunFor(t);
@@ -976,7 +1023,7 @@ function vHome() {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
   const radar = deloadRadar();
-  const radarCard = (() => { try { return reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
+  const radarCard = (() => { try { return blockMomentCard() + reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
     + (radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '');
   /* The unlogged-run backlog card is gone (v61, by request). It began as an
      improvement — v23 turned a queue of modal sheets into one passive card —
@@ -2693,7 +2740,7 @@ window.toggleReminder = async function () {
   if ('Notification' in window && Notification.permission === 'default') {
     try { await Notification.requestPermission(); } catch (e) { /* denied is fine — the Home nudge still works */ }
   }
-  r.on = true; save(); scheduleReminder(); render();
+  r.on = true; save(); scheduleReminder(); scheduleBlockNotice(); render();
 };
 async function scheduleReminder() {
   const r = ST.settings.reminder;
@@ -2712,6 +2759,37 @@ async function scheduleReminder() {
     });
   } catch (e) { /* unsupported or blocked — the Home nudge covers it */ }
 }
+/* The other half of the new-block moment: a notification on the Monday it
+   starts. Same honest limits as the daily reminder — no push server, so
+   this only fires where Notification Triggers exist, and the Home card is
+   the mechanism that actually works. Deliberately tied to the reminder
+   toggle rather than given its own switch: someone who turned daily
+   nudges off has said what they want, and one more setting to find is not
+   the answer. Four notifications a year at most. */
+function nextBlockMonday(fromISO) {
+  const m = mesoFor(fromISO);
+  return dadd(m.start, HYPER_MESO_WEEKS * 7);
+}
+async function scheduleBlockNotice() {
+  const r = ST.settings.reminder;
+  if (!r || !r.on || !hyperLive() || !reminderCanSchedule() || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    for (const x of await reg.getNotifications({ includeTriggered: true, tag: 'rs-block' })) x.close();
+    const iso = nextBlockMonday(today());
+    const [y, mo, d] = iso.split('-').map(Number);
+    const [hh, mm] = String(r.time || '17:30').split(':').map(Number);
+    const at = new Date(y, mo - 1, d, hh || 0, mm || 0, 0, 0);
+    if (at <= new Date()) return;
+    const style = repStyleFor(mesoAnchor(ST.maintenance), iso);
+    await reg.showNotification('RunStrong — new block', {
+      tag: 'rs-block', icon: './icons/icon-192.png',
+      body: `${style.name} block starts today. New exercises to pick, and the last four weeks are in.`,
+      showTrigger: new TimestampTrigger(at.getTime()),
+    });
+  } catch (e) { /* unsupported or blocked — the Home card covers it */ }
+}
+
 /* The weight log is entirely passive — nothing ever asks, so realistically it
    gets used twice and forgotten. The rest day is the one day of the week with
    no session competing for attention, so that is where the ask lives: once a
@@ -2745,6 +2823,142 @@ function reminderCard() {
   return `<div class="card"><div class="card-kicker">⏰ Reminder</div>
     <div class="card-sub">${esc(day.title)} is still on today's plan. Twenty minutes counts — so does deciding not to.</div></div>`;
 }
+
+/* =====================================================================
+   THE NEW-BLOCK MOMENT (v70)
+   =====================================================================
+   Every four weeks the rotation changed the exercises and the ramp reset,
+   and none of it was visible: the athlete opened the app on a Monday and
+   the session was quietly different. That is a training system working and
+   an experience of nothing happening, which over thirty weeks is the
+   problem this release is about.
+
+   So the boundary gets a moment, and it does two jobs at once rather than
+   two cards doing one each: here is what the last four weeks actually
+   produced, and here is the choice for the next four. The review answers
+   'is this working' at the point the honest answer stops being 'look at
+   the bar going up', and the pick turns a substitution that was already
+   happening into a decision the athlete made.
+
+   Shown once per mesocycle and acknowledged, not nagged: ST.blockSeen is
+   the last index dismissed. No claim is made that either half grows more
+   muscle. Neither does. */
+function hyperLive() {
+  return !ST.maintenance.active && today() >= HYPER_START;
+}
+/* The mesocycle a date falls in, with its window and its rep style. */
+function mesoFor(dateISO) {
+  const anchor = mesoAnchor(ST.maintenance);
+  const idx = mesoIndex(anchor, dateISO);
+  const start = dadd(anchor, idx * HYPER_MESO_WEEKS * 7);
+  return { idx, anchor, start, end: dadd(start, HYPER_MESO_WEEKS * 7 - 1), style: repStyleFor(anchor, dateISO) };
+}
+/* What a mesocycle produced. Read from what was LOGGED, never from what was
+   planned — the same convention setsByMuscle() has always used, and the
+   only one that can honestly be shown back to someone as their own work. */
+function blockReview(m) {
+  const all = Object.values(ST.sessions);
+  const done = all.filter(x => x.status === 'done' && x.date >= m.start && x.date <= m.end);
+  const planned = planWeeks().filter(w => w.monday >= m.start && w.monday <= m.end)
+    .reduce((a, w) => a + w.days.filter(d => d.kind === 'lift' && !d.optional).length, 0);
+  let sets = 0, kg = 0;
+  for (const x of done) for (const e of x.exercises) for (const t of (e.sets || [])) {
+    if (!t.done) continue;
+    sets++;
+    if (t.weight > 0 && t.reps > 0) kg += t.weight * t.reps;
+  }
+  const inWin = d => d && d >= m.start && d <= m.end;
+  const prs = (() => { try { return liftPRBook(); } catch (e) { return []; } })()
+    .filter(p => inWin(p.wDate) || inWin(p.eDate)).map(p => p.name);
+  const km = Object.entries(mergedRunsAll()).filter(([d]) => d >= m.start && d <= m.end)
+    .reduce((a, [, r]) => a + (r.km || 0), 0);
+  return { sessions: done.length, planned, sets, tonnes: kg / 1000, prs, km, tests: benchmarkRows() };
+}
+/* Every benchmark ever logged, newest first per lift, with the movement
+   against the first test. Empty until a benchmark has actually been done,
+   and it renders nothing rather than an empty chart in that case. */
+function benchmarkRows() {
+  const out = [];
+  for (const [exId] of (TEMPLATES.hypBench || { items: [] }).items) {
+    const h = exHistory(exId).map(e => {
+      const best = (e.sets || []).filter(x => x.reps > 0).reduce((a, b) => (!a || b.reps > a.reps ? b : a), null);
+      return best ? { date: e.date, reps: best.reps, weight: best.weight } : null;
+    }).filter(Boolean);
+    if (!h.length) continue;
+    const first = h[0], last = h[h.length - 1];
+    out.push({ exId, name: EXERCISES[exId].name, n: h.length, first, last, delta: last.reps - first.reps, hist: h });
+  }
+  return out;
+}
+/* Which rotating slots this block resolves, and what else was available.
+   Grouped by session because 'chest accessory' means nothing on its own and
+   'Push · Chest' is how the athlete thinks about it. */
+function blockSlots(m) {
+  const out = [];
+  for (const tp of HYPER_ORDER) {
+    const pools = (TEMPLATES[tp] || { items: [] }).items.map(([id]) => String(id))
+      .filter(id => id.startsWith('ROTATE:')).map(id => id.slice(7));
+    if (!pools.length) continue;
+    out.push({
+      tpl: tp, title: TEMPLATES[tp].title,
+      slots: pools.map(p => ({
+        pool: p, label: HYPER_POOL_LABEL[p],
+        cur: hyperExId(HYPER_POOLS[p], m.anchor, m.start, null, ST.picks, p),
+        options: HYPER_POOLS[p],
+        picked: !!((ST.picks[m.idx] || {})[p]),
+      })),
+    });
+  }
+  return out;
+}
+function blockMomentCard() {
+  if (!hyperLive()) return '';
+  const m = mesoFor(today());
+  if (ST.blockSeen != null && ST.blockSeen >= m.idx) return '';
+  const prev = m.idx > 0 ? blockReview(mesoFor(dadd(m.start, -1))) : null;
+  const adherence = prev && prev.planned ? Math.round(100 * prev.sessions / prev.planned) : null;
+  const look = prev && prev.sessions ? [
+    `<div class="sumrow"><b>Sessions</b><span>${prev.sessions} of ${prev.planned}${adherence != null ? ` · ${adherence}%` : ''}</span></div>`,
+    `<div class="sumrow"><b>Hard sets</b><span>${prev.sets}</span></div>`,
+    prev.tonnes >= 0.1 ? `<div class="sumrow"><b>Moved</b><span>${prev.tonnes.toFixed(1)} tonnes</span></div>` : '',
+    prev.km >= 1 ? `<div class="sumrow"><b>Ran</b><span>${Math.round(prev.km)} km</span></div>` : '',
+    prev.prs.length ? `<div class="sumrow"><b>PRs</b><span>${esc(prev.prs.slice(0, 4).join(', '))}${prev.prs.length > 4 ? ` +${prev.prs.length - 4} more` : ''}</span></div>` : '',
+  ].filter(Boolean).join('') : '';
+  const tests = (prev ? prev.tests : []).filter(t => t.n >= 2).map(t =>
+    `<div class="sumrow"><b>${esc(t.name)}</b><span>${t.last.reps} reps${t.delta ? ` (${t.delta > 0 ? '+' : ''}${t.delta} since your first test)` : ''}</span></div>`).join('');
+  return `<div class="card action blockmoment">
+    <div class="card-kicker">🔄 Block ${m.idx + 1} starts</div>
+    <div class="card-title">${esc(m.style.name)} — new exercises, new rep range</div>
+    <div class="card-sub">${esc(m.style.note)}</div>
+    ${look ? `<div class="prb-h" style="margin-top:12px">Last four weeks</div>${look}${tests}` : '<div class="card-sub dim">First block — nothing to look back on yet.</div>'}
+    <button class="btn primary big" onclick="openBlockPicks()">Choose this block's exercises</button>
+    <button class="mini" onclick="ackBlock()">Keep the suggested ones</button></div>`;
+}
+window.ackBlock = function () { ST.blockSeen = mesoFor(today()).idx; save(); render(); };
+window.openBlockPicks = function () {
+  const m = mesoFor(today());
+  const groups = blockSlots(m).map(g => `<div class="prb-h" style="margin-top:14px">${esc(g.title)}</div>${g.slots.map(sl => `
+      <div class="dim small" style="margin:8px 0 4px">${esc(sl.label)}</div>
+      <div class="pickrow">${sl.options.map(id => `<button class="pickchip${id === sl.cur ? ' on' : ''}" onclick="setPick('${sl.pool}','${id}')">${esc(EXERCISES[id].name)}</button>`).join('')}</div>`).join('')}`).join('');
+  const mo = $('#modal');
+  mo.innerHTML = `<div class="sheet"><h2>Block ${m.idx + 1} — your exercises</h2>
+    <div class="dim" style="margin-bottom:6px;font-size:.88rem">The app already rotates these every four weeks. Pick the ones you actually want; anything you leave alone stays on the suggestion. Changes apply from your next session.</div>
+    <div class="dim" style="margin-bottom:10px;font-size:.88rem">Rep range this block: <b>${esc(m.style.name)}</b> — ${esc(m.style.note)}</div>
+    ${groups}
+    <button class="btn primary big" style="margin-top:16px" onclick="ackBlock();closeModal()">Done</button>
+    <button class="mini" onclick="clearPicks()">Reset to the suggested ones</button></div>`;
+  mo.classList.add('open');
+};
+window.setPick = function (pool, exId) {
+  const m = mesoFor(today());
+  ST.picks[m.idx] = ST.picks[m.idx] || {};
+  ST.picks[m.idx][pool] = exId;
+  save(); openBlockPicks();
+};
+window.clearPicks = function () {
+  delete ST.picks[mesoFor(today()).idx];
+  save(); openBlockPicks();
+};
 
 /* ---------- bodyweight (v43) ----------
    Deliberately plain. The chart leads with the trailing mean because one
@@ -2821,6 +3035,7 @@ function secStrength(load) {
       <div class="headline">${cur} t <span class="headline-sub">lifted this week</span>${vs(cur, load.prev && load.prev.tonnes, ' t')}</div>
       ${barChart(load.rows, 'tonnes', v => v.toFixed(1))}
       ${movers.length ? `<div class="tj-wrap">${trajBars(movers)}</div><div class="dim small">Estimated 1RM, early sessions vs recent — tap a lift for its chart.</div>` : `<div class="dim small">Log each lift 3+ times and its trajectory appears here.</div>`}
+      ${safe(benchmarkBody, '')}
       ${['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel((weekFor(today()) || {}).phase)) ? safe(volumeByMuscleBody, '') : ''}
       <details class="disc"><summary>All lifts, PR book ›</summary>
         ${prsL.length ? `<div class="prb-h">🏆 PR book</div>` + prsL.map(p => `<div class="prb-row" role="button" tabindex="0" onclick="go('exdetail',{ex:'${p.exId}',back:'insights'})">
@@ -2832,6 +3047,31 @@ function secStrength(load) {
           return `<button class="exlist-row" onclick="go('exdetail',{ex:'${id}',back:'log'})"><span>${esc(EXERCISES[id].name)}</span><span class="dim">${h.length} session${h.length > 1 ? 's' : ''} · last ${top} kg</span><span>›</span></button>`; }).join('')}
       </details>
     </div>`;
+}
+/* The benchmark, rendered as the thing it is: one fixed load, one number
+   that goes up. It sits inside Strength above the per-muscle volume
+   because when the training PRs dry up — which they do, and around the
+   third month — this is the progress that is still moving and still real.
+   Renders nothing at all until a benchmark has been done: a chart of one
+   point, or of none, is worse than the space it takes. */
+function benchmarkBody() {
+  const rows = benchmarkRows();
+  if (!rows.length) {
+    const next = (planWeeks().flatMap(w => w.days).find(d => d.tpl === 'hypBench' && d.date >= today()) || {}).date;
+    return next ? `<div class="sumrow dim"><b>📊 Benchmark</b><span>First test ${fmtDate(next)} — a fixed-load rep-out you repeat every four weeks.</span></div>` : '';
+  }
+  const spark = h => {
+    if (h.length < 2) return '';
+    const max = Math.max(...h.map(p => p.reps)) || 1;
+    return `<span class="bmspark">${h.map(p => `<i style="height:${Math.max(8, Math.round(100 * p.reps / max))}%" title="${fmtDate(p.date)}: ${p.reps}"></i>`).join('')}</span>`;
+  };
+  const body = rows.map(r => `<div class="sumrow">
+    <b>${esc(r.name)}</b>
+    <span>${r.last.reps} reps${r.last.weight > 0 ? ` @ ${r.last.weight} kg` : ''}${r.n >= 2 ? ` · ${r.delta > 0 ? '+' : ''}${r.delta} vs first test` : ' · baseline set'}</span>
+    ${spark(r.hist)}</div>`).join('');
+  const next = (planWeeks().flatMap(w => w.days).find(d => d.tpl === 'hypBench' && d.date > today()) || {}).date;
+  return `<div class="prb-h" style="margin-top:12px">📊 Benchmark — same load every test, the reps are the score</div>${body}`
+    + (next ? `<div class="dim small">Next test ${fmtDate(next)}.</div>` : '');
 }
 function secRunning(load) {
   const mergedAll = mergedRunsAll();
@@ -2967,11 +3207,12 @@ function vExDetail() {
 function vDayPreview() {
   const tplId = view.tpl;
   const date = view.date || today();
-  const tpl = materializeTemplate(tplId, date, mesoAnchor(ST.maintenance));
+  const tpl = matTpl(tplId, date);
   if (!tpl) return vSchedule();
   return `<header class="top slim"><button class="backbtn" aria-label="Back to Plan" onclick="go('schedule')">‹</button><h1 class="phase">${esc(tpl.title)}</h1></header>
   <main>
     <div class="dim small" style="margin:-4px 0 14px">~${tpl.est} min · ${tpl.items.length} exercise${tpl.items.length === 1 ? '' : 's'}</div>
+    ${tpl.style && tpl.style.delta ? `<div class="card-sub" style="margin:-8px 0 14px"><b>${esc(tpl.style.name)} block</b> — ${esc(tpl.style.note)}</div>` : ''}
     ${tpl.items.map(([exId, sets, reps]) => {
       const ex = EXERCISES[exId];
       const unit = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
@@ -3470,7 +3711,19 @@ window.showRetro = function () {
    ongoing "how's it going" for a phase that has no end date */
 /* One entry per HYPER_POOLS key — a missing one renders "undefined: <lift>"
    in the rotation list, so this moves whenever the pools do. */
-const HYPER_POOL_LABEL = { chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory', quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift', calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', coreAcc: 'Core lift' };
+const HYPER_POOL_LABEL = {
+  chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory',
+  quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift',
+  calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', coreAcc: 'Core lift',
+  // ---- v70: the slots that used to be frozen ----
+  pressAcc: 'Second chest press', tricepsLong: 'Overhead triceps', sideDelt: 'Side delts',
+  bicepsLong: 'Stretched curl', rowAcc: 'Heavy row', rearDelt: 'Rear delts',
+};
+/* Retired pools keep their labels above so an old report still reads; a
+   label with no pool is three words, a pool with no label renders
+   "undefined" in the block review. This asserts the direction that
+   matters. */
+for (const p of Object.keys(HYPER_POOLS)) if (!HYPER_POOL_LABEL[p]) HYPER_POOL_LABEL[p] = p;
 /* Which block this report is about. Before v41 the function was pinned to the
    nine-week one — HYPER_START, HYPER_WEEKS and HYPER_WEEK were read directly —
    so from 30 Nov it would have shown "week 9 of 9" for the whole summer and
@@ -3629,7 +3882,7 @@ function weekDetailHTML(monday) {
       return `<div class="pgm-day"><b>${dow}</b> <span>${esc(d.title || 'Rest')}</span>
         ${d.sub ? `<div class="dim small">${esc(d.sub)}</div>` : ''}</div>`;
     }
-    const tpl = materializeTemplate(d.tpl, d.date, meso);
+    const tpl = matTpl(d.tpl, d.date);
     const rows = tpl.items.map(([id, sets, reps]) => {
       const ex = EXERCISES[id];
       const unit = ex.mode === 'time' ? 's' : ex.mode === 'carry' ? 'm' : '';
@@ -3735,7 +3988,7 @@ function vSettings() {
     <div class="set-row"><span>Vibration</span>${toggleBtn(ST.settings.vibrate, "ST.settings.vibrate=!ST.settings.vibrate;save();render()")}</div>
     <div class="set-row"><span>Daily reminder</span>${toggleBtn(ST.settings.reminder.on, "toggleReminder()")}</div>
     ${ST.settings.reminder.on ? `<div class="set-row"><span>Remind me at</span>
-      <input type="time" value="${esc(ST.settings.reminder.time)}" onchange="ST.settings.reminder.time=this.value;save();scheduleReminder();render()"></div>` : ''}
+      <input type="time" value="${esc(ST.settings.reminder.time)}" onchange="ST.settings.reminder.time=this.value;save();scheduleReminder();scheduleBlockNotice();render()"></div>` : ''}
     <div class="dim small" style="margin-bottom:8px">A nudge on training days only — never on a rest day, and never once the session is logged.${ST.settings.reminder.on && !reminderCanSchedule() ? ' <b>Your browser can\'t schedule notifications in the background</b>, so this shows as a prompt on the Home tab when you next open the app instead. Adding RunStrong to your home screen makes that more reliable.' : ''}</div>
     <div class="section-label">Exercise library</div>
     <div class="dim small" style="margin-bottom:8px">753 exercises from the public-domain free-exercise-db, searchable by name, muscle or equipment — for when the rack is taken and you need to know what else trains the same thing.</div>
@@ -3893,7 +4146,7 @@ document.addEventListener('keydown', e => {
 
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('sw.js').then(r => { swReg = r; r.update().catch(() => {}); scheduleReminder(); }).catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(r => { swReg = r; r.update().catch(() => {}); scheduleReminder(); scheduleBlockNotice(); }).catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) return; // first install, not an update
     if (document.getElementById('updatebar')) return;

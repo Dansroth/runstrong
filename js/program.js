@@ -158,6 +158,33 @@ const EXERCISES = {
   preachercurl: { name: 'Preacher Curl', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['inclinecurl', 'bbcurl'], equip: ['dumbbell', 'bench'], cue: 'Armpits over the pad, lower all the way to a straight arm.' },
   legcurl:      { name: 'Seated Leg Curl', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['slrdl', 'rdl'], equip: ['machine'], cue: 'Torso upright, hips pinned, full stretch at the top of each rep.' },
   legext:       { name: 'Leg Extension', group: 'lower', mode: 'reps', rest: 75, rpe: [8, 9], swaps: ['bss', 'stepup'], equip: ['machine'], cue: 'Lean back slightly, full lockout, three seconds down.' },
+  /* ---- v70: filling the pools that had no second member worth the name ----
+     Eighteen of the block's twenty-nine slots were hard-coded, which on a
+     thirty-week calendar meant the same lift every session from September to
+     April. The anchors stay fixed deliberately — bench, squat, RDL, pull-up,
+     incline, dip, the lat pulldown and the two arm anchors are where
+     progression is measured, and a number you keep swapping the lift under is
+     not a number. Everything else rotates from here [H9]. Each of these
+     changes the resistance curve or the joint position against what is
+     already in its pool; none of them is a grip variant of it. */
+  cablelatraise:{ name: 'Cable Lateral Raise', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 9], swaps: ['latraise', 'uprightrow'], equip: ['cable'], cue: 'Low pulley behind you, one arm at a time — hardest at the bottom, where a dumbbell has no tension at all.' },
+  uprightrow:   { name: 'Wide-Grip Upright Row', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['latraise', 'facepull'], equip: ['barbell'], cue: 'Wide grip, elbows lead, stop at shoulder height. Wide is the whole point — a narrow grip is the version that hurts.' },
+  spidercurl:   { name: 'Spider Curl', group: 'upper', mode: 'reps', rest: 60, rpe: [8, 9], swaps: ['preachercurl', 'inclinecurl'], equip: ['dumbbell', 'bench'], cue: 'Chest on an incline bench, arms hanging dead vertical — here the top of the rep is the hard part.' },
+  bayesiancurl: { name: 'Bayesian Cable Curl', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 9], swaps: ['inclinecurl', 'cablecurl'], equip: ['cable'], cue: 'Face away from a low pulley, arm trailing behind your torso — a stretched curl that never loses tension.' },
+  tbarrow:      { name: 'T-Bar Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['csrow', 'sealrow'], equip: ['barbell'], cue: 'Hinged over, neutral grip, pull to the navel. Use the chest pad if the machine has one.' },
+  pendlayrow:   { name: 'Pendlay Row', group: 'upper', mode: 'reps', rest: 90, rpe: [8, 8], swaps: ['csrow', 'dbrow'], equip: ['barbell'], cue: 'Torso parallel to the floor, bar back to the deck every rep — dead stop, no bounce, no body english.' },
+  kickback:     { name: 'Cable Triceps Kickback', group: 'upper', mode: 'reps', perSide: true, rest: 60, rpe: [8, 9], swaps: ['pushdown', 'ropeext'], equip: ['cable'], cue: 'Hinged over, upper arm pinned parallel to your torso — the rep is the last few degrees of lockout.' },
+  /* ---- v70: the benchmark lifts ----
+     Separate exercise ids from the training lifts they mirror, and that is
+     the whole design. A rep-out is an RPE 10 set by definition; logged
+     against `bench` it would tell nextPrescription() the last session failed
+     and trigger a back-off on the real bench press every fourth week. Their
+     own ids keep the test day's history, its PRs and its chart to itself, and
+     `test: true` routes the progression engine past the RPE ladder entirely
+     — a test is scored in reps at a fixed load, not steered by feel. */
+  benchmax:     { name: 'Bench Press — rep-out', group: 'upper', mode: 'reps', rest: 180, rpe: null, test: true, wu: 'bar', swaps: ['bench', 'dbbench'], equip: ['barbell', 'bench'], cue: 'One all-out set at a weight you keep the SAME every test. The reps are the score; the weight is the constant.' },
+  chinmax:      { name: 'Pull-Up — max reps', group: 'upper', mode: 'bw', rest: 180, rpe: null, test: true, swaps: ['pullup', 'latpull'], equip: [], cue: 'Bodyweight, full hang to chin over the bar, one set to failure. Log 0 as the weight unless you have outgrown it.' },
+  abmax:        { name: 'Hanging Leg Raise — max reps', group: 'upper', mode: 'bw', rest: 120, rpe: null, test: true, swaps: ['hangraise', 'abwheel'], equip: [], cue: 'Strict and slow, legs as high as you can hold them. The set ends the rep before the swing starts, not when you run out.' },
 };
 
 /* =====================================================================
@@ -262,6 +289,18 @@ const INSIGHTS = {
   pushdown:    { why: 'Triceps make up most of your upper arm — this is the anchor lift for tracking that muscle across the phase.', deep: 'The triceps are roughly two-thirds of upper-arm size, yet nothing in the base program trains them directly. Constant cable tension through the full lockout makes this a reliable, easy-to-load anchor — the accessory triceps slot rotates every block, this one stays put so there\'s a number worth tracking.' },
   overheadext: { why: 'Overhead position stretches the long head of the triceps — the part a pushdown barely touches.', deep: 'The triceps\' long head crosses the shoulder as well as the elbow, so it only gets a real stretch when the arm is overhead. A pushdown alone will grow triceps but will undertrain this specific head — this fills that gap.' },
   skullcrusher:{ why: 'A barbell through the same overhead-stretch range, loaded heavier than a dumbbell extension allows.', deep: 'Same long-head-stretch logic as the overhead extension, but a bar (or EZ-bar) lets you load it more heavily than a single dumbbell — useful once bodyweight-adjacent triceps work stops being the limiting factor.' },
+  // ---- v70: the widened rotation pools ----
+  kickback:    { why: 'Triceps loaded hardest at full lockout — the opposite end of the range from the overhead work.', deep: 'With the upper arm held parallel to the torso the triceps are shortest, and therefore weakest, exactly where the resistance peaks. The overhead extensions in the other triceps pool load the stretched end; this loads the shortened end, and rotating between the two trains a strength curve that either one alone leaves half-covered [H9]. A cable, not a dumbbell — a dumbbell kickback has no tension at all for the first half of the rep.' },
+  cablelatraise:{ why: 'The side-delt slot loaded the other way round — a cable is hardest at the bottom, a dumbbell at the top.', deep: 'A dumbbell lateral raise has almost no tension in the first third of the range, because gravity pulls straight down the arm. A cable from a low pulley behind you keeps the load on from the dead-hang position, so the same muscle is trained through a range the dumbbell version effectively skips. That is a different stimulus, not a different implement [H9].' },
+  uprightrow:  { why: 'Side delts and upper back in one pull — a pattern the block otherwise has none of.', deep: 'Everything else in this pool is a raise with a straight arm. An upright row bends the elbow, which lets the side delt work alongside the upper back and permits far more load than a raise ever will. Wide grip, and stop at shoulder height: the narrow high-pull version is the one with the impingement reputation, and there is no reason to train it.' },
+  spidercurl:  { why: 'A curl where the top of the rep is the hard part — the opposite of every other curl in the rotation.', deep: 'Lying chest-down on an incline, the arms hang vertically, so resistance peaks when the elbow is fully flexed rather than at mid-range. The incline and Bayesian curls in this pool load the stretched end; this one loads the shortened end. Rotating between them covers a strength curve that any single curl leaves half-trained [H9].' },
+  bayesiancurl:{ why: 'Biceps under constant tension from a deep stretch — the cable answer to the incline curl, with no dead spot.', deep: 'The long head of the biceps crosses the shoulder, so it is only fully stretched when the arm is behind the body. A cable running from a low pulley keeps tension through that whole stretched position, where a dumbbell simply hangs. Stretched-position loading is one of the more consistent findings in the recent hypertrophy literature [H6][H8].' },
+  tbarrow:     { why: 'The heavy option in the row rotation — more load than a dumbbell or cable version will ever allow.', deep: 'A neutral grip and a supported torso let you use more weight without the lower back becoming the limiting factor. In this pool it plays against the cable row (constant tension) and the seal row (strictness), so the slot cycles between heavy, strict and continuous rather than between three versions of the same thing [H9].' },
+  pendlayrow:  { why: 'Every rep starts from a dead stop on the floor, so nothing is carried into it by momentum.', deep: 'Resetting the bar on the deck between reps kills the stretch-shortening bounce a touch-and-go row lives on, which means each rep is started by the back rather than finished by it. It also loads the row from a deep stretched position — the same principle behind the incline curl and the seated leg curl [H6].' },
+  // ---- v70: the benchmark lifts ----
+  benchmax:    { why: 'The same weight every test, and the only question is how many reps you get. That is the number the chart follows.', deep: 'Training PRs get rarer as a block goes on. That is normal, and it reads like stalling. A fixed-load rep-out is immune to it: the load never changes, so more reps is unambiguously more strength, and a set you could do eight times in October and twelve times in February is progress nothing else in the app shows you as cleanly. It carries its own exercise id so the RPE 10 it always ends at never reaches the real bench press.' },
+  chinmax:     { why: 'Relative strength, tested the same way every four weeks. Get stronger or get leaner and this number moves.', deep: 'A max-rep pull-up set is the cheapest whole-body strength test there is, and unlike a loaded lift it responds to bodyweight as well as to strength — which is exactly what you want to watch when the goal is a leaner, stronger upper body. Full hang to chin over the bar on every rep, or the comparison to last time is worth nothing.' },
+  abmax:       { why: 'The ab test. Strict hanging leg raises to failure — no load to fiddle with, just reps against last time.', deep: 'Abs are awkward to benchmark because most ab work is either untimed or unloaded. Strict hanging leg raises scale cleanly in reps and demand the trunk flexion this block trains for, and because the score is bodyweight-relative it moves when you get leaner — which is the other half of what makes abs visible.' },
 };
 for (const id in INSIGHTS) if (EXERCISES[id]) Object.assign(EXERCISES[id], INSIGHTS[id]);
 /* generic taper-phase line (exercise-specific taperWhy overrides if present) */
@@ -354,6 +393,24 @@ const HOWTO = {
   pushdown:    { steps: ['Stand at the cable stack, bar or rope attachment at chest height.', 'Elbows pinned to your ribs for the whole set.', 'Press down to a full lockout, squeezing the triceps.', 'Let the weight travel back up under control, elbows never leaving your sides.'] },
   overheadext: { steps: ['Sit or stand tall, one or two dumbbells held overhead, arms straight.', 'Elbows pointed forward and kept still.', 'Lower the weight behind your head until you feel a real stretch.', 'Press back up to straight arms without letting the elbows flare out.'] },
   skullcrusher:{ steps: ['Lie on a bench, bar held straight above your shoulders.', 'Keeping your upper arms still and vertical, bend only at the elbow.', 'Lower the bar toward your forehead, not your chest.', 'Extend back to straight arms, elbows staying stacked over your shoulders throughout.'] },
+  // ---- v70 ----
+  kickback:     { steps: ['Low-to-mid pulley, single handle, hinge forward to about 45°.', 'Pin the working upper arm against your side, parallel to the floor, and leave it there.', 'Straighten the elbow until the arm is fully locked out behind you, and hold a beat.', 'Return only as far as the elbow bending — if the upper arm drops, the weight is too heavy.'] },
+  /* dbbench, incmach and revpec have been in the library since the race block
+     but were only ever swap targets, which need no steps. v70 put them into
+     rotation pools, so the app can now prescribe them and owes the user the
+     same instructions as everything else it schedules. */
+  dbbench:      { steps: ['Dumbbell in each hand, sit on the bench and kick them up to your shoulders as you lie back.', 'Shoulder blades pinned down and together, feet flat on the floor.', 'Press up and slightly together, stopping short of clanging the bells at the top.', 'Lower until your hands are level with your chest or a touch below — further than a bar would let you go, which is the reason to use these.'] },
+  incmach:      { steps: ['Set the seat so the handles line up with your upper chest, not your shoulders.', 'Back flat against the pad, feet planted.', 'Press out and slightly up, full lockout without shrugging.', 'Return under control until you feel the chest stretch, and do not let the weight stack touch down between reps.'] },
+  revpec:       { steps: ['Sit facing the pec-deck pad, chest against it, handles set for a wide arc.', 'Take the handles with a neutral or thumbs-up grip, arms almost straight.', 'Open your arms out and back, leading with the elbows, until they are level with your torso.', 'Pause a beat at the back, then return slowly. If your traps are doing the work, drop the weight.'] },
+  cablelatraise:{ steps: ['Set a pulley at the lowest notch and stand side-on, the cable running behind your back.', 'Take the handle in the outside hand, arm hanging across your body.', 'Lead with the elbow and raise out to the side, stopping level with your shoulder.', 'Lower all the way back across your body — the cable is still pulling down there, which is the point.'] },
+  uprightrow:   { steps: ['Barbell in front of your thighs, hands wider than shoulder-width — wider than feels natural.', 'Pull the bar up your body by driving the elbows out and up.', 'Stop when your upper arms reach shoulder height. Not higher.', 'Lower under control. If the shoulders pinch, widen the grip again or go back to lateral raises.'] },
+  spidercurl:   { steps: ['Set a bench to about 45° and lie chest-down on it, arms hanging straight toward the floor.', 'Dumbbells in both hands, palms forward, arms fully straight.', 'Curl up without letting the upper arms swing back — only the elbow moves.', 'Squeeze hard at the top, where this version is hardest, then lower all the way to straight.'] },
+  bayesiancurl: { steps: ['Low pulley behind you, single handle taken in one hand.', 'Step forward until the cable pulls your arm back behind your torso — that is the start position.', 'Curl up keeping the upper arm where it is; it should stay behind your body for the whole set.', 'Lower slowly back into the stretch and hold it a beat before the next rep.'] },
+  tbarrow:      { steps: ['Straddle the bar, or set up on the T-bar machine, with a neutral grip on the handles.', 'Hinge to roughly 45°, chest up, back flat — use the chest pad if there is one.', 'Pull to the navel, driving the elbows back past the ribs.', 'Lower to a full stretch of the lats before the next rep. The torso angle does not change all set.'] },
+  pendlayrow:   { steps: ['Bar on the floor, feet hip-width, hinge until your torso is parallel to the ground.', 'Overhand grip just outside the knees, back flat, head neutral.', 'Pull explosively to the lower ribs, keeping the torso exactly where it is.', 'Lower the bar all the way back to the floor and let it settle before the next rep — every rep starts from dead.'] },
+  benchmax:     { steps: ['Warm up as you would for a normal bench session, then load the test weight — the same one you used last time.', 'Set up exactly as for a working set: feet planted, blades pinned, bar over the eyes.', 'Do as many strict reps as you can. No bounce, no hips leaving the bench, full lockout each rep.', 'Log the weight and the reps. The next test uses the same weight — the reps are the score.'] },
+  chinmax:      { steps: ['Warm the lats up with a light set or two of pulldowns or band pull-aparts.', 'Full dead hang, hands just outside shoulder-width.', 'One set to failure: chin clearly over the bar, full hang at the bottom of every rep.', 'Log the reps with weight 0. A half rep is not a rep — the comparison only means something if the standard holds.'] },
+  abmax:        { steps: ['Hang from the bar, shoulders pulled down and away from your ears.', 'Raise your legs as high as you can hold them, knees straight or nearly so.', 'Lower under control — no drop, no swinging back into the next rep.', 'The set ends the first time you need a swing to start a rep. Log the strict reps only.'] },
 };
 for (const id in HOWTO) if (EXERCISES[id]) Object.assign(EXERCISES[id], HOWTO[id]);
 
@@ -395,6 +452,11 @@ const MUSCLE_MAP = {
   // ---- Hypertrophy block (v34) ----
   latraise:['shoulders'], reardelt:['shoulders','back'], cableflye:['chest'], preachercurl:['biceps'],
   legcurl:['hams'], legext:['quads'],
+  // ---- v70: the widened pools and the benchmark lifts ----
+  cablelatraise:['shoulders'], uprightrow:['shoulders','back'], kickback:['triceps'],
+  spidercurl:['biceps'], bayesiancurl:['biceps'],
+  tbarrow:['back'], pendlayrow:['back'],
+  benchmax:['chest','shoulders'], chinmax:['back'], abmax:['core','hipflex'],
 };
 /* "Get ready" gap before every hold: the next stretch is shown while this counts
    down, so you have time to get on the floor and into position before the hold
@@ -967,12 +1029,12 @@ const TEMPLATES = {
      second chest and back exposure, which is what [H2] asks for. Every 60 min
      session is 21 base sets, the number that keeps the Math.ceil deload under
      60% of the loading week. */
-  hypPush:   { title: 'Push · Chest', hyper: true, est: 60, items: [['bench', 4, 6], ['machpress', 4, 8], ['ROTATE:chestAcc', 3, 12], ['overheadext', 4, 12], ['latraise', 3, 15], ['ROTATE:coreAcc', 3, 12]] },
-  hypPull:   { title: 'Pull · Back & Biceps', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 4, 10], ['inclinecurl', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['csrow', 3, 10], ['reardelt', 3, 15]] },
+  hypPush:   { title: 'Push · Chest', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:pressAcc', 4, 8], ['ROTATE:chestAcc', 3, 12], ['ROTATE:tricepsLong', 4, 12], ['ROTATE:sideDelt', 3, 15], ['ROTATE:coreAcc', 3, 12]] },
+  hypPull:   { title: 'Pull · Back & Biceps', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 4, 10], ['ROTATE:bicepsLong', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:rowAcc', 3, 10], ['ROTATE:rearDelt', 3, 15]] },
   /* The second chest exposure, and the one that carries the stretch-biased
      work: an incline press plus dips. Both curls live on Pull and Arms, so
      this day is chest, back and the triceps rotation. */
-  hypUpper:  { title: 'Upper · Chest & Back', hyper: true, est: 60, items: [['incline', 4, 8], ['dip', 3, 10], ['latpull', 4, 10], ['ROTATE:coreAcc', 4, 12], ['latraise', 3, 15], ['ROTATE:tricepsAcc', 3, 12]] },
+  hypUpper:  { title: 'Upper · Chest & Back', hyper: true, est: 60, items: [['incline', 4, 8], ['dip', 3, 10], ['latpull', 4, 10], ['ROTATE:coreAcc', 4, 12], ['ROTATE:sideDelt', 3, 15], ['ROTATE:tricepsAcc', 3, 12]] },
   /* 30 min, and now two curls rather than one: biceps were the thinnest of the
      three priority muscles at 11 weekly sets. The triceps rotation moved to
      Upper to make room — triceps still get three exposures. */
@@ -993,6 +1055,27 @@ const TEMPLATES = {
      quad lift), knee flexion, calves and adductors. Calves at 6 because 5 sat
      under even a maintenance dose once this became their only exposure. */
   hypLowerS: { title: 'Lower · Full', hyper: true, est: 62, items: [['squat', 4, 6], ['rdl', 4, 8], ['ROTATE:unilateral', 3, 10], ['legcurl', 3, 12], ['ROTATE:calfStand', 6, 12], ['ROTATE:coreAcc', 3, 12], ['copen', 2, 30]] },
+  /* ---- v70: BENCHMARK DAY ----
+     Takes the deload week's Saturday slot from hypArms — see deloadWeekLayout().
+     Deliberately NOT `hyper: true`: three single all-out sets are not block
+     volume and must not be ramped, halved or counted as such.
+
+     Why it exists at all. Removing the February race (v69) left thirty weeks
+     with nothing dated on them, and a block with no test in it is a block
+     where the only feedback is the number on the bar — which stops moving
+     every few months, exactly when motivation does. This puts a fixed,
+     comparable measurement four weeks away at all times.
+
+     Why the deload week. It is the one week of the mesocycle where fatigue is
+     deliberately low, so a test lands on fresh legs and measures adaptation
+     rather than how tired week 3 left you. It is also already the light week,
+     so a maximal set costs nothing that was being spent elsewhere.
+
+     Why single sets of test-only exercise ids: see benchmax/chinmax/abmax in
+     EXERCISES. The three cover a press, a pull and the trunk — the block's
+     three jobs — and each is scored in reps at a load that never changes, so
+     the comparison across tests is exact. */
+  hypBench:  { title: 'Benchmark · Test day', est: 30, items: [['benchmax', 1, 8], ['chinmax', 1, 8], ['abmax', 1, 12]] },
 };
 
 /* =====================================================================
@@ -1083,12 +1166,40 @@ const HYPER_POOLS = {
      Upper and Push days, so a pool holding them would surface the same
      exercise twice in a week. */
   chestAcc:    ['cableflye', 'dbflye', 'pullover'],
-  backAcc:     ['cablerow', 'dbrow', 'sealrow'],   // csrow and latpull are fixed lifts now
+  backAcc:     ['cablerow', 'dbrow', 'sealrow'],   // latpull is a fixed lift; the second row slot is rowAcc
+  /* ---- v70: the slots that used to be frozen ----
+     Every pool below is disjoint from every other pool that appears in the
+     same template, which is not decoration: materializeTemplate() resolves
+     each ROTATE slot independently, so two overlapping pools can and
+     eventually would surface the same exercise twice in one session.
+     tools/test-progression.js asserts the disjointness rather than trusting
+     it to stay true. */
+  pressAcc:    ['machpress', 'dbbench', 'pushup'],          // Push #2, the second chest press
+  tricepsLong: ['overheadext', 'ropeext', 'skullcrusher'],  // Push #4, the overhead/stretch slot
+  sideDelt:    ['latraise', 'cablelatraise', 'uprightrow'], // Push #5 and Upper #5
+  bicepsLong:  ['inclinecurl', 'spidercurl', 'bayesiancurl'], // Pull #3, the long-head curl slot
+  rowAcc:      ['csrow', 'tbarrow', 'pendlayrow'],          // Pull #5, the heavy horizontal row
+  rearDelt:    ['reardelt', 'revpec', 'facepull'],          // Pull #6
+  /* POOL LENGTH IS ARITHMETIC, NOT TASTE. A pool of length L and the four
+     rep styles repeat their combination every lcm(L, 4) mesocycles: three
+     deep gives twelve blocks (forty-eight weeks, past the end of the
+     block), five deep gives twenty. Two or four deep gives FOUR blocks —
+     sixteen weeks — which is the resync this whole change exists to
+     remove, and it is exactly what a plausible-looking fourth member or a
+     merely-adequate pair would quietly reintroduce. Three and five only.
+     tools/test-progression.js asserts it against REP_STYLES.length so the
+     rule cannot be broken from either side.
+     The two triceps pools were split by position rather than padded:
+     tricepsLong is the overhead/stretched work on the Push day,
+     tricepsAcc the pressing and shortened-position work on Upper. */
   /* Three deep as of v46. At two each these came back every eight weeks, so
      the twenty-one weeks to the February race held only two and a half
      cycles of the same two lifts — less variety than [H9] is asking for. */
   bicepsAcc:   ['hammercurl', 'preachercurl', 'cablecurl', 'dragcurl', 'concurl'],
-  tricepsAcc:  ['skullcrusher', 'ropeext', 'closegrip', 'diamondpu'],   // dip is a fixed lift on Upper
+  /* Narrowed to the three pressing options in v70: skullcrusher and ropeext
+     moved to tricepsLong on the Push day, and a pool member appearing in two
+     pools is the one thing that can put the same lift on the board twice. */
+  tricepsAcc:  ['closegrip', 'diamondpu', 'kickback'],       // Upper #6; dip is a fixed lift on the same day
   /* quadAcc, gluteAcc and calfSeat retired in v67: with one leg day there is
       no room for a second quad compound, a dedicated glute lift or a second
       calf slot. Their exercises stay in the library as swap targets — a pool
@@ -1120,6 +1231,65 @@ const HYPER_POOLS = {
    test asserts the two agree — so this moves whenever HYPER_WEEK does. Upper
    A leads since v57. */
 const HYPER_ORDER = ['hypPush', 'hypPull', 'hypLowerS', 'hypUpper', 'hypArms'];
+/* =====================================================================
+   REP-STYLE PERIODISATION (v70)
+   =====================================================================
+   Each mesocycle runs a different rep style. Be exact about why, because the
+   obvious reason is the wrong one: this is NOT claimed to grow more muscle.
+   [H3] found 6-20+ reps produce comparable hypertrophy when sets are taken
+   near failure, and v68 used that same finding to argue AGAINST periodising
+   reps. That argument was sound on hypertrophy grounds and it has not been
+   overturned here.
+
+   What changed is the question being asked. Over a thirty-week block the
+   binding constraint is not stimulus, it is whether the sessions still get
+   done — and eight months of identical sets of six is a different problem
+   from eight months of insufficient stimulus. [H3] is precisely what makes
+   this cheap: because the rep ranges are equivalent for growth, varying them
+   costs nothing and buys a session that feels different every four weeks.
+   That is an adherence decision with a hypertrophy licence, not a
+   hypertrophy decision, and it is labelled as one in the UI too.
+
+   The deltas are clamped inside the band each lift already sits in, so a
+   compound never leaves 5-10 and an isolation lift never leaves 10-15. A
+   heavy block is not a strength block and a volume block is not a pump
+   circuit; both stay inside what [H1] and [H3] describe. */
+/* FOUR styles against pools of three, and that count is arithmetic rather
+   than taste. With three styles and mostly three-deep pools the two cycles
+   share a period: every slot and every rep target came back together at
+   block 4 — week 13, almost exactly the three-month mark where this whole
+   change is aimed. Measured before the fix, week 13 repeated 20 of the
+   week's 29 slots verbatim. Four styles against three-deep pools share no
+   period shorter than twelve blocks, which is forty-eight weeks: longer
+   than the block. The exercises still come round at week 13 — twelve weeks
+   apart is variation by any reading — but they arrive at a rep target that
+   session has not used before. tools/test-progression.js asserts the
+   combination does not repeat inside BLOCK_WEEKS, so shortening either list
+   fails loudly instead of quietly rebuilding the thing this replaced.
+   Ordered to undulate: no two consecutive blocks sit next to each other on
+   the scale, so each one is a real change of gear from the last. */
+const REP_STYLES = [
+  { key: 'steady', name: 'Steady', delta: 0, note: 'The block\'s baseline rep ranges — moderate loads, moderate reps.' },
+  { key: 'heavy', name: 'Heavy', delta: -2, note: 'Fewer reps, heavier bar. Same sets and the same effort — the load does the talking.' },
+  { key: 'volume', name: 'Volume', delta: 4, note: 'Higher reps, lighter bar. Rest stays the same, and the last few reps should still be a fight.' },
+  { key: 'moderate', name: 'Mid-range', delta: 2, note: 'Between the two — a shade more reps than baseline, a shade less load.' },
+];
+/* Which style a date falls in. Counts in mesocycles from the rotation anchor,
+   so the rep style and the exercise rotation turn over on the same Monday —
+   one "new block" moment rather than two unrelated ones. */
+function repStyleFor(startISO, dateISO) {
+  if (!startISO || !dateISO) return REP_STYLES[0];
+  return REP_STYLES[Math.floor(weeksSince(startISO, dateISO) / HYPER_MESO_WEEKS) % REP_STYLES.length];
+}
+/* A lift's reps under a style, clamped to the band it already occupies. The
+   band is inferred from the template's own number rather than from a
+   hand-kept compound list: a lift prescribed at 10 or fewer is being used as
+   a compound here, whatever it is called elsewhere. */
+function styledReps(baseReps, style) {
+  if (!style || !style.delta) return baseReps;
+  const band = baseReps <= 10 ? [5, 10] : [10, 15];
+  return Math.max(band[0], Math.min(band[1], baseReps + style.delta));
+}
 /* Volume ramp inside a mesocycle [H1]: item indexes that gain one set in
    block week 1, 2, 3. Week HYPER_MESO_WEEKS is the deload (sets halved). */
 const HYPER_RAMP = [[], [0, 1], [0, 1, 2, 3]];
@@ -1152,10 +1322,33 @@ function weeksSince(startISO, todayISO) {
   const t = Date.UTC(ty, tm - 1, td);
   return Math.max(0, Math.floor((t - start) / (7 * 86400000)));
 }
+/* Which mesocycle a date falls in, counting from the rotation anchor. 0-based,
+   so it doubles as the key ST.picks is stored under. */
+function mesoIndex(startISO, dateISO, blockWeeks) {
+  return Math.floor(weeksSince(startISO, dateISO) / (blockWeeks || HYPER_MESO_WEEKS));
+}
 /* Which pool member is "live" for a given date. blockWeeks defaults to
-   HYPER_MESO_WEEKS but takes a param so tests can drive it directly. */
-function hyperExId(pool, startISO, todayISO, blockWeeks) {
-  const idx = Math.floor(weeksSince(startISO, todayISO) / (blockWeeks || HYPER_MESO_WEEKS));
+   HYPER_MESO_WEEKS but takes a param so tests can drive it directly.
+
+   `picks` (v70) is the user's own choice for this mesocycle, shaped
+   { [mesoIndex]: { [poolName]: exId } }. A pick wins over the computed
+   rotation, but only when it names a real member of that pool — a stale pick
+   left behind by a pool that has since changed must not be able to schedule
+   an exercise the block no longer contains. Falling through to the computed
+   value makes that failure invisible and harmless.
+
+   Why a choice at all: the rotation was already correct and already changed
+   the exercises, and it did it silently, four weeks at a time, with no moment
+   at which the athlete did anything. Being handed the same substitution as a
+   decision is not a training difference, it is an adherence one — the same
+   honest framing REP_STYLES carries. No citation is offered for it because
+   none is being claimed. */
+function hyperExId(pool, startISO, todayISO, blockWeeks, picks, poolName) {
+  const idx = mesoIndex(startISO, todayISO, blockWeeks);
+  if (picks && poolName) {
+    const pick = (picks[idx] || {})[poolName];
+    if (pick && pool.includes(pick)) return pick;
+  }
   return pool[idx % pool.length];
 }
 /* Resolves a TEMPLATES entry's 'ROTATE:<pool>' sentinels into real exIds for
@@ -1163,7 +1356,7 @@ function hyperExId(pool, startISO, todayISO, blockWeeks) {
    TEMPLATES entry has. Templates with no ROTATE sentinel pass through
    unchanged (mesoStartISO is simply unused), so this is safe to call for
    every tplId, not just hypertrophy ones — see buildSession() in app.js. */
-function materializeTemplate(tplId, dateISO, mesoStartISO) {
+function materializeTemplate(tplId, dateISO, mesoStartISO, picks) {
   const tpl = TEMPLATES[tplId];
   if (!tpl) return null;
   // Block volume periodisation lives here so the day preview, the warm-up
@@ -1173,15 +1366,22 @@ function materializeTemplate(tplId, dateISO, mesoStartISO) {
   const wk = tpl.hyper ? hyperWeekInBlock(rampAnchor(dateISO, mesoStartISO), dateISO) : 0;
   const deload = tpl.hyper && wk === HYPER_MESO_WEEKS;
   const bump = new Set(tpl.hyper && !deload ? (HYPER_RAMP[wk - 1] || []) : []);
+  // Rep style turns over with the exercise rotation, on the rotation anchor.
+  const style = tpl.hyper ? repStyleFor(mesoStartISO, dateISO) : null;
   const items = tpl.items.map(([exId, sets, reps], i) => {
     if (typeof exId === 'string' && exId.startsWith('ROTATE:')) {
-      const pool = HYPER_POOLS[exId.slice(7)];
-      exId = hyperExId(pool, mesoStartISO, dateISO);
+      const poolName = exId.slice(7);
+      exId = hyperExId(HYPER_POOLS[poolName], mesoStartISO, dateISO, null, picks, poolName);
     }
     const n = deload ? Math.max(1, Math.ceil(sets / 2)) : sets + (bump.has(i) ? 1 : 0);
-    return [exId, n, reps];
+    /* Timed and carry work logs seconds or metres in this column — a
+       Copenhagen plank's "30" is half a minute, and adding three to it is
+       meaningless. Only real repetitions are restyled. */
+    const ex = EXERCISES[exId];
+    const r = style && ex && (ex.mode === 'reps' || ex.mode === 'bw') ? styledReps(reps, style) : reps;
+    return [exId, n, r];
   });
-  return { title: tpl.title, est: tpl.est, items };
+  return { title: tpl.title, est: tpl.est, items, style: style || null };
 }
 
 /* race-week checklist defaults (editable per race in-app) */
@@ -1474,14 +1674,18 @@ const HYPER_WEEK = {
    • Selection keeps rotating every mesocycle [H9]. With pools three to five
      deep an exercise returns after twelve to twenty weeks, which over this
      span is variation, not repetition.
-   • Rep ranges stay where they are. [H3] finds 6–20+ reps grow equally when
-     sets are taken near failure, so periodising them would be motion without
-     effect.
+   • Rep ranges now turn over with the mesocycle (REP_STYLES, v70), and the
+     reasoning there is deliberately not a hypertrophy claim — [H3] still
+     says the ranges are equivalent for growth. That equivalence is exactly
+     what makes the variation free, and free variation is worth having when
+     the block runs for eight months. See the REP_STYLES header.
 
-   The February 10 km stays on the calendar. It is a race being run, not
-   peaked for, so it gets one lighter week rather than a taper block — the
-   week it falls in swaps the heavy sessions for the short one and keeps the
-   legs fresh from the Wednesday.
+   There is no race on the calendar any more (v69), which is what v70's
+   benchmark day answers: thirty weeks with nothing dated on them is thirty
+   weeks in which the only feedback is the bar, and the bar stops moving
+   weekly long before the block ends. The deload week's Saturday tests a
+   press, a pull and the trunk at a fixed load, so there is always a
+   measurement four weeks out.
    ===================================================================== */
 const BLOCK_WEEKS = 30;                 // 21 Sep 2026 → Sun 18 Apr 2027
 function blockPhaseLabel(weekN) {
@@ -1505,12 +1709,27 @@ function raceWeekLayout(raceKey) {
     6: { kind: 'race', race: raceKey },
   };
 }
+/* The deload week differs from an ordinary week by one day: Saturday's 30 min
+   arms session gives way to the benchmark. Everything else — the four 60 min
+   sessions and the two runs — is untouched, and materializeTemplate() is
+   already halving their sets, so this costs no training volume. Arms are the
+   session to give up because they are the one whose muscles the three other
+   upper days already hit, and because it is the slot that is already short. */
+function deloadWeekLayout() {
+  return Object.assign({}, HYPER_WEEK, {
+    5: {
+      kind: 'lift', tpl: 'hypBench',
+      sub: 'Deload week — fresh enough to test. Same loads as last time; the reps are the score.',
+    },
+  });
+}
 function buildOffseason(raceISO, raceKey) {
   const weeks = [];
   for (let n = 1; n <= BLOCK_WEEKS; n++) {
     const monday = dadd(HYPER_START, (n - 1) * 7);
     const isRaceWeek = !!raceISO && raceISO >= monday && raceISO <= dadd(monday, 6);
-    const layout = isRaceWeek ? raceWeekLayout(raceKey) : HYPER_WEEK;
+    const isDeload = n % HYPER_MESO_WEEKS === 0;
+    const layout = isRaceWeek ? raceWeekLayout(raceKey) : (isDeload ? deloadWeekLayout() : HYPER_WEEK);
     weeks.push({
       phase: isRaceWeek ? 'Race week — 10 km, and a lighter week' : blockPhaseLabel(n),
       monday,
@@ -2138,11 +2357,15 @@ function sessionRPE(h) {
   return r.length ? meanOf(r) : null;
 }
 
-/* history: array of {date, sets:[{weight,reps,rpe,failed}]} for one exercise variant, oldest→newest.
+/* history: array of {date, sets:[{weight,reps,rpe,failed}], tplReps?} for one
+   exercise variant, oldest→newest. `tplReps` on a history entry is the target
+   that session was PRESCRIBED, which since v70 is not always this session's
+   target — see the rep-style note further down.
    tplReps = the session's target reps for this exercise (per side where applicable).
    ctx     = { phase } — policy key from phaseKeyFromLabel (see progressionCtx in app.js).
    Returns { weight, reps, reason, warn, phase, target }. reps is always the
-   template's reps: load progresses, rep schemes don't drift. [5][6] */
+   template's reps: load progresses, rep schemes don't drift within a
+   mesocycle. [5][6] */
 function nextPrescription(exId, history, step, tplReps, ctx) {
   const ex = EXERCISES[exId];
   const phaseKey = (ctx && ctx.phase) || 'build';
@@ -2150,6 +2373,27 @@ function nextPrescription(exId, history, step, tplReps, ctx) {
   const inc = step || WEIGHT_STEP_DEFAULT;
   const target = targetRPEForPhase(exId, phaseKey);
   const out = (weight, reason, warn) => ({ weight, reps: tplReps, reason, warn: warn || null, phase: phaseKey, target });
+
+  /* Benchmark lifts (v70) never touch the RPE ladder. A test set is maximal
+     by definition, so every signal the ladder reads — RPE 10, a failed set,
+     reps short of the target — is the test working as designed, and putting
+     it through the ladder would prescribe a back-off after every successful
+     test. The load is deliberately frozen at whatever was used last time:
+     holding the weight constant is the entire reason the rep count is
+     comparable across tests. */
+  if (ex && ex.test) {
+    const prior = history.filter(h => (h.sets || []).some(x => x.reps > 0));
+    if (!prior.length) {
+      return out(null, ex.mode === 'bw'
+        ? 'First benchmark — one strict set to failure. Whatever you get is the baseline.'
+        : 'First benchmark — pick a weight you can manage for about eight hard reps. Every future test reuses it, so pick one you can load again.');
+    }
+    const lastTest = prior[prior.length - 1];
+    const best = lastTest.sets.filter(x => x.reps > 0).reduce((a, b) => (b.reps > a.reps ? b : a));
+    return out(best.weight, ex.mode === 'bw'
+      ? 'Last test (' + fmtDate(lastTest.date) + '): ' + best.reps + ' reps. Beat it — same standard, strict reps only.'
+      : 'Last test (' + fmtDate(lastTest.date) + '): ' + best.reps + ' reps at ' + best.weight + ' kg. Same weight, and the reps are the score.');
+  }
 
   if (!history.length) {
     // First exposure: pick load by feel against the phase's RIR target, not by a
@@ -2163,7 +2407,15 @@ function nextPrescription(exId, history, step, tplReps, ctx) {
   if (!worked.length) return out(null, 'No logged sets last time — set your weight.');
   const topW = Math.max(...worked.map(s => s.weight));
   const avgReps = meanOf(worked.map(s => s.reps));
-  const repsMet = !tplReps || avgReps >= tplReps - 0.34;   // hit (or basically hit) every set
+  /* Judge last session against the target it was actually given, not against
+     this one's. Since v70 the rep style turns over every mesocycle, so a lift
+     prescribed six reps in a heavy block and nine in the volume block after
+     it would otherwise read as having missed by three — and the engine would
+     cut the load over a rep target the athlete was never asked to hit.
+     History written before v70 carries no tplReps, in which case this is
+     exactly the old behaviour. */
+  const lastReps = (last.tplReps > 0 ? last.tplReps : tplReps);
+  const repsMet = !lastReps || avgReps >= lastReps - 0.34;   // hit (or basically hit) every set
   if (!target) return out(topW, 'Same as last time — this one is about quality, not load.');
   const rpes = worked.filter(s => s.rpe != null).map(s => s.rpe);
   if (!rpes.length) return out(topW, 'No RPE logged last time — holding. Tap an RPE next time and this steers itself.');
@@ -2185,8 +2437,8 @@ function nextPrescription(exId, history, step, tplReps, ctx) {
   } else if (!repsMet) {
     // Reps come before load: a missed rep target means the last load was already
     // too heavy for the prescribed scheme. [3]
-    if (avg > tgt + 1) { intent = 'down'; reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps at RPE ${avgTxt} — dropping the load so all ${tplReps} land.`; }
-    else { intent = 'hold'; reason = `Got ~${avgReps.toFixed(1)} of ${tplReps} reps last time — same load until all ${tplReps} land.`; }
+    if (avg > tgt + 1) { intent = 'down'; reason = `Got ~${avgReps.toFixed(1)} of ${lastReps} reps at RPE ${avgTxt} — dropping the load so all ${tplReps} land.`; }
+    else { intent = 'hold'; reason = `Got ~${avgReps.toFixed(1)} of ${lastReps} reps last time — same load until all ${tplReps} land.`; }
   } else if (avg <= tgt - 2) {
     // 2+ points under target ≈ 2+ more reps in reserve than intended [1] — the
     // load is clearly too light, take the bigger jump. [2][3]
@@ -2240,6 +2492,20 @@ function nextPrescription(exId, history, step, tplReps, ctx) {
     w = topW + Math.min(Math.max(topW * UP[intent] * pol.upMult, inc * minSteps), cap);
   } else if (intent in DOWN) {
     w = Math.max(0, topW - Math.max(topW * DOWN[intent], inc));    // always at least one real step down
+  }
+  /* The rep target moved under this lift — a new mesocycle's rep style. The
+     weight that was right for six reps is not the weight that is right for
+     nine, and waiting for a failed set to discover that throws away the first
+     session of every block. Rescale by the same Epley relation the e1RM chart
+     uses, so the predicted hard set stays equally hard, and say so in the
+     reason: an unexplained load change is how people stop trusting the
+     number. Applied after the RPE decision rather than instead of it — the
+     ladder's verdict on last session still stands, it is just carried across
+     into the new rep range. */
+  if (lastReps && tplReps && lastReps !== tplReps) {
+    reason += ' Rep target moved ' + lastReps + '→' + tplReps + ' this block, so the load is scaled to match: '
+      + (tplReps > lastReps ? 'more reps, lighter bar' : 'fewer reps, heavier bar') + ', same difficulty.';
+    w = w * (1 + lastReps / 30) / (1 + tplReps / 30);
   }
   // Round to the user's increment, but never let rounding cancel the decision:
   // with a 1 kg step a 3% cut on a light lift must still move. [3]
@@ -2318,6 +2584,7 @@ if (typeof module !== 'undefined' && module.exports) {
     applyOverrides, isLowerTpl, swapDays, swapLockReason, samePlan, swapWarnings,
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
+    REP_STYLES, repStyleFor, styledReps, mesoIndex, deloadWeekLayout,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
   };
