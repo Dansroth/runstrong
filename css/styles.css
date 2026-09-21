@@ -386,32 +386,40 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 /* modal */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 50; align-items: flex-end; }
 .modal.open { display: flex; }
-.sheet { background: var(--bg2); border-radius: 20px 20px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); width: 100%; max-width: 480px; margin: 0 auto; max-height: 85vh; overflow-y: auto; }
-.sheet h2 { font-size: 1.25rem; margin-bottom: 14px; }
-.ready-q { margin-bottom: 18px; font-weight: 600; }
-.scale { display: flex; gap: 6px; margin-top: 8px; }
-.scale button { flex: 1; padding: 16px 0; background: var(--bg3); border: 1px solid #2b3648; border-radius: 10px; font-weight: 800; font-size: 1.1rem; }
-.scale button.sel { background: var(--acc-d); border-color: var(--acc); }
-.scale-lbl { display: flex; justify-content: space-between; font-size: .72rem; color: var(--dim); margin-top: 4px; font-weight: 400; }
-.notice { background: #3a2a12; border: 1px solid var(--warn); border-radius: 10px; padding: 12px; margin-top: 12px; font-size: .9rem; }
-.swapopt { margin-top: 10px; }
-.why { line-height: 1.55; font-size: .95rem; }
-.steps { padding-left: 22px; line-height: 1.9; }
-.kbd { background: var(--bg3); border-radius: 4px; padding: 1px 6px; }
+.sheet { background: var(--surface); border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--s-6) var(--s-4) calc(var(--s-6) + env(safe-area-inset-bottom)); width: 100%; max-width: 480px; margin: 0 auto; max-height: 85vh; overflow-y: auto; box-shadow: var(--e-2); }
+.sheet h2 { font-size: var(--t-title); line-height: var(--lh-title); font-weight: var(--fw-title); margin-bottom: var(--s-4); letter-spacing: -.012em; }
+.ready-q { margin-bottom: var(--s-5); font-weight: var(--fw-head); font-size: var(--t-label); }
+.scale { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
+.scale button { flex: 1; min-height: var(--tap); padding: var(--s-4) 0; background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-md); font-weight: var(--fw-title); font-size: var(--t-head); font-variant-numeric: tabular-nums; }
+.scale button.sel { background: var(--accent-fill); border-color: var(--accent); }
+.scale-lbl { display: flex; justify-content: space-between; gap: var(--s-3); font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--text-2); margin-top: var(--s-2); font-weight: var(--fw-body); }
+.notice { background: var(--warning-fill); border: 1px solid var(--warning); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-top: var(--s-3); font-size: var(--t-label); line-height: var(--lh-label); }
+.swapopt { margin-top: var(--s-3); }
+.why { line-height: var(--lh-body); font-size: var(--t-body); }
+.steps { padding-left: var(--s-6); line-height: 1.9; }
+.kbd { background: var(--surface-2); border-radius: var(--r-sm); padding: 0 var(--s-2); }
 
 /* schedule */
-.wk { background: var(--bg2); border-radius: var(--radius); border: 1px solid #232c3a; margin-bottom: 12px; overflow: hidden; }
-.wk.cur { border-color: var(--acc); }
-.wk-head { display: flex; justify-content: space-between; padding: 11px 14px; background: var(--bg3); font-size: .9rem; }
-.wk-head span { color: var(--dim); }
-.wk.cur .wk-head b { color: var(--acc); }
-.wk-day { display: flex; align-items: center; gap: 9px; padding: 8px 14px; border-top: 1px solid #1c2430; font-size: .88rem; }
-.wk-day.today { background: rgba(74,222,128,.07); }
-.wk-day.run .wk-title { color: var(--run); }
-.wk-day.race .wk-title { color: var(--gold); font-weight: 700; }
-.wk-date { color: var(--dim); min-width: 96px; font-size: .8rem; }
+.wk { background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border); margin-bottom: var(--s-3); overflow: hidden; }
+/* the current week is marked by a bar, not by a coloured outline — the same
+   lead treatment Today and the working panel use, so "you are here" reads the
+   same way on every screen */
+.wk.cur { border-color: var(--border); box-shadow: inset 3px 0 0 var(--accent); }
+.wk-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); background: var(--surface-2); font-size: var(--t-label); line-height: var(--lh-label); }
+.wk-head b { font-size: var(--t-body); font-weight: var(--fw-head); }
+.wk-head span { color: var(--text-2); text-align: right; }
+.wk.cur .wk-head b { color: var(--accent); }
+.wk-day { display: flex; align-items: center; gap: var(--s-3); min-height: var(--tap); padding: var(--s-2) var(--s-4); border-top: 1px solid var(--border); font-size: var(--t-label); line-height: var(--lh-label); }
+.wk-day.today { background: var(--accent-wash); }
+/* Run titles were --info, which made every run row the loudest thing on a
+   screen of mostly lifts. The row already carries a distinct icon, so the
+   colour was redundant encoding doing damage: titles are plain text now and
+   the icon does the work. */
+.wk-day.run .wk-title { color: var(--text); }
+.wk-day.race .wk-title { color: var(--text); font-weight: var(--fw-head); }
+.wk-date { color: var(--text-2); min-width: 96px; font-size: var(--t-micro); line-height: var(--lh-micro); }
 .wk-day .mini { margin-left: auto; }
-.done-tick { color: var(--acc); }
+.done-tick { color: var(--accent); }
 /* Progress page: one headline per section, details tucked away */
 .headline { font-size: var(--t-title); line-height: var(--lh-title); font-weight: var(--fw-title); letter-spacing: -.012em; margin: var(--s-1) 0 var(--s-2); font-variant-numeric: tabular-nums; }
 .headline-sub { font-size: var(--t-label); line-height: var(--lh-label); font-weight: var(--fw-label); color: var(--text-2); letter-spacing: 0; }
@@ -426,8 +434,11 @@ details.disc { margin: var(--s-2) 0 0; border-top: 1px solid var(--border); }
 details.disc > summary { list-style: none; cursor: pointer; color: var(--text-2); font-size: var(--t-label); font-weight: var(--fw-label); padding: var(--s-3) 0 var(--s-2); min-height: var(--tap); display: flex; align-items: center; gap: var(--s-2); }
 details.disc > summary::-webkit-details-marker { display: none; }
 details.disc[open] > summary { color: var(--text); }
-.tag-moved { font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); border: 1px solid #2b3648; border-radius: 6px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
-.wk-head .mini { min-height: 30px; padding: 2px 10px; margin-left: 8px; }
+.tag-moved { font-size: var(--t-micro); line-height: var(--lh-micro); font-weight: var(--fw-micro); letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); border: 1px solid var(--border-i); border-radius: var(--r-sm); padding: 0 var(--s-1); margin-left: var(--s-2); vertical-align: middle; }
+/* was forced to 30px, under the 44px floor, to fit the week header. The header
+   grew instead — a control you can see but not reliably hit is worse than a
+   slightly taller row. */
+.wk-head .mini { min-height: var(--tap); padding: var(--s-2) var(--s-3); margin-left: var(--s-2); }
 
 /* summary */
 .statgrid { display: flex; gap: var(--s-2); margin-bottom: var(--s-4); }
@@ -480,25 +491,25 @@ details.disc[open] > summary { color: var(--text); }
 .ch-ax { fill: var(--text-2); font-size: .75em; }
 
 /* settings */
-.set-row { display: flex; align-items: center; justify-content: space-between; background: var(--bg2); border-radius: 10px; padding: 13px 14px; margin-bottom: 8px; font-weight: 600; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: var(--tap); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-bottom: var(--s-2); font-weight: var(--fw-label); font-size: var(--t-label); }
 .set-row select, .set-row input { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-i); border-radius: var(--r-sm); padding: var(--s-3); font-size: var(--t-label); min-height: var(--tap); }
 .set-row select:focus, .set-row input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-wash); }
-.toggle { min-width: 68px; min-height: 44px; background: var(--bg3); border: 1px solid #2b3648; border-radius: 22px; padding: 7px 16px; font-weight: 800; font-size: .8rem; color: var(--dim); }
-.toggle.on { background: var(--acc-d); border-color: var(--acc); color: var(--fg); }
+.toggle { min-width: 68px; min-height: var(--tap); background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-full); padding: var(--s-2) var(--s-4); font-weight: var(--fw-micro); font-size: var(--t-micro); text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
+.toggle.on { background: var(--accent-fill); border-color: var(--accent); color: var(--text); }
 
 /* new-feature bits */
 .updatebar { position: fixed; top: calc(var(--s-2) + env(safe-area-inset-top)); left: var(--s-3); right: var(--s-3); min-height: var(--tap); background: var(--accent-fill); border: 1px solid var(--accent); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); text-align: center; font-weight: var(--fw-title); font-size: var(--t-label); z-index: 60; cursor: pointer; box-shadow: var(--e-2); }
-.card.deload { border-color: var(--warn); }
-.card.deload .card-kicker { color: var(--warn); }
-.card.backup { border-color: #2b3648; }
-.run-logged { margin-top: 12px; font-weight: 700; color: var(--acc); font-size: .95rem; }
+.card.deload { border-color: var(--border); box-shadow: inset 3px 0 0 var(--warning); padding-left: calc(var(--s-4) + var(--s-1)); }
+.card.deload .card-kicker { color: var(--warning); }
+.card.backup { border-color: var(--border); }
+.run-logged { margin-top: var(--s-3); font-weight: var(--fw-head); color: var(--accent); font-size: var(--t-label); line-height: var(--lh-label); }
 .rpe.feel { min-width: 90px; }
 .editbtn { margin-left: 8px; font-size: .72rem; }
-.editgrid-head, .editrow { display: grid; grid-template-columns: 24px 1fr 1fr 1fr 44px; gap: 8px; align-items: center; margin-bottom: 8px; }
-.editgrid-head { font-size: .72rem; color: var(--dim); font-weight: 700; text-transform: uppercase; }
-.editrow input[type=number] { width: 100%; min-height: 44px; background: var(--bg3); border: 1px solid #2b3648; border-radius: 8px; padding: 12px 8px; color: var(--fg); font-size: 1rem; text-align: center; }
-.editrow input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--acc); justify-self: center; }
-.editrow span { color: var(--dim); font-weight: 700; }
+.editgrid-head, .editrow { display: grid; grid-template-columns: 24px 1fr 1fr 1fr 44px; gap: var(--s-2); align-items: center; margin-bottom: var(--s-2); }
+.editgrid-head { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--text-2); font-weight: var(--fw-micro); text-transform: uppercase; letter-spacing: .06em; }
+.editrow input[type=number] { width: 100%; min-height: var(--tap); background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-sm); padding: var(--s-3) var(--s-2); color: var(--text); font-size: var(--t-body); text-align: center; font-variant-numeric: tabular-nums; }
+.editrow input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); justify-self: center; }
+.editrow span { color: var(--text-2); font-weight: var(--fw-head); }
 
 /* run logging + progress */
 .pace-line { background: var(--surface-2); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-bottom: var(--s-4); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text-2); }
@@ -508,19 +519,19 @@ details.disc[open] > summary { color: var(--text); }
 .ln-pace { fill: none; stroke: var(--info); stroke-width: 2; opacity: .8; }
 
 /* install banner */
-.install { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 12px; right: 12px; background: var(--bg3); border: 1px solid var(--acc); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; z-index: 25; font-size: .88rem; }
+.install { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: var(--s-3); right: var(--s-3); background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); display: flex; align-items: center; gap: var(--s-3); z-index: 25; font-size: var(--t-label); line-height: var(--lh-label); box-shadow: var(--e-2); }
 .install div { flex: 1; }
 
 /* ===== v13: tap-to-type, race kit, maintenance, trends ===== */
 input.stepval.typeval { display: block; background: var(--bg3); border: 1px solid var(--acc-d); border-radius: 10px; color: var(--fg); padding: 4px 6px; width: 100%; min-width: 0; -moz-appearance: textfield; }
 input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit-inner-spin-button { -webkit-appearance: none; }
 /* the whole row is the tap target, not just the box */
-.chk-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; min-height: 44px; border-bottom: 1px solid #232c3a; font-size: .92rem; line-height: 1.45; }
+.chk-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-1); min-height: var(--tap); border-bottom: 1px solid var(--border); font-size: var(--t-label); line-height: var(--lh-label); }
 .chk-row:last-of-type { border-bottom: none; }
-.chk-row input[type="checkbox"] { width: 26px; height: 26px; accent-color: var(--acc); flex-shrink: 0; }
-.chk-row input:checked + span { color: var(--dim); text-decoration: line-through; }
-.card.racekit { border-color: var(--gold); }
-.card.racekit .card-kicker { color: var(--gold); }
+.chk-row input[type="checkbox"] { width: 26px; height: 26px; accent-color: var(--accent); flex-shrink: 0; }
+.chk-row input:checked + span { color: var(--text-2); text-decoration: line-through; }
+.card.racekit { border-color: var(--border); box-shadow: inset 3px 0 0 var(--warning); padding-left: calc(var(--s-4) + var(--s-1)); }
+.card.racekit .card-kicker { color: var(--warning); }
 .rpe.feel { text-transform: none; }
 /* the gradient is gone — flat surface, accent carried by the kicker alone */
 .card.insight { border-color: var(--border); background: var(--surface); }
@@ -605,7 +616,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 
 /* v51: div-based tap targets are keyboard-reachable now (role=button +
    tabindex), so they need the focus ring a real button gets for free. */
-[role="button"]:focus-visible { outline: 2px solid var(--acc, #b5d94c); outline-offset: 2px; }
+[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* v55: whole-programme overview — one row per week, seven marks per row.
    Fixed-width day cells so the weeks line up into columns you can read
@@ -622,9 +633,9 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .pgm-d.empty { background: none; }
 /* A day carrying two activities (lift + run, run + mobility) only has room for
    the first emoji, so the second is marked with an underline rather than lost. */
-.pgm-d.lift.run, .pgm-d.run.mob { box-shadow: inset 0 -2.5px 0 var(--acc, #b5d94c); }
+.pgm-d.lift.run, .pgm-d.run.mob { box-shadow: inset 0 -2.5px 0 var(--accent); }
 .pgm-d.done { background: rgba(181, 217, 76, .3); }
-.pgm-d.today { outline: 1.5px solid var(--acc, #b5d94c); }
+.pgm-d.today { outline: 1.5px solid var(--accent); }
 .pgm-ph { font-size: .72rem; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 380px) { .pgm-days { grid-template-columns: repeat(7, 18px); } .pgm-d { font-size: .62rem; } }
 
