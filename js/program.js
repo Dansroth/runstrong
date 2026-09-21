@@ -1384,6 +1384,151 @@ function materializeTemplate(tplId, dateISO, mesoStartISO, picks) {
   return { title: tpl.title, est: tpl.est, items, style: style || null };
 }
 
+/* =====================================================================
+   THE TIME CAP (v71)
+   =====================================================================
+   Five 60 min sessions is five hours a week, and the commonest reason a
+   session does not happen is not boredom — it is not having an hour. The
+   readiness downgrades ('light', 'red') already existed and do not help
+   here: they trim sets and load, so a 60 min session keeps all six
+   exercises and still takes most of an hour. Nothing in the app converted
+   'I have twenty-five minutes' into a session instead of a skip.
+
+   What gets kept is a PREFIX, and that is not laziness about ordering —
+   the templates are already written priority-first (HYPER_RAMP bumps items
+   0-3, so the first four are the block's priority work by construction).
+   Taking from the front is taking the most important work.
+
+   The last exercise that will not fit whole is trimmed to the sets that do
+   fit rather than dropped, because two sets of something beat none of it.
+
+   The time model is calibrated against the template's OWN `est` rather
+   than against absolute seconds. A raw sum of sets x (work + rest) puts
+   hypLowerS at 75 min where the template says 62, because nobody takes the
+   full 150 s between every squat set. Scaling the model so the whole
+   template equals its stated `est` means the cap is expressed in the same
+   minutes the app already promises on the card — if the estimate is
+   optimistic, the cap is optimistic in exactly the same proportion, and
+   the two can never disagree with each other. */
+const SET_WORK_SECS = 40;        // a working set, bar to bar
+const EX_SETUP_SECS = 120;       // finding the station, loading, the first setup
+const WARMUP_RAMP_SECS = 180;    // exercises carrying `wu` ramp up to the working weight
+const TIME_CAPS = [20, 30, 45];  // offered only where they are shorter than the session
+function itemSecs(exId, sets) {
+  const ex = EXERCISES[exId];
+  if (!ex) return 0;
+  return EX_SETUP_SECS + (ex.wu ? WARMUP_RAMP_SECS : 0) + sets * (SET_WORK_SECS + (ex.rest || 60));
+}
+/* Trim a materialised template to fit `mins`. Returns the same shape plus
+   `dropped` (names, template order), `trimmed` (each exercise whose sets
+   were cut) and `capMins`, so the UI can say exactly what was given up — a
+   session that silently contains less than it promised is worse than no cap.
+
+   COVERAGE BEFORE SETS, which is the whole design and was got wrong first
+   time. The obvious algorithm — keep whole exercises from the front until
+   the budget runs out — is greedy in the wrong dimension: it spends the
+   entire budget on full sets of the first lift, so a 30 min leg day came
+   out as four squats and four RDLs and a 20 min one as nothing but squats.
+   A coach with half an hour does not do that. They do two or three
+   movements for two or three sets each, because at short duration what you
+   lose by dropping a movement is far more than what you lose by dropping
+   its third set.
+
+   So: find the longest PREFIX that fits at a floor of two sets each, then
+   spend whatever is left adding sets back one at a time, in template order
+   — which is priority order, since HYPER_RAMP bumps items 0-3. Exercises
+   past the prefix are dropped and named. The first exercise survives any
+   cap, at one set if that is all there is room for: fifteen minutes should
+   produce one hard set of the main lift, not an empty session.
+
+   Pure: takes a materialised template, returns a new one. */
+const CAP_MIN_SETS = 2;
+function fitToMinutes(tpl, mins) {
+  if (!tpl) return tpl;
+  /* Always the same shape, capped or not. An early return of the bare
+     template would hand callers an object with no `dropped` to read. */
+  const whole = { title: tpl.title, est: tpl.est, items: tpl.items, style: tpl.style || null, dropped: [], trimmed: [], capMins: null, fullEst: tpl.est };
+  if (!mins || !tpl.items.length || mins >= tpl.est) return whole;
+  const nameOf = id => (EXERCISES[id] ? EXERCISES[id].name : id);
+  const raw = tpl.items.map(([id, sets]) => itemSecs(id, sets));
+  const total = raw.reduce((a, b) => a + b, 0);
+  if (!total) return whole;
+  const scale = (tpl.est * 60) / total;     // the model agrees with the card
+  const budget = mins * 60;
+  const fixed = i => { const ex = EXERCISES[tpl.items[i][0]] || {}; return (EX_SETUP_SECS + (ex.wu ? WARMUP_RAMP_SECS : 0)) * scale; };
+  const per = i => { const ex = EXERCISES[tpl.items[i][0]] || {}; return (SET_WORK_SECS + (ex.rest || 60)) * scale; };
+  const floorSets = i => Math.min(tpl.items[i][1], CAP_MIN_SETS);
+  // 1. longest prefix that fits at the floor
+  let k = 0, spent = 0;
+  for (let i = 0; i < tpl.items.length; i++) {
+    const cost = fixed(i) + floorSets(i) * per(i);
+    if (spent + cost > budget) break;
+    spent += cost; k++;
+  }
+  const sets = [];
+  if (k === 0) {   // not even one exercise at the floor — give the main lift what fits
+    k = 1;
+    const n = Math.max(1, Math.min(tpl.items[0][1], Math.floor((budget - fixed(0)) / per(0))));
+    sets.push(n); spent = fixed(0) + n * per(0);
+  } else {
+    for (let i = 0; i < k; i++) sets.push(floorSets(i));
+  }
+  // 2. add sets back in priority order while they fit
+  let added = true;
+  while (added) {
+    added = false;
+    for (let i = 0; i < k; i++) {
+      if (sets[i] >= tpl.items[i][1]) continue;
+      if (spent + per(i) > budget) continue;
+      sets[i]++; spent += per(i); added = true;
+    }
+  }
+  const items = [], trimmed = [], dropped = [];
+  tpl.items.forEach(([exId, full, reps], i) => {
+    if (i >= k) { dropped.push(nameOf(exId)); return; }
+    items.push([exId, sets[i], reps]);
+    if (sets[i] < full) trimmed.push({ name: nameOf(exId), from: full, to: sets[i] });
+  });
+  return { title: tpl.title, est: Math.max(1, Math.round(spent / 60)), items, style: tpl.style || null, dropped, trimmed, capMins: mins, fullEst: tpl.est };
+}
+
+/* =====================================================================
+   RESCUING A MISSED SESSION (v71)
+   =====================================================================
+   Miss a Monday and the session was simply gone. The day-swap has existed
+   since v36 but cannot help: swapLockReason() refuses to move a day that is
+   already in the past, and correctly so — a swap would put Wednesday's run
+   back onto a Monday that has been and gone, where it can never be logged.
+
+   So this is a one-way move, not a swap. The missed day stays missed,
+   because that is what happened, and the session is re-planned onto an
+   upcoming day that is not already a lift. What was on that day — in this
+   block, a run — comes off the plan, and the UI says so plainly rather than
+   quietly overwriting it. The result is checked by swapWarnings() like any
+   other rearrangement, so moving legs next to the long run still warns. */
+const RESCUE_LOOKBACK_DAYS = 3;
+/* Lift days just gone with nothing logged against them. `logged(date)` is
+   supplied by the app, exactly as swapLockReason() takes it. */
+function missedLifts(days, todayISO, logged, lookback) {
+  const from = dadd(todayISO, -(lookback || RESCUE_LOOKBACK_DAYS));
+  return (days || []).filter(d => d && d.kind === 'lift' && !d.optional
+    && d.date >= from && d.date < todayISO && !logged(d.date));
+}
+/* Where it could go: the soonest day from today on that is not already a
+   lift, is not a race, and has nothing logged on it. Returns null when the
+   week has no room — in which case the honest answer is that the session is
+   gone, and the card does not appear. */
+function rescueTarget(days, todayISO, logged) {
+  return (days || []).find(d => d && d.date >= todayISO && d.kind !== 'lift'
+    && d.kind !== 'race' && !logged(d.date)) || null;
+}
+/* The week as it would look after the move, for swapWarnings(). */
+function rescueWeek(days, fromISO, toISO) {
+  const moved = (days || []).find(d => d && d.date === fromISO);
+  if (!moved) return days;
+  return days.map(d => (d.date === toISO ? { ...moved, date: toISO } : d));
+}
+
 /* race-week checklist defaults (editable per race in-app) */
 /* Stable ids, not positional index — ST.races[key].checklist is keyed by
    item.id so reordering or inserting an item here can never scramble an
@@ -1777,7 +1922,7 @@ function swapLockReason(day, todayISO, logged) {
 /* Same plan? Field-wise, so key order and a differing `date` don't matter. */
 function samePlan(a, b) {
   if (!a || !b) return a === b;
-  for (const k of ['kind', 'tpl', 'title', 'sub', 'optional', 'mobility']) if ((a[k] || null) !== (b[k] || null)) return false;
+  for (const k of ['kind', 'tpl', 'title', 'sub', 'optional', 'mobility', 'moved']) if ((a[k] || null) !== (b[k] || null)) return false;
   return true;
 }
 /* Warnings — never blocks — for a week as it would look after a swap, from
@@ -1961,28 +2106,55 @@ function daysSinceWeight(weights, todayISO) {
    Pure, so the rule is testable without app state: `trained` is a Set of ISO
    dates, `plannedOff(d)` answers whether the plan gave that day off.
    ===================================================================== */
-function streakCount(trained, plannedOff, todayISO) {
+/* GRACE (v71). A streak that snaps on the first missed day is the mechanic
+   that makes people stop opening the app altogether: the run is over, so
+   there is nothing left to protect, so why train today. One missed training
+   day per STREAK_GRACE_DAYS is forgiven — the day still does not COUNT
+   toward the number, it just does not end the run.
+
+   Deliberately one, and deliberately rate-limited rather than a pool: two
+   misses back to back need two graces inside a day of each other, the
+   second is refused, and the streak ends. Missing a day is survivable;
+   stopping is not, and a streak that survives anything measures nothing.
+
+   `graceDays` is a parameter with no default so every existing caller keeps
+   the old behaviour exactly, and the tests written against it stay valid. */
+const STREAK_GRACE_DAYS = 14;
+function streakCount(trained, plannedOff, todayISO, graceDays) {
   const alive = d => trained.has(d) || !!plannedOff(d);
   let d = todayISO;
   // Today not logged yet doesn't break it — the day isn't over.
   if (!alive(d)) d = dadd(d, -1);
-  let n = 0, guard = 0;
-  while (alive(d) && guard++ < 500) {
-    if (trained.has(d)) n++;
+  let n = 0, guard = 0, lastGrace = null;
+  while (guard++ < 500) {
+    if (alive(d)) { if (trained.has(d)) n++; d = dadd(d, -1); continue; }
+    if (!graceDays || n === 0) break;          // nothing started yet is not a streak to save
+    if (lastGrace && daysApart(d, lastGrace) < graceDays) break;
+    lastGrace = d;                              // forgiven, but never counted
     d = dadd(d, -1);
   }
   return n;
 }
-function longestStreakCount(trained, plannedOff, todayISO) {
+function longestStreakCount(trained, plannedOff, todayISO, graceDays) {
   const all = [...trained].sort();
   if (!all.length) return 0;
-  let best = 0, cur = 0, d = all[0], guard = 0;
+  let best = 0, cur = 0, d = all[0], guard = 0, lastGrace = null;
   while (d <= todayISO && guard++ < 3000) {
     if (trained.has(d)) { cur++; if (cur > best) best = cur; }
-    else if (!plannedOff(d)) cur = 0;
+    else if (!plannedOff(d)) {
+      if (graceDays && cur > 0 && !(lastGrace && daysApart(d, lastGrace) < graceDays)) lastGrace = d;
+      else { cur = 0; lastGrace = null; }
+    }
     d = dadd(d, 1);
   }
   return best;
+}
+/* Whole days between two ISO dates, order-independent. UTC for the same
+   reason weeksSince() uses it: a DST change inside the span otherwise makes
+   fourteen days measure 13.96 and the grace refresh a day early. */
+function daysApart(a, b) {
+  const [ay, am, ad] = a.split('-').map(Number), [by, bm, bd] = b.split('-').map(Number);
+  return Math.abs(Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86400000));
 }
 
 /* =====================================================================
@@ -2585,6 +2757,8 @@ if (typeof module !== 'undefined' && module.exports) {
     mobilityRoutine, MOBILITY_MINS,
     HYPER_MESO_WEEKS, HYPER_POOLS, HYPER_ORDER, weeksSince, hyperExId, materializeTemplate, dadd, dstr,
     REP_STYLES, repStyleFor, styledReps, mesoIndex, deloadWeekLayout,
+    fitToMinutes, itemSecs, TIME_CAPS, SET_WORK_SECS, EX_SETUP_SECS, WARMUP_RAMP_SECS, CAP_MIN_SETS,
+    missedLifts, rescueTarget, rescueWeek, RESCUE_LOOKBACK_DAYS, STREAK_GRACE_DAYS, daysApart,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
   };

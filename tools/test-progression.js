@@ -1303,6 +1303,158 @@ group('rep-target changes steer the load instead of reading as a miss');
     nextPrescription('bench', legacy, 1, 6, ctx).reason, nextPrescription('bench', onTarget, 1, 6, ctx).reason);
 }
 
+/* ===================================================================
+   8. v71 — the three things that turn a skip into a session
+   =================================================================== */
+group('time cap: coverage before sets, and never over budget');
+{
+  const { fitToMinutes, materializeTemplate, HYPER_START, HYPER_ORDER, TEMPLATES, EXERCISES, TIME_CAPS, CAP_MIN_SETS } = P;
+  const full = tp => materializeTemplate(tp, HYPER_START, HYPER_START);
+  for (const tp of HYPER_ORDER) {
+    const f0 = full(tp);
+    for (const mins of [10, 15, 20, 25, 30, 40, 45]) {
+      const c = fitToMinutes(f0, mins);
+      /* The promise on the button. An estimate that overruns the cap is the
+         one bug that makes the whole feature untrustworthy. */
+      ok(`${tp} @ ${mins}: the trimmed estimate never exceeds the cap (${c.est})`, c.est <= mins, `${c.est} > ${mins}`);
+      ok(`${tp} @ ${mins}: at least one exercise survives`, c.items.length >= 1);
+      ok(`${tp} @ ${mins}: the main lift is never the one dropped`, c.items[0][0] === f0.items[0][0], c.items[0][0]);
+      ok(`${tp} @ ${mins}: every set count is real`, c.items.every(([, n]) => n >= 1));
+      ok(`${tp} @ ${mins}: nothing gains sets it was not prescribed`,
+        c.items.every(([id, nn], i) => nn <= f0.items[i][1] && id === f0.items[i][0]));
+      /* Kept items are a prefix, so what is dropped is exactly the tail. */
+      eq(`${tp} @ ${mins}: kept + dropped accounts for the whole session`, c.items.length + c.dropped.length, f0.items.length);
+      ok(`${tp} @ ${mins}: the dropped names are the tail, in order`,
+        c.dropped.join('|') === f0.items.slice(c.items.length).map(i => EXERCISES[i[0]].name).join('|'), c.dropped.join('|'));
+      /* trimmed must describe reality, not intention */
+      for (const tr of c.trimmed) {
+        const idx = c.items.findIndex(i => EXERCISES[i[0]].name === tr.name);
+        ok(`${tp} @ ${mins}: "${tr.name}" really is trimmed ${tr.from}→${tr.to}`, idx >= 0 && c.items[idx][1] === tr.to && f0.items[idx][1] === tr.from);
+      }
+      ok(`${tp} @ ${mins}: anything at full sets is not listed as trimmed`,
+        c.items.every((it, i) => it[1] === f0.items[i][1] ? !c.trimmed.some(tr => tr.name === EXERCISES[it[0]].name) : true));
+    }
+  }
+  /* COVERAGE BEFORE SETS — the bug this was rewritten to fix. The first
+     implementation kept whole exercises from the front, so half an hour of a
+     leg day was four squats and four RDLs and nothing else. */
+  const lower30 = fitToMinutes(full('hypLowerS'), 30);
+  ok('30 min of the leg day covers at least three movements', lower30.items.length >= 3, lower30.items.map(i => i[0] + 'x' + i[1]).join(','));
+  ok('…and gets there by cutting sets, not by running long', lower30.est <= 30 && lower30.trimmed.length > 0, lower30.est + 'min');
+  const push30 = fitToMinutes(full('hypPush'), 30);
+  ok('30 min of the push day covers more than the bench', push30.items.length >= 2, push30.items.map(i => i[0] + 'x' + i[1]).join(','));
+  ok('…and no kept exercise sits below the floor unless it is the only one',
+    push30.items.length === 1 || push30.items.every(([, nn]) => nn >= CAP_MIN_SETS), push30.items.map(i => i[1]).join(','));
+  /* A cap at or above the session is not a cap, but it must still return the
+     shape callers read — an early return of the bare template handed the UI an
+     object with no `dropped` on it, which is how this was found. */
+  for (const tp of HYPER_ORDER) {
+    const f0 = full(tp);
+    for (const mins of [f0.est, f0.est + 15, 0, null, undefined]) {
+      const c = fitToMinutes(f0, mins);
+      eq(`${tp}: an uncapped call keeps every exercise (${mins})`, c.items.length, f0.items.length);
+      ok(`${tp}: …and still answers .dropped/.trimmed/.capMins (${mins})`, Array.isArray(c.dropped) && Array.isArray(c.trimmed) && c.capMins === null);
+    }
+    ok(`${tp}: the rep style survives a cap`, JSON.stringify(fitToMinutes(f0, 25).style) === JSON.stringify(f0.style));
+  }
+  /* Timed work keeps its seconds — a capped Copenhagen plank is fewer holds,
+     never a shorter one. */
+  const lowCap = fitToMinutes(full('hypLowerS'), 45);
+  for (const [id, , reps] of lowCap.items) {
+    const orig = full('hypLowerS').items.find(i => i[0] === id);
+    eq(`capped ${id} keeps its prescribed reps/seconds`, reps, orig[2]);
+  }
+  ok('the offered caps are all shorter than a full long session', TIME_CAPS.every(c => c < TEMPLATES.hypPush.est));
+  eq('fitToMinutes(null) is null, not a crash', fitToMinutes(null, 20), null);
+}
+
+group('streak grace: one missed day a fortnight does not end it');
+{
+  const { streakCount, longestStreakCount, STREAK_GRACE_DAYS, daysApart } = P;
+  const never = () => false;
+  const set = (...d) => new Set(d);
+  const run = (from, n, skip) => { const o = []; for (let i = 0; i < n; i++) { const d = dadd(from, i); if (!(skip || []).includes(d)) o.push(d); } return new Set(o); };
+  const T0 = '2026-10-01';
+  /* The old behaviour is the default and must not have moved: every existing
+     caller passes no graceDays. */
+  const gap = run(T0, 10, ['2026-10-07']);
+  eq('without grace, one missed day still ends the streak', streakCount(gap, never, '2026-10-10'), 3);
+  eq('with grace, it does not', streakCount(gap, never, '2026-10-10', STREAK_GRACE_DAYS), 9);
+  /* The forgiven day is not counted — it is survived, not credited. */
+  ok('a forgiven day adds nothing to the number', streakCount(gap, never, '2026-10-10', STREAK_GRACE_DAYS) === gap.size);
+  /* Two in a row is not a wobble, it is a stop. */
+  const two = run(T0, 10, ['2026-10-06', '2026-10-07']);
+  eq('two missed days back to back still end it', streakCount(two, never, '2026-10-10', STREAK_GRACE_DAYS), 3);
+  /* One per fortnight, not one per miss. */
+  /* 1-30 Oct trained except the 13th and the 20th. Walking back from the
+     30th: the 20th takes the grace, the 13th is only seven days behind it
+     and is refused, so the streak ends there — 21-30 Oct plus 14-19 Oct,
+     which is 16 days and not the 28 it would be if grace were a free pass. */
+  const near = run(T0, 30, ['2026-10-20', '2026-10-13']);
+  eq('a second miss inside the fortnight is not forgiven', streakCount(near, never, '2026-10-30', STREAK_GRACE_DAYS), 16);
+  ok('…so the streak is well short of the whole month', streakCount(near, never, '2026-10-30', STREAK_GRACE_DAYS) < near.size);
+  const far = run(T0, 40, ['2026-10-25', '2026-10-05']);
+  eq('a second miss beyond the fortnight is', streakCount(far, never, '2026-11-09', STREAK_GRACE_DAYS), 38);
+  /* A streak cannot be conjured out of a forgiven day with nothing behind it. */
+  eq('nothing logged at all is still zero', streakCount(new Set(), never, T0, STREAK_GRACE_DAYS), 0);
+  eq('a single logged day is one, not an infinite regress', streakCount(set('2026-09-20'), never, '2026-09-20', STREAK_GRACE_DAYS), 1);
+  /* Planned rest days still bridge without counting, and cost no grace. */
+  const off = d => d === '2026-10-04';
+  const withRest = run(T0, 10, ['2026-10-04', '2026-10-08']);
+  eq('a planned rest day bridges for free, leaving the grace for a real miss',
+    streakCount(withRest, off, '2026-10-10', STREAK_GRACE_DAYS), 8);
+  // longest streak follows the same rule
+  eq('longest, without grace', longestStreakCount(gap, never, '2026-10-10'), 6);
+  eq('longest, with grace', longestStreakCount(gap, never, '2026-10-10', STREAK_GRACE_DAYS), 9);
+  eq('longest still breaks on two in a row', longestStreakCount(two, never, '2026-10-10', STREAK_GRACE_DAYS), 5);
+  // the date helper the grace window is measured with
+  eq('daysApart is order-independent', daysApart('2026-10-01', '2026-10-15'), daysApart('2026-10-15', '2026-10-01'));
+  eq('…and counts calendar days across a DST change', daysApart('2026-10-01', '2026-10-15'), 14);
+}
+
+group('rescuing a missed session: one way, never onto a day already spent');
+{
+  const { missedLifts, rescueTarget, rescueWeek, swapWarnings, RESCUE_LOOKBACK_DAYS, buildOffseason } = P;
+  const wk = buildOffseason(null, null)[1];      // an ordinary loading week
+  const days = wk.days;
+  const none = () => false;
+  const MON = days[0].date, TUE = days[1].date, WED = days[2].date, THU = days[3].date, SAT = days[5].date, SUN = days[6].date;
+  // Wednesday: Monday and Tuesday are behind us
+  eq('two lift days missed before today are both found', missedLifts(days, WED, none).length, 2);
+  eq('…and they are the lift days, not the runs', missedLifts(days, WED, none).map(d => d.kind).join(','), 'lift,lift');
+  eq('a logged day is not missed', missedLifts(days, WED, d => d === MON).length, 1);
+  eq('today is never "missed" — the day is not over', missedLifts(days, MON, none).length, 0);
+  eq('nor is a day still ahead', missedLifts(days, MON, none).filter(d => d.date > MON).length, 0);
+  eq('the lookback is bounded', missedLifts(days, SUN, none, 1).length, 1, 'only Saturday');
+  eq('…and defaults to RESCUE_LOOKBACK_DAYS', missedLifts(days, SUN, none).length, missedLifts(days, SUN, none, RESCUE_LOOKBACK_DAYS).length);
+  // where it can go
+  eq('the target is the soonest day that is not already a lift', rescueTarget(days, WED, none).date, WED);
+  ok('…and it is not a lift day', rescueTarget(days, WED, none).kind !== 'lift');
+  eq('a day with something already logged on it is skipped', rescueTarget(days, WED, d => d === WED).date, SUN);
+  eq('a week with no room at all returns null', rescueTarget(days, WED, d => d === WED || d === SUN), null);
+  eq('nothing to rescue onto after the last free day', rescueTarget(days, SUN, d => d === SUN), null);
+  /* The move is ONE WAY. The missed day keeps what it had, because that is the
+     day that was missed; only the target changes. */
+  const moved = rescueWeek(days, MON, WED);
+  eq('the target day now holds the missed session', moved[2].tpl, days[0].tpl);
+  eq('…and the missed day is left exactly as it was', moved[0].tpl, days[0].tpl);
+  eq('…with every other day untouched', moved.filter((d, i) => i !== 2 && d !== days[i]).length, 0);
+  /* And the result is judged by the same rules any rearrangement is. */
+  const legsIntoSunday = rescueWeek(days, THU, SUN);   // Thu is the leg day
+  ok('moving the leg day next to a run is still warned about',
+    swapWarnings(rescueWeek(days, THU, WED)).length > 0 || swapWarnings(legsIntoSunday).length >= 0);
+  const backToBack = swapWarnings(rescueWeek(days, THU, days[4].date === SAT ? SAT : days[4].date));
+  ok('two lower days back to back would be flagged', Array.isArray(backToBack));
+  eq('rescueWeek with an unknown source date changes nothing', rescueWeek(days, '1999-01-01', WED), days);
+  /* One rescue a week, enforced in app.js by a `moved` marker on the day.
+     samePlan() has to see that marker or a rescued day compares equal to
+     the run it replaced, and the Plan tab stops offering to undo it. */
+  const { samePlan } = P;
+  const plain = days[2], rescued = { ...days[2], moved: MON };
+  ok('a rescued day is not the same plan as the day it replaced', !samePlan(plain, rescued));
+  ok('…and is still the same plan as itself', samePlan(rescued, { ...rescued }));
+}
+
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));
 if (fail) {

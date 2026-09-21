@@ -462,3 +462,6 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
    show a direction, not to be read off. */
 .bmspark { display: inline-flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: 8px; }
 .bmspark i { width: 5px; border-radius: 1px; background: var(--accent, #4ade80); opacity: .8; }
+
+/* ---- v71: the missed-session offer ---- */
+.card.rescue { border-left: 3px solid #f0b429; }

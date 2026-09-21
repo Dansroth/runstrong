@@ -16,6 +16,7 @@ function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
     picks: {},          // v70: { [mesoIndex]: { [pool]: exId } } — the athlete's own rotation choice
+    rescueDismissed: {},// v71: missed lift days the athlete chose to let go
     blockSeen: null,    // v70: the last mesocycle whose review card was acknowledged
     settings: { step: WEIGHT_STEP_DEFAULT, barWeight: 20, equip: defaultEquip(), sound: true, vibrate: true, seenInstall: false, disclaimerSeen: false, notifPrimed: false, reminder: { on: false, time: '17:30' } },
     program: buildProgram(),
@@ -370,7 +371,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v70';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v71';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -672,11 +673,16 @@ function progressionCtx(date, downgrade) {
 /* downgrade: false | 'light' (−1 set, −10% load) | 'red' (−40% volume, −10% load).
    The −10% load now comes from the 'deload' phase policy inside nextPrescription,
    so it is rounded to the user's increment once instead of being multiplied twice. */
-function buildSession(date, tplId, downgrade) {
+function buildSession(date, tplId, downgrade, capMins) {
   // materializeTemplate resolves hypertrophy-phase 'ROTATE:<pool>' sentinels
   // into real exIds for this date; every other template has no sentinel and
   // passes through unchanged, so this is safe for every tplId.
-  const tpl = matTpl(tplId, date);
+  /* The time cap is applied BEFORE the readiness downgrade, not instead of
+     it. They answer different questions — 'how long have I got' and 'how
+     rough do I feel' — and someone can honestly be both short of time and
+     wrecked. fitToMinutes() decides which exercises and how many sets fit;
+     the downgrade below then trims what is left, as it always has. */
+  const tpl = fitToMinutes(matTpl(tplId, date), capMins);
   const ctx = progressionCtx(date, downgrade);
   // Block volume (weekly ramp, deload halving) is already applied by
   // materializeTemplate; only the readiness downgrade is decided here.
@@ -691,7 +697,9 @@ function buildSession(date, tplId, downgrade) {
       sets: Array.from({ length: n }, () => ({ weight: null, reps: null, rpe: null, note: '', done: false, failed: false, ts: null })),
     };
   });
-  return { id: date, date, tpl: tplId, title: tpl.title, status: 'active', downgraded: downgrade || false, phase: ctx.phase, readiness: null, guidance: null, stretch: null, exercises, curIdx: 0, startedTs: Date.now(), finishedTs: null };
+  return { id: date, date, tpl: tplId, title: tpl.title, status: 'active', downgraded: downgrade || false, phase: ctx.phase,
+    capMins: tpl.capMins || null, capDropped: tpl.dropped || [], capTrimmed: tpl.trimmed || [], capEst: tpl.est,
+    readiness: null, guidance: null, stretch: null, exercises, curIdx: 0, startedTs: Date.now(), finishedTs: null };
 }
 
 /* Swapping exercise mid-session used to reassign e.exId unconditionally: any
@@ -911,12 +919,12 @@ function plannedOffDay(d) {
   const day = dayFor(d);
   return !!(day && (day.kind === 'rest' || day.optional));
 }
-function currentStreak() { return streakCount(activityDates(), plannedOffDay, today()); }
+function currentStreak() { return streakCount(activityDates(), plannedOffDay, today(), STREAK_GRACE_DAYS); }
 /* Longest run of consecutive activity dates ever, not just the live one —
    currentStreak() answers "am I on one right now", this answers "what's the
    best I've done", which needs the whole history rather than a walk back
    from today. */
-function longestStreak() { return longestStreakCount(activityDates(), plannedOffDay, today()); }
+function longestStreak() { return longestStreakCount(activityDates(), plannedOffDay, today(), STREAK_GRACE_DAYS); }
 const STREAK_DAYS = 35;
 function streakHeatmap() {
   const dates = activityDates();
@@ -933,7 +941,7 @@ function streakHeatmap() {
     : (best > 0 ? `Start a streak · best ${best}` : 'Start a streak');
   return `<div class="card streak">
     <div class="card-kicker">🔥 ${esc(kicker)}</div>
-    <div class="card-sub">${streak > 0 ? 'A lift or a run, any day, keeps it alive.' : 'Log a lift or a run today to start one.'}</div>
+    <div class="card-sub">${streak > 0 ? `A lift or a run, any day, keeps it alive — and one missed day a fortnight won't end it.` : 'Log a lift or a run today to start one.'}</div>
     <div class="heatmap">${cells}</div>
   </div>`;
 }
@@ -1023,7 +1031,7 @@ function vHome() {
     card = `<div class="card"><div class="card-title">${esc(day.title || 'Rest')}</div><div class="card-sub">${esc(day.sub || 'Recovery is training too.')}</div></div>`;
   }
   const radar = deloadRadar();
-  const radarCard = (() => { try { return blockMomentCard() + reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
+  const radarCard = (() => { try { return blockMomentCard() + rescueCard() + reminderCard() + weightNudgeCard(); } catch (e) { return ''; } })()
     + (radar ? `<div class="card deload"><div class="card-kicker">⚠️ Deload radar</div><div class="card-sub">${esc(radar)}</div></div>` : '');
   /* The unlogged-run backlog card is gone (v61, by request). It began as an
      improvement — v23 turned a queue of modal sheets into one passive card —
@@ -1512,17 +1520,36 @@ window.openReadiness = function (date, tpl) {
   m.innerHTML = `<div class="sheet">
     <h2>Quick readiness check</h2>
     ${todayRun ? `<div class="pace-line">🏃 Already run today: <b>${esc(todayRun.name || 'Run')}</b> — ${todayRun.km} km · ${paceStr(todayRun.km, todayRun.movingMin) || ''}${todayRun.avgHr ? ` · ${todayRun.avgHr} bpm` : ''}. Expect legs to feel heavier than the numbers suggest.</div>` : ''}
-    ${runAware ? `<div class="notice">🏃 ${esc(runAware)}</div><button class="btn warn big" onclick="beginSession('${date}','${tpl}',{sore:3,fat:3},'light')">Start lighter version (run-aware)</button>` : ''}
+    ${runAware ? `<div class="notice">🏃 ${esc(runAware)}</div><button class="btn warn big" id="r-runaware">Start lighter version (run-aware)</button>` : ''}
     ${radar ? `<div class="notice">⚠️ ${esc(radar)}</div>` : ''}
     <div class="ready-q"><div>Muscle soreness</div><div class="scale" id="r-sore">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>fresh</span><span>wrecked</span></div></div>
     <div class="ready-q"><div>Overall fatigue</div><div class="scale" id="r-fat">${[1,2,3,4,5].map(n=>`<button data-v="${n}">${n}</button>`).join('')}</div><div class="scale-lbl"><span>energised</span><span>flat</span></div></div>
+    ${(() => {
+      /* Only offered where it would actually change something — a cap of 45
+         on a 30 min arms day is a button that does nothing, and a row of
+         those teaches people the row is decorative. */
+      const est = (matTpl(tpl, date) || { est: 0 }).est;
+      const caps = TIME_CAPS.filter(c => c < est);
+      if (!caps.length) return '';
+      return `<div class="ready-q"><div>Time you've got</div>
+        <div class="scale" id="r-cap"><button data-v="0" class="sel">Full · ${est} min</button>${caps.slice().reverse().map(c => `<button data-v="${c}">${c} min</button>`).join('')}</div>
+        <div class="scale-lbl"><span>Short on time? Take the cap — the main lifts stay, the tail comes off.</span></div></div>`;
+    })()}
     <div class="ready-q" id="r-wu" hidden><div>Warm-up length</div>
       <div class="scale" id="r-wumins">${PREP_MINS_CHOICES.map(n => `<button data-v="${n}"${n === PREP_MINS_LIFT ? ' class="sel"' : ''}>${n} min</button>`).join('')}</div></div>
     <button class="btn primary big" id="r-go" disabled>Start</button>
     <button class="linkbtn" id="r-skipwu" hidden>Skip warm-up — straight to the workout</button>
     <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
   m.classList.add('open');
-  let sore = null, fat = null, guidance = null, wuMins = PREP_MINS_LIFT;
+  let sore = null, fat = null, guidance = null, wuMins = PREP_MINS_LIFT, capMins = null;
+  /* Wired rather than inlined in the markup so it reads the cap chosen
+     after the sheet was built, like every other exit from this sheet. */
+  if ($('#r-runaware')) $('#r-runaware').onclick = () => beginSession(date, tpl, { sore: 3, fat: 3 }, 'light', null, capMins);
+  if ($('#r-cap')) $('#r-cap').onclick = e => {
+    if (!e.target.dataset.v) return;
+    capMins = +e.target.dataset.v || null;
+    [...$('#r-cap').children].forEach(b => b.classList.toggle('sel', (+b.dataset.v || null) === capMins));
+  };
   /* Single-select, unlike the 1-5 readiness scales above which fill cumulatively. */
   $('#r-wumins').onclick = e => {
     if (!e.target.dataset.v) return;
@@ -1549,7 +1576,7 @@ window.openReadiness = function (date, tpl) {
         <div class="guide-why">${esc(guidance.reason)}</div>${disclaimer}${notifNote}</div>
       ${guidance.level === 'red' ? `<button class="btn warn big" id="r-red" style="margin-top:10px">Use lighter workout (−40% volume)</button>` : ''}
     </div>`);
-    if ($('#r-red')) $('#r-red').onclick = () => beginSession(date, tpl, { sore, fat }, 'red', { ...guidance, followed: 'lighter' });
+    if ($('#r-red')) $('#r-red').onclick = () => beginSession(date, tpl, { sore, fat }, 'red', { ...guidance, followed: 'lighter' }, capMins);
     /* The warm-up leads into the workout rather than sitting beside it — one tap
        to do the right thing, one link to opt out. The two "lighter day" escapes
        above keep starting immediately; someone taking those wants to get going. */
@@ -1557,13 +1584,13 @@ window.openReadiness = function (date, tpl) {
     $('#r-wu').hidden = false;
     const skip = $('#r-skipwu');
     skip.hidden = false;
-    skip.onclick = () => beginSession(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null);
+    skip.onclick = () => beginSession(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null, capMins);
     if (!ST.settings.disclaimerSeen) { ST.settings.disclaimerSeen = true; save(); }
     if (!ST.settings.notifPrimed) { ST.settings.notifPrimed = true; save(); }
   };
   $('#r-sore').onclick = e => { if (e.target.dataset.v) { sore = +e.target.dataset.v; [...$('#r-sore').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= sore)); update(); } };
   $('#r-fat').onclick = e => { if (e.target.dataset.v) { fat = +e.target.dataset.v; [...$('#r-fat').children].forEach(b => b.classList.toggle('sel', +b.dataset.v <= fat)); update(); } };
-  $('#r-go').onclick = () => startLiftPrep(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null, wuMins);
+  $('#r-go').onclick = () => startLiftPrep(date, tpl, { sore, fat }, false, guidance ? { ...guidance, followed: guidance.level === 'red' ? 'full-anyway' : 'full' } : null, wuMins, capMins);
 };
 window.closeModal = function () { $('#modal').classList.remove('open'); $('#modal').innerHTML = ''; };
 
@@ -1619,12 +1646,12 @@ window.closeModal = function () { $('#modal').classList.remove('open'); $('#moda
   }).observe(m, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
 })();
 
-function beginSession(date, tpl, readiness, downgrade, guidance) {
+function beginSession(date, tpl, readiness, downgrade, guidance, capMins) {
   closeModal();
   if ('Notification' in window && Notification.permission === 'default') {
     try { Notification.requestPermission(); } catch (e) {}
   }
-  const s = buildSession(date, tpl, downgrade);
+  const s = buildSession(date, tpl, downgrade, capMins);
   s.readiness = readiness;
   s.guidance = guidance || null;   // what was advised + what you chose, kept with the session
   ST.sessions[date] = s;
@@ -1685,6 +1712,16 @@ function vSession() {
     </header>
     <main class="session">
       ${(() => { const tr = mergedRunFor(s.date); return tr ? `<div class="pace-line">🏃 Already run today — ${tr.km} km · ${paceStr(tr.km, tr.min) || ''}${tr.hr ? ` · ${tr.hr} bpm` : ''}</div>` : ''; })()}
+      ${(() => {
+        /* Say what the cap cost, once, at the top. A shortened session that
+           does not admit to being shortened is how someone later reads their
+           own log and concludes the programme changed under them. */
+        if (!s.capMins) return '';
+        const bits = [];
+        if ((s.capTrimmed || []).length) bits.push(`fewer sets on ${s.capTrimmed.map(x => esc(x.name)).join(', ')}`);
+        if ((s.capDropped || []).length) bits.push(`no ${s.capDropped.map(esc).join(', ')}`);
+        return `<div class="pace-line">⏱ ${s.capMins} min cap — ${bits.length ? bits.join('; ') : 'trimmed to fit'}. Still counts.</div>`;
+      })()}
       <div class="ex-head">
         <div class="ex-count">Exercise ${s.curIdx + 1} / ${s.exercises.length}</div>
         <h1>${esc(ex.name)}${ex.perSide ? ' <span class="perside">each side</span>' : ''}</h1>
@@ -2167,7 +2204,7 @@ function routineDone(date, kind) {
   return !!(r && r[kind] && r[kind].completed);
 }
 /* Lift day: warm up, then fall straight into the session. */
-function startLiftPrep(date, tpl, readiness, downgrade, guidance, mins) {
+function startLiftPrep(date, tpl, readiness, downgrade, guidance, mins, capMins) {
   closeModal();
   const m = mins || PREP_MINS_LIFT;
   const r = prepRoutine(plannedLoads(tpl, date, mesoAnchor(ST.maintenance)), m, { soreBias: !!(readiness && readiness.sore >= 4) });
@@ -2175,7 +2212,7 @@ function startLiftPrep(date, tpl, readiness, downgrade, guidance, mins) {
     list: r.list, kind: 'prep', title: '🔥 Warm-up',
     endLabel: 'skip the rest — start the workout',
     markComplete: () => markRoutine(date, 'prep', m, r.list.length),
-    onDone: () => beginSession(date, tpl, readiness, downgrade, guidance),
+    onDone: () => beginSession(date, tpl, readiness, downgrade, guidance, capMins),
   });
 }
 /* Run day: no jog, no strides — mobilise and switch on, then go out the door.
@@ -2823,6 +2860,79 @@ function reminderCard() {
   return `<div class="card"><div class="card-kicker">⏰ Reminder</div>
     <div class="card-sub">${esc(day.title)} is still on today's plan. Twenty minutes counts — so does deciding not to.</div></div>`;
 }
+
+/* =====================================================================
+   RESCUING A MISSED SESSION (v71)
+   =====================================================================
+   See the pure half in program.js. This is the part that reads ST: which
+   lift days just went unlogged, where one could go, and the dismissal
+   that stops the card asking twice about the same day.
+
+   Deliberately an offer and not an automatic reshuffle. The plan moving
+   itself while you were not looking is worse than the session being
+   missed — and sometimes a missed session is just a missed session, which
+   is what 'Let it go' is for. */
+function loggedOn(date) {
+  return !!(ST.sessions[date] && ST.sessions[date].status === 'done')
+    || !!mergedRunFor(date) || routineDone(date, 'stretch');
+}
+function rescueOffer() {
+  if (ST.maintenance.active) return null;
+  const t = today();
+  const wk = weekFor(t);
+  if (!wk) return null;
+  ST.rescueDismissed = ST.rescueDismissed || {};
+  /* Only within this week: a lift missed last Thursday has been overtaken
+     by a whole week of its own sessions, and shovelling it into next
+     Sunday is how a plan turns into a backlog. */
+  /* ONE RESCUE A WEEK. Found by driving it: rescue Tuesday into Wednesday
+     and the card immediately came back offering to put Monday into Sunday,
+     which would have produced a seven-lift week with one run in it — the
+     backlog this is supposed to prevent, assembled two taps at a time.
+     A week that lost two sessions has lost them; the honest move is to
+     save one and let the other go. */
+  if (wk.days.some(d => d.moved)) return null;
+  const missed = missedLifts(wk.days, t, d => !!(ST.sessions[d] && ST.sessions[d].status === 'done'))
+    .filter(d => !ST.rescueDismissed[d.date]);
+  if (!missed.length) return null;
+  const from = missed[missed.length - 1];          // the most recent one
+  const to = rescueTarget(wk.days, t, loggedOn);
+  if (!to) return null;
+  const warnings = swapWarnings(rescueWeek(wk.days, from.date, to.date));
+  return { from, to, warnings };
+}
+function rescueCard() {
+  const r = rescueOffer();
+  if (!r) return '';
+  const when = r.to.date === today() ? 'today' : fmtDate(r.to.date);
+  return `<div class="card rescue">
+    <div class="card-kicker">↩️ Missed session</div>
+    <div class="card-title">${esc(r.from.title)} didn't happen on ${fmtDate(r.from.date)}</div>
+    <div class="card-sub">There's room ${when} — it's ${esc((r.to.title || r.to.kind).toLowerCase())} at the moment, and that would come off the plan.</div>
+    ${r.warnings.length ? `<div class="card-sub dim">⚠️ ${esc(r.warnings[0])}</div>` : ''}
+    <button class="btn primary big" onclick="doRescue('${r.from.date}','${r.to.date}')">Move it to ${when}</button>
+    <button class="mini" onclick="dismissRescue('${r.from.date}')">Let it go</button></div>`;
+}
+window.doRescue = function (fromISO, toISO) {
+  const wk = weekFor(today());
+  const from = wk && wk.days.find(d => d.date === fromISO);
+  if (!from) return;
+  /* A one-way move, not a swap: the missed day keeps the plan it had,
+     because that is the day that was missed and rewriting history helps
+     nobody. Only the target date gets an override. */
+  const plan = { ...from }; delete plan.date;
+  ST.planOverrides = ST.planOverrides || {};
+  ST.planOverrides[toISO] = { ...plan, date: toISO, moved: fromISO, sub: `Moved from ${fmtDate(fromISO)}.` };
+  ST.rescueDismissed = ST.rescueDismissed || {};
+  ST.rescueDismissed[fromISO] = true;
+  save(); invalidatePlan(); render();
+  if (typeof toast === 'function') toast('Moved ✓');
+};
+window.dismissRescue = function (dateISO) {
+  ST.rescueDismissed = ST.rescueDismissed || {};
+  ST.rescueDismissed[dateISO] = true;
+  save(); render();
+};
 
 /* =====================================================================
    THE NEW-BLOCK MOMENT (v70)
