@@ -333,7 +333,12 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
      shrink, because nothing here is a tap target. Measured on a 320x568
      viewport: Log sat at 676px, now 596px. It was 664px before this screen
      was migrated, so the short-screen case is better than it started. */
-  .ex-rx, .ex-reason, .plates, .ex-cue { font-size: var(--t-micro); line-height: var(--lh-micro); margin-top: var(--s-1); }
+  .ex-rx, .ex-reason, .ex-cue { font-size: var(--t-micro); line-height: var(--lh-micro); margin-top: var(--s-1); }
+  /* The plate breakdown is hidden on short screens (v72, on request) — it was
+     the last ~20px keeping the Log button below the fold. It is reference, not
+     instruction: the bar loading is the same whether or not the app spells it
+     out, and it is still there on any screen tall enough to show it. */
+  .plates { display: none; }
   .ex-ramp { margin-top: var(--s-2); }
   .ramp-pill { min-height: var(--tap); padding: var(--s-2) var(--s-3); }
   .stepper-lbl { margin-bottom: var(--s-1); }
