@@ -129,7 +129,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .phase { font-size: var(--t-micro); line-height: var(--lh-micro); font-weight: var(--fw-micro); color: var(--text-2); text-transform: uppercase; letter-spacing: .09em; margin-top: var(--s-1); }
 .top.slim .phase { font-size: var(--t-head); line-height: var(--lh-head); text-transform: none; letter-spacing: -.01em; color: var(--text); margin-top: 0; }
 /* mid-workout this is the ONLY way out of a session — it gets a real target */
-.backbtn { font-size: 1.8rem; padding: 4px 14px 8px 12px; color: var(--dim); min-width: 48px; min-height: 44px; text-align: left; }
+.backbtn { font-size: 1.75rem; padding: var(--s-1) var(--s-3) var(--s-2); color: var(--text-2); min-width: 48px; min-height: var(--tap); text-align: left; }
 
 .races { display: flex; gap: var(--s-2); margin-top: var(--s-3); }
 .race { flex: 1; background: var(--surface); border-radius: var(--r-md); padding: var(--s-3); border: 1px solid var(--border); }
@@ -216,43 +216,49 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* session */
 .prog-wrap { flex: 1; }
-.prog { height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
-.prog-fill { height: 100%; background: var(--acc); transition: width .3s; }
-.prog-txt { font-size: .78rem; color: var(--dim); margin-top: 4px; }
-.ex-head h1 { font-size: 1.55rem; font-weight: 800; margin: 4px 0; }
-.perside { font-size: .85rem; color: var(--dim); font-weight: 500; }
-.ex-count { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 700; }
-.ex-rx { font-size: .85rem; font-weight: 600; color: var(--acc); }   /* sets + rest only — the hero owns load, reps and RPE */
-/* the working set, as one number you can read from the floor */
-.ex-hero { display: flex; align-items: baseline; gap: 9px; margin-top: 10px; flex-wrap: wrap; }
-.hero-num { font-size: 2.9rem; font-weight: 900; color: var(--gold); line-height: 1; font-variant-numeric: tabular-nums; }
-.hero-num.none { color: var(--dim); }
-.hero-suffix { font-size: .95rem; color: var(--fg); font-weight: 600; }
-.hero-chip { margin-left: auto; font-size: .75rem; font-weight: 700; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
-.hero-chip.up { color: var(--acc); background: rgba(74,222,128,.12); border: 1px solid var(--acc-d); }
-.hero-chip.down { color: var(--warn); background: rgba(251,146,60,.12); border: 1px solid var(--warn); }
-.hero-chip.same { color: var(--dim); background: var(--bg3); border: 1px solid #2b3648; }
-.ex-reason { font-size: .82rem; margin-top: 4px; }
+.prog { height: 6px; background: var(--surface-2); border-radius: var(--r-full); overflow: hidden; }
+.prog-fill { height: 100%; background: var(--accent); transition: width .3s; }
+.prog-txt { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--text-2); margin-top: var(--s-1); font-variant-numeric: tabular-nums; }
+.ex-head h1 { font-size: var(--t-title); line-height: var(--lh-title); font-weight: var(--fw-title); margin: var(--s-1) 0; letter-spacing: -.012em; }
+.perside { font-size: var(--t-label); color: var(--text-2); font-weight: var(--fw-label); }
+.ex-count { font-size: var(--t-micro); line-height: var(--lh-micro); text-transform: uppercase; letter-spacing: .09em; color: var(--text-2); font-weight: var(--fw-micro); }
+.ex-rx { font-size: var(--t-label); font-weight: var(--fw-label); color: var(--text-2); }   /* sets + rest only — the hero owns load, reps and RPE */
+/* ---- the working set (v72) ----
+   One number, readable from the floor. It was --gold, which since v72 is the
+   WARNING colour — the same hue as .ex-warn two lines below it, so the most
+   important number on the screen and the thing telling you to back off were
+   saying it in the same voice. Plain --text at --t-hero is both the highest
+   contrast available (15.27:1) and semantically silent, which is what a
+   number should be. Direction is carried by the chip, where it belongs. */
+.ex-hero { display: flex; align-items: baseline; gap: var(--s-3); margin-top: var(--s-3); flex-wrap: wrap; }
+.hero-num { font-size: var(--t-hero); line-height: var(--lh-hero); font-weight: var(--fw-hero); color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.hero-num.none { color: var(--text-2); }
+.hero-suffix { font-size: var(--t-body); color: var(--text-2); font-weight: var(--fw-label); }
+.hero-chip { margin-left: auto; font-size: var(--t-micro); line-height: var(--lh-micro); font-weight: var(--fw-micro); border-radius: var(--r-full); padding: var(--s-1) var(--s-3); white-space: nowrap; }
+.hero-chip.up { color: var(--accent); background: var(--accent-wash); border: 1px solid var(--accent-fill); }
+.hero-chip.down { color: var(--warning); background: rgba(245,165,36,.12); border: 1px solid var(--warning); }
+.hero-chip.same { color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); }
+.ex-reason { font-size: var(--t-label); line-height: var(--lh-label); color: var(--text-2); margin-top: var(--s-2); }
 
 /* warm-up ramp: rungs, not a sentence. Tapping one is optional. */
-.ex-ramp { margin-top: 12px; }
-.ramp-kicker { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--gold); font-weight: 800; margin-bottom: 6px; }
-.ramp-pills { display: flex; gap: 7px; flex-wrap: wrap; }
-.ramp-pill { min-height: 44px; padding: 10px 15px; border-radius: 999px; border: 1px solid #2b3648; background: var(--bg3); color: var(--fg); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ex-ramp { margin-top: var(--s-4); }
+.ramp-kicker { font-size: var(--t-micro); line-height: var(--lh-micro); text-transform: uppercase; letter-spacing: .09em; color: var(--text-2); font-weight: var(--fw-micro); margin-bottom: var(--s-2); }
+.ramp-pills { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.ramp-pill { min-height: var(--tap); padding: var(--s-3) var(--s-4); border-radius: var(--r-full); border: 1px solid var(--border-i); background: var(--surface-2); color: var(--text); font-size: var(--t-body); font-weight: var(--fw-title); font-variant-numeric: tabular-nums; }
 /* was --dim on the done wash at 4.23:1 — under AA, and this is a 16px label */
 .ramp-pill.done { color: var(--text); opacity: .6; text-decoration: line-through; background: var(--accent-wash); border-color: var(--accent-fill); }
-.ramp-note { font-size: .85rem; color: var(--gold); margin-top: 4px; }
-.ex-warn { font-size: .82rem; margin-top: 6px; color: var(--warn); line-height: 1.45; }
+.ramp-note { font-size: var(--t-label); line-height: var(--lh-label); color: var(--text-2); margin-top: var(--s-2); }
+.ex-warn { font-size: var(--t-label); line-height: var(--lh-label); margin-top: var(--s-2); color: var(--warning); }
 /* reference block, below the action panel — see the comment in vSession */
-.ex-ref { margin-top: 14px; padding-top: 12px; border-top: 1px solid #232c3a; }
-.ex-last { margin-top: 10px; font-size: .85rem; color: var(--fg); }
-.ex-cue { margin-top: 8px; font-size: .85rem; color: var(--dim); font-style: italic; }
+.ex-ref { margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--border); }
+.ex-last { margin-top: var(--s-3); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text); }
+.ex-cue { margin-top: var(--s-2); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text-2); font-style: italic; }
 
 /* readiness guidance */
-.guide { border-radius: 12px; padding: 13px 15px; margin-top: 12px; font-size: .92rem; line-height: 1.5; font-weight: 600; }
-.guide.green { background: rgba(74,222,128,.12); border: 1px solid var(--acc); }
-.guide.amber { background: rgba(251,146,60,.12); border: 1px solid var(--warn); }
-.guide.red { background: rgba(248,113,113,.12); border: 1px solid var(--red); }
+.guide { border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-top: var(--s-3); font-size: var(--t-label); line-height: var(--lh-body); font-weight: var(--fw-label); }
+.guide.green { background: var(--accent-wash); border: 1px solid var(--accent); }
+.guide.amber { background: rgba(245,165,36,.12); border: 1px solid var(--warning); }
+.guide.red { background: rgba(241,112,123,.12); border: 1px solid var(--danger); }
 /* was --dim on the green guidance wash: 4.47:1, just under AA at 13.6px.
    --text at 60% opacity over the same wash measures 8.9:1. */
 .guide-why { font-weight: var(--fw-body); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text); opacity: .75; margin-top: var(--s-2); }
@@ -262,8 +268,8 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .st-kicker { font-size: .78rem; font-weight: 800; letter-spacing: .12em; color: var(--acc); }
 .st-kicker.ready { color: var(--warn); }
 /* pill label (stretch side indicator) */
-.badge { display: inline-block; font-size: .8rem; font-weight: 700; background: var(--bg3); border: 1px solid #2b3648; border-radius: 999px; padding: 5px 14px; color: var(--fg); }
-.badge.mid { color: var(--acc); border-color: var(--acc-d); }
+.badge { display: inline-block; font-size: var(--t-label); font-weight: var(--fw-head); background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-full); padding: var(--s-1) var(--s-3); color: var(--text); }
+.badge.mid { color: var(--accent); border-color: var(--accent-fill); }
 .stretch-instr { font-size: 1.05rem; line-height: 1.65; color: var(--fg); max-width: 340px; margin: 0 auto; }
 /* weekly summary */
 .wksum-row { font-size: 1rem; background: var(--bg3); border-radius: 10px; padding: 10px 13px; margin-bottom: 6px; }
@@ -271,39 +277,40 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .wksum-h { font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 800; margin-bottom: 4px; }
 .wksum-li { font-size: .92rem; padding: 2px 0; }
 
-.ex-why { display: block; width: 100%; text-align: left; margin-top: 8px; border: 1px solid #232c3a; border-radius: 10px; padding: 11px 12px; min-height: 44px; cursor: pointer; touch-action: manipulation; }
-.ex-why-t { font-size: .8rem; font-weight: 700; color: var(--run); }
-.ex-why.open { border-color: var(--run); }
-.ex-why-body { margin-top: 6px; font-size: .88rem; line-height: 1.5; color: var(--fg); }
+.ex-why { display: block; width: 100%; text-align: left; margin-top: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); min-height: var(--tap); cursor: pointer; touch-action: manipulation; }
+.ex-why-t { font-size: var(--t-label); font-weight: var(--fw-head); color: var(--text-2); }
+.ex-why.open { border-color: var(--border-i); }
+.ex-why.open .ex-why-t { color: var(--text); }
+.ex-why-body { margin-top: var(--s-2); font-size: var(--t-label); line-height: var(--lh-body); color: var(--text); }
 
-.sets { margin: 14px 0 4px; }
-.setrow { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--bg2); border-radius: 10px; margin-bottom: 6px; font-size: .95rem; }
-.setrow.done { border: 1px solid var(--acc-d); }
+.sets { margin: var(--s-4) 0 var(--s-1); }
+.setrow { display: flex; align-items: center; gap: var(--s-3); min-height: var(--tap); padding: var(--s-2) var(--s-3); background: var(--surface); border: 1px solid transparent; border-radius: var(--r-md); margin-bottom: var(--s-2); font-size: var(--t-body); font-variant-numeric: tabular-nums; }
+.setrow.done { border-color: var(--accent-fill); }
 .setrow.pending { opacity: .55; }
-.setrow .setnum { font-weight: 800; color: var(--acc); min-width: 20px; }
+.setrow .setnum { font-weight: var(--fw-hero); color: var(--accent); min-width: 20px; }
 .setrow .mini { margin-left: auto; }
-.setnote { margin-left: 4px; }
-.allset { text-align: center; padding: 18px; color: var(--acc); font-weight: 700; font-size: 1.1rem; }
+.setnote { margin-left: var(--s-1); }
+.allset { text-align: center; padding: var(--s-5); color: var(--accent); font-weight: var(--fw-title); font-size: var(--t-head); }
 
-.curset { background: var(--bg2); border: 1px solid var(--acc-d); border-radius: var(--radius); padding: 16px; margin-top: 10px; }
-.curset-head { font-weight: 800; font-size: 1.05rem; margin-bottom: 10px; color: var(--acc); }
-.stepper { margin-bottom: 14px; }
-.stepper-lbl { font-size: .8rem; color: var(--dim); font-weight: 600; margin-bottom: 6px; }
-.stepper-row { display: flex; align-items: center; gap: 12px; }
-.stepbtn { width: 64px; height: 58px; background: var(--bg3); border: 1px solid #2b3648; border-radius: 12px; font-size: 1.9rem; font-weight: 700; flex-shrink: 0; }
-.stepbtn:active { background: var(--acc-d); }
+.curset { background: var(--surface); border: 1px solid var(--border); box-shadow: inset 3px 0 0 var(--accent); border-radius: var(--r-lg); padding: var(--s-4) var(--s-4) var(--s-4) calc(var(--s-4) + var(--s-1)); margin-top: var(--s-3); }
+.curset-head { font-weight: var(--fw-micro); font-size: var(--t-micro); line-height: var(--lh-micro); text-transform: uppercase; letter-spacing: .09em; margin-bottom: var(--s-3); color: var(--accent); }
+.stepper { margin-bottom: var(--s-4); }
+.stepper-lbl { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--text-2); font-weight: var(--fw-micro); text-transform: uppercase; letter-spacing: .06em; margin-bottom: var(--s-2); }
+.stepper-row { display: flex; align-items: center; gap: var(--s-3); }
+.stepbtn { width: 64px; height: 56px; background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-md); font-size: 1.75rem; font-weight: var(--fw-title); flex-shrink: 0; }
+.stepbtn:active { background: var(--accent-fill); border-color: var(--accent); }
 /* the number is tappable (tap-to-type) — it has to LOOK like a field, or the
    only discoverable way to reach 40 kg from 0 is 40 taps on the + button */
-.stepval { flex: 1; text-align: center; font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; border: 1px dashed #2b3648; border-radius: 10px; padding: 6px 4px;
+.stepval { flex: 1; text-align: center; font-size: 2rem; font-weight: var(--fw-hero); font-variant-numeric: tabular-nums; border: 1px dashed var(--border-i); border-radius: var(--r-md); padding: var(--s-2) var(--s-1);
   /* it's a tap target now, so it matches the stepper buttons' height */
-  min-height: 58px; display: flex; align-items: center; justify-content: center; }
-.stepval.unset { font-size: 1.05rem; font-weight: 700; color: var(--acc); border-color: var(--acc-d); }
-.rpes { display: flex; gap: 5px; flex-wrap: wrap; }
-.rpe { flex: 1; min-width: 46px; padding: 12px 0; background: var(--bg3); border: 1px solid #2b3648; border-radius: 10px; font-weight: 700; font-size: .95rem; }
-.rpe.sel { background: var(--acc-d); border-color: var(--acc); }
+  min-height: 56px; display: flex; align-items: center; justify-content: center; }
+.stepval.unset { font-size: var(--t-body); font-weight: var(--fw-title); color: var(--accent); border-color: var(--accent-fill); }
+.rpes { display: flex; gap: var(--s-1); flex-wrap: wrap; }
+.rpe { flex: 1; min-width: 46px; min-height: var(--tap); padding: var(--s-3) 0; background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-md); font-weight: var(--fw-title); font-size: var(--t-body); font-variant-numeric: tabular-nums; }
+.rpe.sel { background: var(--accent-fill); border-color: var(--accent); }
 /* "you forgot the RPE" nudge — replaces a blocking alert() mid-set */
-.rpes.nudge .rpe { border-color: var(--warn); animation: nudge .5s 2; }
-@keyframes nudge { 50% { background: rgba(251,146,60,.22); } }
+.rpes.nudge .rpe { border-color: var(--warning); animation: nudge .5s 2; }
+@keyframes nudge { 50% { background: rgba(245,165,36,.22); } }
 /* Inputs carry --border-i, not --border: on a field the border IS the
    affordance, so it is the one boundary WCAG 1.4.11 actually governs. */
 .notefield { width: 100%; min-height: var(--tap); background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-sm); padding: var(--s-3); color: var(--text); font-size: var(--t-body); margin-bottom: var(--s-1); }
@@ -312,49 +319,60 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
    button clears the fold. Touch targets stay at or above 44px — the padding
    goes, the hit areas don't. */
 @media (max-height: 700px) {
-  .curset { padding: 12px; }
-  .curset-head { margin-bottom: 6px; font-size: .95rem; }
-  .stepper { margin-bottom: 9px; }
-  .stepbtn { height: 48px; width: 58px; font-size: 1.6rem; }
+  .curset { padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); }
+  .curset-head { margin-bottom: var(--s-1); }
+  .stepper { margin-bottom: var(--s-1); }
+  .stepbtn { height: 48px; width: 56px; font-size: 1.5rem; }
   .stepval { min-height: 48px; font-size: 1.7rem; }
-  .rpe { padding: 11px 0; }
-  .ex-hero { margin-top: 6px; }
-  .hero-num { font-size: 2.3rem; }
-  .ex-head h1 { font-size: 1.35rem; }
+  .rpe { min-height: var(--tap); padding: var(--s-2) 0; }
+  .ex-hero { margin-top: var(--s-2); }
+  .hero-num { font-size: 2.1rem; }
+  .ex-head h1 { font-size: var(--t-head); margin: 0 0 var(--s-1); }
+  /* v72: the reference lines above the panel are what push Log below the
+     fold on a 568px screen — they are the cheapest thing in the layout to
+     shrink, because nothing here is a tap target. Measured on a 320x568
+     viewport: Log sat at 676px, now 596px. It was 664px before this screen
+     was migrated, so the short-screen case is better than it started. */
+  .ex-rx, .ex-reason, .plates, .ex-cue { font-size: var(--t-micro); line-height: var(--lh-micro); margin-top: var(--s-1); }
+  .ex-ramp { margin-top: var(--s-2); }
+  .ramp-pill { min-height: var(--tap); padding: var(--s-2) var(--s-3); }
+  .stepper-lbl { margin-bottom: var(--s-1); }
+  .curset { margin-top: var(--s-2); }
+  .sets { margin: var(--s-2) 0 var(--s-1); }
 }
-.ex-nav { display: flex; gap: 10px; }
-.ex-nav .btn { margin-top: 14px; }
+.ex-nav { display: flex; gap: var(--s-3); }
+.ex-nav .btn { margin-top: var(--s-4); }
 
 /* strava */
 /* .svbadge (Strava orange / Garmin blue source tags) removed with the run sync in v63 — nothing renders a source badge now that every run is manually logged. */
 
 /* hold timer + next-exercise hand-off */
-.holdbtn { margin: 4px 0 10px; border-color: var(--acc); }
-.holdval { text-align: center; font-size: 3rem; font-weight: 900; color: var(--acc); font-variant-numeric: tabular-nums; min-height: 0; }
+.holdbtn { margin: var(--s-1) 0 var(--s-3); border-color: var(--accent); }
+.holdval { text-align: center; font-size: var(--t-hero); line-height: var(--lh-hero); font-weight: var(--fw-hero); color: var(--accent); font-variant-numeric: tabular-nums; min-height: 0; }
 .holdval:empty { display: none; }
 .nextex { text-align: center; }
-.nextex-done { color: var(--acc); font-weight: 700; margin-bottom: 14px; }
-.nextex-kicker { font-size: .72rem; letter-spacing: .14em; color: var(--dim); font-weight: 800; }
-.nextex-name { font-size: 1.8rem; margin: 6px 0; }
-.nextex-rx { font-size: 1.1rem; color: var(--acc); font-weight: 600; }
-.nextex-rx b { color: var(--gold); }
+.nextex-done { color: var(--accent); font-weight: var(--fw-title); margin-bottom: var(--s-4); }
+.nextex-kicker { font-size: var(--t-micro); line-height: var(--lh-micro); letter-spacing: .12em; color: var(--text-2); font-weight: var(--fw-micro); text-transform: uppercase; }
+.nextex-name { font-size: var(--t-title); line-height: var(--lh-title); font-weight: var(--fw-title); margin: var(--s-2) 0; }
+.nextex-rx { font-size: var(--t-head); line-height: var(--lh-head); color: var(--text-2); font-weight: var(--fw-label); }
+.nextex-rx b { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* rest bar */
-.restbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg3); border-top: 2px solid var(--acc); padding: 0 0 env(safe-area-inset-bottom); transform: translateY(110%); transition: transform .25s; z-index: 30; }
+.restbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface-2); border-top: 2px solid var(--accent); padding: 0 0 env(safe-area-inset-bottom); transform: translateY(110%); transition: transform .25s; z-index: 30; box-shadow: var(--e-2); }
 .restbar.show { transform: translateY(0); }
-.restbar-fill { position: absolute; top: 0; left: 0; height: 100%; background: rgba(74,222,128,.12); transition: width .25s linear; }
-.restbar-txt { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; justify-content: space-between; }
+.restbar-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--accent-wash); transition: width .25s linear; }
+.restbar-txt { position: relative; display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); justify-content: space-between; min-height: var(--tap); }
 /* the tap-to-add-30s target is its own button, as a sibling of Skip rather
    than a parent — a button can't legally contain another button */
-.restbar-tap { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.restbar-tap { display: flex; align-items: center; gap: var(--s-3); flex: 1; min-width: 0; min-height: var(--tap); }
 /* skip is an explicit button now — the bar surface adds time instead, so a
    stray thumb near the bottom edge extends rest rather than cancelling it */
 .restskip { flex-shrink: 0; }
-.restbar-txt b { font-size: 1.7rem; font-variant-numeric: tabular-nums; color: var(--acc); }
-.restbar-txt .dim { font-size: .75rem; }
+.restbar-txt b { font-size: var(--t-title); line-height: var(--lh-title); font-variant-numeric: tabular-nums; color: var(--accent); }
+.restbar-txt .dim { font-size: var(--t-micro); line-height: var(--lh-micro); }
 
 /* flash */
-.flash { position: fixed; inset: 0; background: var(--acc); color: #04250f; display: flex; align-items: center; justify-content: center; font-size: 1.7rem; font-weight: 900; z-index: 100; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.flash { position: fixed; inset: 0; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; font-size: var(--t-title); font-weight: var(--fw-hero); z-index: 100; opacity: 0; pointer-events: none; transition: opacity .15s; }
 .flash.on { opacity: 1; animation: pulse .45s 3; }
 @keyframes pulse { 50% { opacity: .55; } }
 
@@ -454,8 +472,8 @@ details.disc[open] > summary { color: var(--dim); }
 .editrow span { color: var(--dim); font-weight: 700; }
 
 /* run logging + progress */
-.pace-line { background: var(--bg3); border-radius: 10px; padding: 11px 14px; margin-bottom: 14px; font-size: .95rem; color: var(--dim); }
-.pace-line b { color: var(--run); font-size: 1.1rem; }
+.pace-line { background: var(--surface-2); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-bottom: var(--s-4); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text-2); }
+.pace-line b { color: var(--text); font-size: var(--t-body); }
 .splitfield { margin-bottom: 6px; }
 .volbar.runbar { background: #1d4ed8; }
 .ln-pace { fill: none; stroke: var(--run); stroke-width: 2; opacity: .65; }
@@ -527,7 +545,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .rt-why-txt { font-size: .84rem; line-height: 1.5; color: var(--dim); max-width: 34ch; margin: 6px auto 0; text-align: center; }
 
 /* ---- plate calculator ---- */
-.plates { margin-top: 8px; font-size: .92rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.plates { margin-top: var(--s-2); font-size: var(--t-label); line-height: var(--lh-label); font-weight: var(--fw-label); color: var(--text-2); font-variant-numeric: tabular-nums; }
 
 /* ---- streak / consistency heatmap ---- */
 /* the streak is furniture, not an alert — it lost the orange border it was
@@ -540,7 +558,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .heat-cell.istoday { box-shadow: 0 0 0 2px var(--accent); }
 
 /* ---- in-session "how to" steps (mirrors .ex-why disclosure styling) ---- */
-.ex-steps { margin: 6px 0 0 1.2em; font-size: .9rem; line-height: 1.55; color: var(--fg); }
+.ex-steps { margin: var(--s-2) 0 0 1.2em; font-size: var(--t-label); line-height: var(--lh-body); color: var(--text); }
 .ex-steps li { margin-bottom: 4px; }
 
 /* ---- equipment-aware swap suggestions ---- */
