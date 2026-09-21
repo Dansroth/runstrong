@@ -80,21 +80,11 @@ button, .slot, .setrow { touch-action: manipulation; }  /* stops double-tap zoom
   /* ---- the one hard rule ---- */
   --tap: 44px;
 
-  /* ---- legacy aliases ----
-     Every rule written before v72 resolves through these, so the token layer
-     and the screen-by-screen rollout are separate commits and a half-migrated
-     stylesheet still renders correctly. They are deleted as screens land. */
-  --bg2: var(--surface);
-  --bg3: var(--surface-2);
-  --fg: var(--text);
-  --dim: var(--text-2);
-  --acc: var(--accent);
-  --acc-d: var(--accent-fill);
-  --run: var(--info);
-  --gold: var(--warning);
-  --red: var(--danger);
-  --warn: var(--warning);
-  --radius: var(--r-lg);
+  /* The legacy aliases (--bg2, --dim, --acc, --radius and the rest) lived here
+     through the rollout so a half-migrated stylesheet still rendered. Every
+     screen has landed and nothing references them any more, so they are gone:
+     an alias nobody uses is just a second name for a token, and two names is
+     how the drift this release removed got started. */
 }
 /* 106.25% is 17px against a default 16px root — the same size the app has
    always rendered at, but expressed as a RATIO. The old `font-size: 17px`
@@ -107,7 +97,7 @@ html { font-size: 106.25%; }
    told the UA which scheme this is. */
 :root { color-scheme: dark; }
 body {
-  background: var(--bg); color: var(--fg);
+  background: var(--bg); color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   min-height: 100vh; overscroll-behavior: none;
   padding-bottom: calc(76px + env(safe-area-inset-bottom));
@@ -160,7 +150,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .card.gold .card-kicker { color: var(--text-2); }
 .card-title { font-size: var(--t-title); line-height: var(--lh-title); font-weight: var(--fw-title); letter-spacing: -.012em; }
 .card-sub { color: var(--text-2); margin-top: var(--s-2); font-size: var(--t-label); line-height: var(--lh-label); }
-.dim { color: var(--dim); }
+.dim { color: var(--text-2); }
 .pr { padding: 4px 0; font-weight: 600; }
 
 /* buttons */
@@ -180,7 +170,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
    look secondary but are still real buttons — they get the height too. */
 .linkbtn { display: block; margin: var(--s-3) auto var(--s-1); color: var(--text-2); text-decoration: underline; font-size: var(--t-label); padding: var(--s-3) var(--s-4); min-height: var(--tap); }
 .mini { display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); font-size: var(--t-label); font-weight: var(--fw-label); min-height: var(--tap); min-width: var(--tap); }
-.mini.swap { color: var(--acc); margin-top: 8px; }
+.mini.swap { color: var(--accent); margin-top: var(--s-2); }
 
 /* small print — used throughout for secondary lines under a control. It was
    .82rem (13.94px), a step that exists nowhere in the scale and sat below the
@@ -195,12 +185,12 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .upnext-title.run { color: var(--text-2); }
 
 /* segmented control (Progress tab: Log | Insights) */
-.seg { display: flex; gap: 4px; background: var(--bg2); border: 1px solid #232c3a; border-radius: 12px; padding: 4px; margin-bottom: 4px; }
-.seg-btn { flex: 1; min-height: 44px; border-radius: 9px; font-size: .95rem; font-weight: 700; color: var(--dim); }
-.seg-btn.sel { background: var(--bg3); color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc-d); }
+.seg { display: flex; gap: var(--s-1); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-1); margin-bottom: var(--s-1); }
+.seg-btn { flex: 1; min-height: var(--tap); border-radius: var(--r-sm); font-size: var(--t-label); font-weight: var(--fw-head); color: var(--text-2); }
+.seg-btn.sel { background: var(--surface-2); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-fill); }
 
 /* keyboard focus — invisible to touch users, essential for anyone on a keyboard */
-:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* off-screen live region: announces rest-done etc. without showing anything */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
@@ -265,14 +255,17 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
    --text at 60% opacity over the same wash measures 8.9:1. */
 .guide-why { font-weight: var(--fw-body); font-size: var(--t-label); line-height: var(--lh-label); color: var(--text); opacity: .75; margin-top: var(--s-2); }
 /* stretch flow */
-.stretch-count { font-size: 4.5rem; font-weight: 900; color: var(--acc); font-variant-numeric: tabular-nums; margin: 18px 0 6px; }
-.stretch-count.ready { color: var(--warn); }   /* setup countdown reads differently from a live hold */
-.st-kicker { font-size: .78rem; font-weight: 800; letter-spacing: .12em; color: var(--acc); }
-.st-kicker.ready { color: var(--warn); }
+/* The stretch countdown is the one number bigger than --t-hero: it is read
+   from the floor, mid-hold, usually upside down. It gets its own size rather
+   than a scale step, and says so. */
+.stretch-count { font-size: 4.25rem; line-height: var(--lh-hero); font-weight: var(--fw-hero); color: var(--accent); font-variant-numeric: tabular-nums; margin: var(--s-5) 0 var(--s-2); }
+.stretch-count.ready { color: var(--warning); }   /* setup countdown reads differently from a live hold */
+.st-kicker { font-size: var(--t-micro); line-height: var(--lh-micro); font-weight: var(--fw-micro); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.st-kicker.ready { color: var(--warning); }
 /* pill label (stretch side indicator) */
 .badge { display: inline-block; font-size: var(--t-label); font-weight: var(--fw-head); background: var(--surface-2); border: 1px solid var(--border-i); border-radius: var(--r-full); padding: var(--s-1) var(--s-3); color: var(--text); }
 .badge.mid { color: var(--accent); border-color: var(--accent-fill); }
-.stretch-instr { font-size: 1.05rem; line-height: 1.65; color: var(--fg); max-width: 340px; margin: 0 auto; }
+.stretch-instr { font-size: var(--t-head); line-height: 1.65; color: var(--text); max-width: 340px; margin: 0 auto; }
 /* weekly summary */
 .wksum-row { font-size: var(--t-body); background: var(--surface-2); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-bottom: var(--s-2); }
 .wksum-block, .wksum-sec { margin-top: var(--s-4); }
@@ -523,7 +516,7 @@ details.disc[open] > summary { color: var(--text); }
 .install div { flex: 1; }
 
 /* ===== v13: tap-to-type, race kit, maintenance, trends ===== */
-input.stepval.typeval { display: block; background: var(--bg3); border: 1px solid var(--acc-d); border-radius: 10px; color: var(--fg); padding: 4px 6px; width: 100%; min-width: 0; -moz-appearance: textfield; }
+input.stepval.typeval { display: block; background: var(--surface-2); border: 1px solid var(--accent); border-radius: var(--r-md); color: var(--text); padding: var(--s-1) var(--s-2); width: 100%; min-width: 0; -moz-appearance: textfield; }
 input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit-inner-spin-button { -webkit-appearance: none; }
 /* the whole row is the tap target, not just the box */
 .chk-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-1); min-height: var(--tap); border-bottom: 1px solid var(--border); font-size: var(--t-label); line-height: var(--lh-label); }
@@ -535,7 +528,7 @@ input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit
 .rpe.feel { text-transform: none; }
 /* the gradient is gone — flat surface, accent carried by the kicker alone */
 .card.insight { border-color: var(--border); background: var(--surface); }
-.card.insight .card-kicker { color: var(--acc); }
+.card.insight .card-kicker { color: var(--accent); }
 .wksum-block.insight { background: var(--surface-2); border-radius: var(--r-md); padding: var(--s-3); }
 .tj-wrap { display: flex; flex-direction: column; gap: var(--s-2); }
 .tj-row { display: grid; grid-template-columns: 108px 1fr 56px; align-items: center; gap: var(--s-2); min-height: var(--tap); cursor: pointer; }
@@ -559,7 +552,7 @@ input.stepval.typeval::-webkit-outer-spin-button, input.stepval.typeval::-webkit
    duplicate of the .tabbar rule above and quietly won on source order, which
    is how the most-tapped control in the app ended up at 11.22px while the
    rule that looked authoritative said .72rem. */
-#toast { position: fixed; left: 50%; transform: translateX(-50%) translateY(20px); bottom: calc(86px + env(safe-area-inset-bottom)); background: var(--bg3); border: 1px solid var(--acc-d); color: var(--fg); border-radius: 12px; padding: 11px 16px; font-size: .86rem; line-height: 1.45; max-width: 92vw; width: max-content; z-index: 60; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; box-shadow: var(--e-2); }
+#toast { position: fixed; left: 50%; transform: translateX(-50%) translateY(20px); bottom: calc(86px + env(safe-area-inset-bottom)); background: var(--surface-2); border: 1px solid var(--border-i); color: var(--text); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); font-size: var(--t-label); line-height: var(--lh-label); max-width: 92vw; width: max-content; z-index: 60; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; box-shadow: var(--e-2); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 /* v14: nav stays tappable while a prompt sheet is open */
 .tabbar { z-index: 55; }
@@ -582,7 +575,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 
 /* "why this helps" disclosure on the warm-up / stretch screen */
 .rt-why { margin-top: 10px; }
-.rt-why-txt { font-size: .84rem; line-height: 1.5; color: var(--dim); max-width: 34ch; margin: 6px auto 0; text-align: center; }
+.rt-why-txt { font-size: var(--t-label); line-height: var(--lh-body); color: var(--text-2); max-width: 34ch; margin: var(--s-2) auto 0; text-align: center; }
 
 /* ---- plate calculator ---- */
 .plates { margin-top: var(--s-2); font-size: var(--t-label); line-height: var(--lh-label); font-weight: var(--fw-label); color: var(--text-2); font-variant-numeric: tabular-nums; }
@@ -603,7 +596,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 
 /* ---- equipment-aware swap suggestions ---- */
 .swapopt.unavail { opacity: .6; }
-.swap-note { display: block; font-size: .72rem; font-weight: 500; color: var(--warn); margin-top: 3px; }
+.swap-note { display: block; font-size: var(--t-micro); line-height: var(--lh-micro); font-weight: var(--fw-label); color: var(--warning); margin-top: var(--s-1); }
 
 /* Per-muscle weekly volume (v42). The bar is logged sets as a share of what
    the plan asked for this week — full means the week was delivered, not that
@@ -673,19 +666,21 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .pgm-ex > span:last-child { white-space: nowrap; }
 
 /* ---- v70: the new-block moment ---- */
-.card.blockmoment { border-left: 3px solid var(--accent, #4ade80); }
-.pickrow { display: flex; flex-wrap: wrap; gap: 6px; }
+/* the new-block card uses the same inset lead bar as every other emphasis
+   in the app, rather than a border-left of its own */
+.card.blockmoment { box-shadow: inset 3px 0 0 var(--accent); padding-left: calc(var(--s-4) + var(--s-1)); }
+.pickrow { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .pickchip {
-  flex: 1 1 auto; min-width: 44%; padding: 10px 12px; border-radius: 10px;
-  border: 1px solid var(--line, #333); background: transparent; color: var(--fg, #eee);
-  font: inherit; font-size: .88rem; text-align: left; cursor: pointer;
+  flex: 1 1 auto; min-width: 44%; min-height: var(--tap); padding: var(--s-3) var(--s-4); border-radius: var(--r-md);
+  border: 1px solid var(--border-i); background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: var(--t-label); text-align: left; cursor: pointer;
 }
-.pickchip.on { border-color: var(--accent, #4ade80); background: rgba(74, 222, 128, .12); font-weight: 600; }
+.pickchip.on { border-color: var(--accent); background: var(--accent-wash); font-weight: var(--fw-head); }
 /* The benchmark sparkline: one bar per test, oldest on the left.
    Deliberately tiny — it lives inside a summary row, and its job is to
    show a direction, not to be read off. */
-.bmspark { display: inline-flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: 8px; }
+.bmspark { display: inline-flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: var(--s-2); }
 .bmspark i { width: 5px; border-radius: 1px; background: var(--accent); opacity: .85; }
 
 /* ---- v71: the missed-session offer ---- */
-.card.rescue { box-shadow: inset 3px 0 0 var(--warning); padding-left: calc(var(--s-4) + var(--s-1)); }
+.card.rescue { box-shadow: inset 3px 0 0 var(--warning); padding-left: calc(var(--s-4) + var(--s-1)); border-color: var(--border); }
