@@ -1455,6 +1455,91 @@ group('rescuing a missed session: one way, never onto a day already spent');
   ok('…and is still the same plan as itself', samePlan(rescued, { ...rescued }));
 }
 
+/* ===================================================================
+   9. v73 — every "why this exercise" actually answers the question
+   =================================================================== */
+group('exercise insights: about growing the muscle, not about running');
+{
+  const { INSIGHTS, TEMPLATES, HYPER_POOLS, HYPER_ORDER, EXERCISES, MUSCLE_MAP } = P;
+  const inBlock = new Set();
+  for (const tp of [...HYPER_ORDER, 'hypBench']) for (const [id] of TEMPLATES[tp].items) {
+    if (String(id).startsWith('ROTATE:')) for (const m of HYPER_POOLS[id.slice(7)]) inBlock.add(m);
+    else inBlock.add(id);
+  }
+  ok('the block can schedule a meaningful number of exercises', inBlock.size >= 50, String(inBlock.size));
+
+  /* ---- no running transfer claims ----
+     The app was built for a half marathon and every lift justified itself by
+     what it did for running. There has been no race on the calendar since v69
+     and no running programme since v68, so a curl that explains itself in
+     terms of stride mechanics is answering a question nobody asked.
+
+     Deliberately narrow: "running the length of the block" and "run out of
+     range" are ordinary English and must not fail. This matches the training
+     claims — stride, race, marathon, running economy — not the word "run". */
+  const RUN_CLAIM = /\bstride\b|\brace\b|marathon|running economy|21\.1|\brunner/i;
+  for (const id of [...inBlock].sort()) {
+    const e = INSIGHTS[id] || {};
+    for (const field of ['why', 'deep']) {
+      const t = e[field] || '';
+      const m = t.match(RUN_CLAIM);
+      ok(`${id}.${field}: no running-transfer claim`, !m, m ? `"${m[0]}" — ${t.slice(0, 90)}` : '');
+    }
+  }
+
+  /* ---- it has to answer "why is this good for ME" ----
+     The second half of the report: some entries described the exercise
+     without ever saying what it does for you. "The strictest curl there is —
+     one arm, elbow braced, nothing to cheat with" is a true sentence about a
+     concentration curl and tells you nothing about why it is in your
+     programme.
+
+     This cannot be graded automatically, so it is checked structurally: a why
+     must name a muscle, a body part or an outcome — not only the mechanics of
+     the movement. Crude, and it would pass a cleverly-worded bad entry, but it
+     catches the failure mode that actually happened. */
+  const PAYOFF = /\b(chest|back|lat|lats|bicep|biceps|tricep|triceps|delt|delts|shoulder|shoulders|quad|quads|glute|glutes|hamstring|hamstrings|calf|calves|ab|abs|core|trunk|adductor|adductors|forearm|brachialis|grow|growth|size|strength|stronger|width|shape|muscle)\b/i;
+  /* The three benchmark lifts are exempt, and the exemption is the point:
+     their why is about MEASUREMENT, not about growing anything. "The same
+     weight every test, and the only question is how many reps you get" is
+     exactly the right answer for a test and would be a bad one for a curl.
+     Naming them here rather than loosening the rule keeps the rule strict. */
+  const TEST_LIFTS = new Set(['benchmax', 'chinmax', 'abmax']);
+  for (const id of [...inBlock].sort()) {
+    if (TEST_LIFTS.has(id)) continue;
+    const w = (INSIGHTS[id] || {}).why || '';
+    ok(`${id}.why: names a muscle or an outcome, not just the movement`, PAYOFF.test(w), w.slice(0, 90));
+  }
+  for (const id of TEST_LIFTS) {
+    ok(`${id}.why: a benchmark explains what it measures`,
+       /\b(test|reps|score|number|measure|chart)\b/i.test(INSIGHTS[id].why), INSIGHTS[id].why);
+  }
+
+  /* Length floor: a why that fits in six words is a label, not a reason. */
+  for (const id of [...inBlock].sort()) {
+    const w = (INSIGHTS[id] || {}).why || '';
+    const words = w.trim().split(/\s+/).length;
+    ok(`${id}.why: says enough to be a reason (${words} words)`, words >= 12, w);
+  }
+
+  /* Every schedulable exercise still owes both fields — this duplicates part
+     of the contract group above on purpose, because the rewrite touched 41
+     entries by regex and a dropped deep field would otherwise be silent. */
+  for (const id of [...inBlock].sort()) {
+    const e = INSIGHTS[id] || {};
+    ok(`${id}: still has both why and deep`, !!(e.why && e.deep));
+    ok(`${id}: why and deep are not the same text`, e.why !== e.deep);
+  }
+
+  /* The specific entries named in the report. */
+  for (const id of ['concurl', 'pendlayrow', 'tbarrow', 'smithcalf', 'slpress', 'cablecurl']) {
+    ok(`${id}: the reported vague entry now names a payoff`, PAYOFF.test(INSIGHTS[id].why), INSIGHTS[id].why);
+  }
+  for (const id of ['squat', 'bench', 'pullup', 'calfstand', 'bss', 'copen']) {
+    ok(`${id}: the reported running entry is rewritten`, !RUN_CLAIM.test(INSIGHTS[id].why), INSIGHTS[id].why);
+  }
+}
+
 /* =================================================================== */
 console.log('\n' + '-'.repeat(60));
 if (fail) {
