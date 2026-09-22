@@ -76,26 +76,96 @@ group('the single worst case from the bug report: Upper A, 5 minutes');
 }
 
 /* ===================================================================
-   2. runner essentials keep their place — the fix is proportion, not deletion
-   =================================================================== */
-group('runner essentials still appear, capped rather than removed');
-for (const tpl of LIFT_TEMPLATES.filter(isUpper)) {
-  const loads = loadsFor(tpl);
-  const r = stretchRoutine(loads, 10);
-  ok(`${tpl} @ 10min still includes a runner essential`,
-     r.list.some(st => st.muscles.some(m => STRETCH_ESSENTIALS.includes(m) && !loads[m])), names(r.list));
-}
+   2. v73 — a routine stretches what you trained, and nothing else
+   ===================================================================
+   This group asserted the OPPOSITE until v73: that calves, hip flexors,
+   glutes and hamstrings appeared in every upper-body routine whatever you
+   had done, holding a reserved 35% of the budget. That was right while this
+   was a half-marathon app. It stopped being right at v68 — no race, two easy
+   runs a week, thirty weeks of hypertrophy — and it produced the report that
+   prompted this change: a pull session that prescribed a calf stretch and a
+   hip flexor stretch.
 
-group('untrained essentials never exceed their share of the budget');
+   The essentials are not deleted. They reach a lifting day as LOAD, via
+   buildStretchRoutine() in app.js, whenever there has been a run in the last
+   two days — so they are ranked on merit against the muscles that were
+   lifted, rather than handed a slot regardless. The bare day keeps them as
+   the fallback, which the next group covers. */
+group('v73: a lifting routine contains nothing you did not train');
 for (const tpl of LIFT_TEMPLATES) {
   const loads = loadsFor(tpl);
   for (const mins of BUDGETS) {
     const r = stretchRoutine(loads, mins);
-    const tailTime = r.list.filter(st => !st.muscles.some(m => loads[m] > 0))
-                           .reduce((a, st) => a + stretchDur(st, st.hold), 0);
-    ok(`${tpl} @ ${mins}min: untrained time within cap`, tailTime <= mins * 60 * (1 - TRAINED_SHARE) + 20,
-       `${tailTime}s of ${mins * 60}s budget`);
+    const off = r.list.filter(st => !st.muscles.some(m => loads[m] > 0));
+    ok(`${tpl} @ ${mins}min: every stretch serves a muscle that was trained`,
+       !off.length, off.map(st => st.name).join(", "));
   }
+}
+
+group('v73: running still reaches the legs — as load, on merit');
+for (const tpl of LIFT_TEMPLATES.filter(isUpper)) {
+  const bare = loadsFor(tpl);
+  /* what buildStretchRoutine() injects after an easy 8 km the day before */
+  const ran = { ...bare, calves: 2, hams: 2, hipflex: 2, glutes: 1 };
+  const without = stretchRoutine(bare, 10).list;
+  const with_ = stretchRoutine(ran, 10).list;
+  /* A stretch counts as "for the legs" only when EVERY muscle it serves is an
+     untrained essential. Cobra is [core, hipflex] and gets picked for the core
+     an ab session trained — that is the routine working, not leaking, and the
+     first version of this assertion wrongly failed it. */
+  const legOnly = (l, loads) => l.filter(st =>
+    st.muscles.every(m => STRETCH_ESSENTIALS.includes(m) && !loads[m]));
+  ok(`${tpl}: no run means nothing picked purely for the legs`,
+     !legOnly(without, bare).length, legOnly(without, bare).map(st => st.name).join(", "));
+  ok(`${tpl}: a run the day before brings the legs back`,
+     with_.some(st => st.muscles.some(m => STRETCH_ESSENTIALS.includes(m))), names(with_));
+}
+
+group('v73: a day that trained nothing still gets the essentials');
+{
+  const r = stretchRoutine({}, 8);
+  ok("a bare day produces a routine at all", r.list.length > 0);
+  ok("…and it is the essentials",
+     r.list.every(st => st.muscles.some(m => STRETCH_ESSENTIALS.includes(m))), names(r.list));
+}
+
+group('v73: no two stretches from the same family in one routine');
+{
+  const { STRETCHES } = P;
+  /* The report was "a bicep wall stretch, then another bicep stretch". The two
+     are the same movement braced against a different surface. `family` marks
+     those pairs; nothing may surface both. */
+  const fams = [...new Set(STRETCHES.filter(st => st.family).map(st => st.family))];
+  ok("some stretches are marked as near-identical", fams.length >= 3, fams.join(", "));
+  for (const f of fams) {
+    const members = STRETCHES.filter(st => st.family === f);
+    ok(`family "${f}" has more than one member, or it is pointless`, members.length > 1);
+    ok(`family "${f}" members all target the same muscles`,
+       members.every(m => JSON.stringify(m.muscles) === JSON.stringify(members[0].muscles)),
+       members.map(m => m.id + ":" + m.muscles.join("/")).join(" "));
+  }
+  const check = (label, list) => {
+    const seen = {};
+    const clash = [];
+    for (const st of list) {
+      if (!st.family) continue;
+      if (seen[st.family]) clash.push(seen[st.family] + " + " + st.name);
+      seen[st.family] = st.name;
+    }
+    ok(label, !clash.length, clash.join("; "));
+  };
+  for (const tpl of LIFT_TEMPLATES) {
+    for (const mins of BUDGETS) {
+      check(`${tpl} @ ${mins}min: no repeated family`, stretchRoutine(loadsFor(tpl), mins).list);
+    }
+  }
+  check("the 25 min mobility session: no repeated family", P.mobilityRoutine(P.MOBILITY_MINS).list);
+  /* the exact routine from the report */
+  const pull = stretchRoutine(loadsFor("hypPull"), 10).list.map(st => st.name);
+  ok("the reported Pull routine no longer offers two bicep stretches",
+     pull.filter(nm => /bicep/i.test(nm)).length <= 1, pull.join(" / "));
+  ok("…nor a calf stretch on a day that pulled",
+     !pull.some(nm => /calf/i.test(nm)), pull.join(" / "));
 }
 
 group('lower-body days still get their lower-body work (no over-correction)');

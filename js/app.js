@@ -371,7 +371,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v72';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v73';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -2065,15 +2065,22 @@ function buildStretchRoutine(sess, mins) {
     if (!done) continue;
     for (const m of (MUSCLE_MAP[e.exId] || [])) loads[m] = (loads[m] || 0) + done;
   }
-  /* Running is training too. A long run today or yesterday leaves the calves,
-     hamstrings and hip flexors genuinely loaded even when the gym session was all
-     upper body — so they enter as trained muscles rather than as a special case.
-     Deliberately modest: on an Upper A day (back 13 sets) these sit below the
-     muscles actually lifted, so they get attention without taking over. */
-  const longRun = [sess.date, dadd(sess.date, -1)]
-    .map(d => mergedRunFor(d)).filter(r => r && r.km >= 12).sort((a, b) => b.km - a.km)[0];
-  if (longRun) {
-    const bias = longRun.km >= 18 ? 4 : 3;
+  /* Running is training too, and since v73 it is the ONLY way calves, hips,
+     glutes and hamstrings reach a lifting day's routine. stretchRoutine() no
+     longer reserves them a share of every session regardless of what you did;
+     instead a recent run enters here as LOAD and they compete on merit at
+     step 1, ranked against the muscles you actually lifted.
+
+     Any run in the last two days now counts, not just a 12 km+ one. The old
+     threshold made sense when the essentials had a guaranteed slot anyway —
+     it was a BOOST on top. Now it is the whole mechanism, and an easy 8 km
+     still leaves calves that want thirty seconds. Scaled by distance so a
+     recovery jog does not outrank a session's worth of lifting: an easy run
+     lands below a muscle that took six sets, a long run above it. */
+  const run = [sess.date, dadd(sess.date, -1)]
+    .map(d => mergedRunFor(d)).filter(r => r && r.km > 0).sort((a, b) => b.km - a.km)[0];
+  if (run) {
+    const bias = run.km >= 18 ? 4 : run.km >= 12 ? 3 : 2;
     for (const m of ['calves', 'hams', 'hipflex']) loads[m] = (loads[m] || 0) + bias;
     loads.glutes = (loads.glutes || 0) + Math.max(1, bias - 1);
   }
@@ -2085,7 +2092,7 @@ function offerStretch() {
   const est = m => Math.round(buildStretchRoutine(s, m).total / 60);
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h2>Stretch it out?</h2>
-    <div class="dim" style="margin-bottom:12px;font-size:.9rem">Built from what you just trained${s.readiness && s.readiness.sore >= 4 ? ', biased toward today\'s soreness' : ''} — calves, hips, glutes and hamstrings always get a look in.</div>
+    <div class="dim" style="margin-bottom:12px;font-size:.9rem">Built from what you just trained${s.readiness && s.readiness.sore >= 4 ? ', biased toward today\'s soreness' : ''}${mergedRunFor(s.date) || mergedRunFor(dadd(s.date, -1)) ? ', plus the legs from your run' : ''}.</div>
     <button class="btn primary big" onclick="startStretch(7)">🧘 Standard — ~${est(7)} min</button>
     <button class="btn big" onclick="startStretch(5)">Short — ~${est(5)} min</button>
     <button class="btn big" onclick="startStretch(10)">Long — ~${est(10)} min</button>

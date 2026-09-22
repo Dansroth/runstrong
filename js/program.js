@@ -471,10 +471,10 @@ const STRETCHES = [
   { id:'st-calf-wall', name:'Calf stretch (wall)', muscles:['calves'], perSide:true, hold:40, instr:'Hands on a wall. Step one foot back. Keep that leg straight, heel on the floor. Lean in until the calf pulls.' },
   { id:'st-soleus', name:'Bent-knee calf stretch', muscles:['calves'], perSide:true, hold:30, instr:'Same wall position, back foot a bit closer. Now bend the back knee, heel down. You\'ll feel it lower, near the Achilles.' },
   { id:'st-hipflex', name:'Kneeling hip flexor stretch', muscles:['hipflex'], perSide:true, hold:40, instr:'Kneel on one knee, other foot in front. Tuck your tailbone under, then shift your hips forward a little. Feel the front of the hip on the kneeling side.' },
-  { id:'st-fig4', name:'Figure-4 glute stretch', muscles:['glutes'], perSide:true, hold:40, instr:'Lie on your back. Cross one ankle over the other knee. Reach through and pull the bottom thigh toward your chest.' },
-  { id:'st-pigeon-seat', name:'Seated glute stretch', muscles:['glutes'], perSide:true, hold:35, instr:'Sit on a bench or chair. Ankle over the opposite knee. Sit tall, then lean forward slowly until the outside of the hip pulls.' },
+  { id:'st-fig4', name:'Figure-4 glute stretch', muscles:['glutes'], family:'glute-fig4', perSide:true, hold:40, instr:'Lie on your back. Cross one ankle over the other knee. Reach through and pull the bottom thigh toward your chest.' },
+  { id:'st-pigeon-seat', name:'Seated glute stretch', muscles:['glutes'], family:'glute-fig4', perSide:true, hold:35, instr:'Sit on a bench or chair. Ankle over the opposite knee. Sit tall, then lean forward slowly until the outside of the hip pulls.' },
   { id:'st-ham-lying', name:'Lying hamstring stretch', muscles:['hams'], perSide:true, hold:40, instr:'Lie on your back. Lift one leg, hands behind the thigh. Keep the knee nearly straight and pull gently toward you.' },
-  { id:'st-quad', name:'Standing quad stretch', muscles:['quads'], perSide:true, hold:35, instr:'Stand tall, hold something if you need to. Grab your ankle behind you. Knees together, tailbone tucked. Feel the front of the thigh.' },
+  { id:'st-quad', name:'Standing quad stretch', muscles:['quads'], family:'quad-heel', perSide:true, hold:35, instr:'Stand tall, hold something if you need to. Grab your ankle behind you. Knees together, tailbone tucked. Feel the front of the thigh.' },
   { id:'st-butterfly', name:'Butterfly stretch', muscles:['adductors'], perSide:false, hold:40, instr:'Sit down, soles of your feet together. Let your knees fall toward the floor. Lean forward slowly with a long back.' },
   { id:'st-childpose', name:'Child\'s pose', muscles:['back','shoulders'], perSide:false, hold:45, instr:'Kneel, knees wide, sit back toward your heels. Walk your hands forward and let your chest sink. Breathe slow into your back.' },
   { id:'st-twist', name:'Lying spinal twist', muscles:['back','core'], perSide:true, hold:35, instr:'Lie on your back. Bring one knee across your body toward the floor. Arms wide, look the other way. Let gravity do it.' },
@@ -492,15 +492,15 @@ const STRETCHES = [
   { id:'st-chest-clasp', name:'Hands-behind-back stretch', muscles:['chest','shoulders'], perSide:false, hold:30, instr:'Stand tall. Clasp your hands behind your back. Straighten your arms and lift them a little. Chest forward, shoulders down.' },
   { id:'st-openbook', name:'Open-book twist', muscles:['back','chest'], perSide:true, hold:35, instr:'Lie on your side, knees bent, arms together in front. Open the top arm across your body like a book. Follow your hand with your eyes.' },
   { id:'st-couch', name:'Couch stretch', muscles:['quads','hipflex'], perSide:true, hold:40, instr:'Kneel with your back foot up on a bench or couch. Tuck your tailbone under and stand the front leg tall. Strong one — ease into it.' },
-  { id:'st-quad-side', name:'Side-lying quad stretch', muscles:['quads'], perSide:true, hold:35, instr:'Lie on your side. Grab the top ankle and draw your heel toward your backside. Knees stacked, hips pushed forward.' },
+  { id:'st-quad-side', name:'Side-lying quad stretch', muscles:['quads'], family:'quad-heel', perSide:true, hold:35, instr:'Lie on your side. Grab the top ankle and draw your heel toward your backside. Knees stacked, hips pushed forward.' },
   { id:'st-sidelunge', name:'Side lunge groin stretch', muscles:['adductors'], perSide:true, hold:35, instr:'Stand wide. Bend one knee and sink your weight onto it, the other leg straight. Feel the inside of the straight leg.' },
   { id:'st-ham-seated', name:'Seated forward fold', muscles:['hams','back'], perSide:false, hold:40, instr:'Sit with your legs out in front. Hinge from the hips and reach toward your feet. Long back, soft knees if you need them.' },
   /* Added for the hypertrophy phase — biceps/triceps had no stretch anywhere in
      the library, so an arm-heavy session could never get one. */
-  { id:'st-bicep-wall', name:'Bicep wall stretch', muscles:['biceps'], perSide:true, hold:30, instr:'Stand side-on to a wall. Place your palm flat against it behind you, arm straight, thumb pointing down. Turn your body slowly away from the wall.' },
-  { id:'st-bicep-doorway', name:'Doorway bicep stretch', muscles:['biceps'], perSide:true, hold:30, instr:'Stand in a doorway. Place one straight arm along the frame behind you, roughly shoulder height. Lean your body forward and away from that arm.' },
-  { id:'st-tricep-overhead', name:'Overhead triceps stretch', muscles:['triceps'], perSide:true, hold:30, instr:'Reach one arm overhead, then bend the elbow so your hand drops behind your head. Use the other hand to gently press the elbow back and down.' },
-  { id:'st-tricep-doorway', name:'Doorway triceps stretch', muscles:['triceps'], perSide:true, hold:30, instr:'Bend one elbow overhead, hand dropping behind your head. Gently press that elbow into a wall or door frame for a deeper stretch than your hand alone gives.' },
+  { id:'st-bicep-wall', name:'Bicep wall stretch', muscles:['biceps'], family:'bicep-brace', perSide:true, hold:30, instr:'Stand side-on to a wall. Place your palm flat against it behind you, arm straight, thumb pointing down. Turn your body slowly away from the wall.' },
+  { id:'st-bicep-doorway', name:'Doorway bicep stretch', muscles:['biceps'], family:'bicep-brace', perSide:true, hold:30, instr:'Stand in a doorway. Place one straight arm along the frame behind you, roughly shoulder height. Lean your body forward and away from that arm.' },
+  { id:'st-tricep-overhead', name:'Overhead triceps stretch', muscles:['triceps'], family:'tricep-overhead', perSide:true, hold:30, instr:'Reach one arm overhead, then bend the elbow so your hand drops behind your head. Use the other hand to gently press the elbow back and down.' },
+  { id:'st-tricep-doorway', name:'Doorway triceps stretch', muscles:['triceps'], family:'tricep-overhead', perSide:true, hold:30, instr:'Bend one elbow overhead, hand dropping behind your head. Gently press that elbow into a wall or door frame for a deeper stretch than your hand alone gives.' },
 ];
 
 /* =====================================================================
@@ -525,8 +525,17 @@ const STRETCHES = [
    buildStretchRoutine in app.js), which is how "day after a long run" gets its
    calves and hamstrings back to the front on an upper day — as trained muscles,
    through rule 1, rather than as a special case. */
+/* The four a runner's legs take load from whether or not the gym session
+   touched them. They are NOT a reserved share of every routine any more — see
+   stretchRoutine() — they are the fallback when nothing was trained at all. */
 const STRETCH_ESSENTIALS = ['calves', 'hipflex', 'glutes', 'hams'];
-const TRAINED_SHARE = 0.65;   // at least this much of the budget goes to what was trained
+const TRAINED_SHARE = 0.65;   // kept for the bare-day cap; see stretchRoutine()
+/* Two stretches are "the same stretch" when they brace the same joint the same
+   way and differ only in what you lean on. The builder will not put two members
+   of a family in one routine: a doorway bicep stretch after a wall bicep stretch
+   is the same movement twice, and it reads as the app repeating itself even
+   though the ids differ. Anything without a family is unique by definition. */
+function sameFamily(a, b) { return !!a.family && a.family === b.family; }
 
 /* Wall-clock cost of one stretch: every hold is preceded by a STRETCH_SETUP_SECS
    "get ready" gap, and a per-side stretch pays for both a setup and a hold twice. */
@@ -547,13 +556,18 @@ function stretchRoutine(loads, mins, opts) {
   const budget = mins * 60;
   const trained = Object.keys(loads).filter(m => loads[m] > 0).sort((a, b) => loads[b] - loads[a]);
   // Nothing logged (mobility/rest day): fall back to the essentials as the routine,
-  // uncapped — otherwise the share cap would leave almost nothing to do.
+  // uncapped — otherwise there would be nothing to do at all.
   const bare = !trained.length;
   const tail = STRETCH_ESSENTIALS.filter(m => !loads[m]);
   const tailCap = bare ? budget : budget * (1 - TRAINED_SHARE);
 
   const used = new Set(); const list = []; let total = 0; let tailTime = 0;
-  const nextFor = m => STRETCHES.find(x => x.muscles.includes(m) && !used.has(x.id));
+  /* Skips anything already used AND anything from a family already represented
+     — see sameFamily(). Falling through to the next candidate rather than
+     returning nothing means a second biceps slot picks a genuinely different
+     stretch if one exists, and simply goes unfilled if one does not. */
+  const nextFor = m => STRETCHES.find(x => x.muscles.includes(m) && !used.has(x.id)
+    && !list.some(done => sameFamily(done, x)));
   const take = (st, hold, isTail) => {
     const d = stretchDur(st, hold);
     if (total + d > budget + 20) return false;
@@ -569,16 +583,40 @@ function stretchRoutine(loads, mins, opts) {
     const st = nextFor(m); if (!st) continue;
     take(st, loads[m] >= 6 ? Math.max(st.hold, 40) : st.hold, false);
   }
-  // 2. runner essentials that today did not train — maintenance dose, capped share.
-  //    Sore days get the full hold instead of the short one.
-  for (const m of tail) {
-    const st = nextFor(m); if (!st) continue;
-    take(st, opts.soreBias ? Math.max(st.hold, 45) : Math.min(st.hold, 30), true);
-  }
-  // 3. spend whatever is left on the muscles that took the most work
+  // 2. a second stretch for the muscles that took the most work — this used to
+  //    run third, behind the essentials.
   for (const m of trained) {
     const st = nextFor(m); if (!st) continue;
     take(st, st.hold, false);
+  }
+  // 3. a third pass, still on what you trained, before anything else is considered
+  for (const m of trained) {
+    const st = nextFor(m); if (!st) continue;
+    take(st, st.hold, false);
+  }
+  /* 4. THE ESSENTIALS — only on a day that trained nothing at all.
+     They used to sit at step 2 with a reserved 35% of every routine, on every
+     day, whatever you had done: a pull session spent two of its seven stretches
+     on calves and hip flexors. The comment justifying it said "this is a running
+     app", and that stopped being true at v68 — no race on the calendar, two easy
+     runs a week, thirty weeks of hypertrophy.
+
+     They are not deleted, because legs that run still need looking at. They
+     arrive the honest way now: buildStretchRoutine() in app.js feeds any run
+     from the last two days in as LOAD, so the day after a run the calves,
+     hamstrings and hips ARE trained muscles and get picked at step 1, ranked
+     against everything else by how much work they took. What is left here is the
+     rest day / mobility case, where nothing was trained and the alternative is
+     an empty routine.
+
+     The cost, stated plainly: on an upper day with no recent run the calves get
+     nothing, and over a week of those they would drift. The two easy runs are
+     what stop that, and if the running stops this is the line to revisit. */
+  if (bare) {
+    for (const m of tail) {
+      const st = nextFor(m); if (!st) continue;
+      take(st, opts.soreBias ? Math.max(st.hold, 45) : Math.min(st.hold, 30), true);
+    }
   }
   return { list, total };
 }
@@ -657,8 +695,11 @@ function areaStretchRoutine(muscleTags, mins) {
     return true;
   };
 
-  // pass 1: one rep of everything relevant, best match first
-  for (const st of ranked) add(st);
+  /* pass 1: one rep of everything relevant, best match first — skipping a
+     near-twin of anything already in (see sameFamily). Pass 2 below still
+     repeats a stretch deliberately, which is a different thing: the same hold
+     again to reach a dose, not a second movement that feels like the first. */
+  for (const st of ranked) { if (!list.some(done => sameFamily(done, st))) add(st); }
   // pass 2: top up any muscle still short of the evidence-based target [S3],
   // repeating its best-matching stretch until it clears the target or the
   // budget runs out
@@ -2362,7 +2403,10 @@ function mobilityRoutine(mins) {
   for (let round = 0; round < 4; round++) {
     let addedAny = false;
     for (const cands of perArea) {
-      const st = cands.find(s => !used.has(s.id));
+      /* ...and not a near-twin of something already in, or round 2 pairs the
+         wall bicep stretch with the doorway one. Same rule as stretchRoutine();
+         it was missed here on the first pass and a test now covers both. */
+      const st = cands.find(s => !used.has(s.id) && !list.some(done => sameFamily(done, s)));
       if (!st) continue;
       if (!add(st)) return { list, total };
       addedAny = true;
