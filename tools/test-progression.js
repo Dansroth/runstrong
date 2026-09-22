@@ -1477,8 +1477,13 @@ group('exercise insights: about growing the muscle, not about running');
      Deliberately narrow: "running the length of the block" and "run out of
      range" are ordinary English and must not fail. This matches the training
      claims — stride, race, marathon, running economy — not the word "run". */
-  const RUN_CLAIM = /\bstride\b|\brace\b|marathon|running economy|21\.1|\brunner/i;
-  for (const id of [...inBlock].sort()) {
+  const RUN_CLAIM = /\bstride\b|\brace\b|marathon|running economy|21\.1|\brunner|Running is|late-race|downhill/i;
+  /* THE WHOLE LIBRARY, not just what the block schedules. The first version
+     of this check ran over inBlock and passed — while twelve exercises one
+     swap away still explained themselves in terms of stride mechanics, and
+     the Pallof press still opened with "Running is one long anti-rotation
+     task". Scope was the bug, so the scope is now the assertion. */
+  for (const id of Object.keys(EXERCISES).sort()) {
     const e = INSIGHTS[id] || {};
     for (const field of ['why', 'deep']) {
       const t = e[field] || '';
