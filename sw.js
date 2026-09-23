@@ -1,5 +1,5 @@
 /* RunStrong service worker — cache-first, fully offline after first load */
-const CACHE = 'runstrong-v74';
+const CACHE = 'runstrong-v75';
 const ASSETS = [
   './',
   './index.html',

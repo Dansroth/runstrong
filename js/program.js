@@ -1715,6 +1715,7 @@ function dayFromPlan(date, plan) {
   }
   if (plan.optional) day.optional = true;
   if (plan.mobility) day.mobility = true;
+  if (plan.cardio) day.cardio = { ...plan.cardio };
   /* A lift day the user also runs on (the summer block's Tuesday, the
      hypertrophy block's Sunday). The lift is the primary kind because it is
      the part the app drives — templates, progression, the session flow —
@@ -1812,6 +1813,115 @@ function hyperPhaseLabel(weekN) {
   return inBlock === HYPER_MESO_WEEKS ? `Hypertrophy — block ${block} deload` : `Hypertrophy — block ${block} · week ${inBlock}`;
 }
 const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow down';
+/* =====================================================================
+   CONDITIONING (v75) — the two run days become cardio days
+   =====================================================================
+   On request, with no running goal left: the Wednesday and Sunday runs are
+   replaced by machine cardio built to cost the lifting as little as
+   possible. Set from the athlete's questionnaire (23 Sep 2026): muscle is
+   the priority and cardio is for health; legs rate 2/5 walking into
+   Thursday; 6–7 h sleep; 8–12k steps a day; loves intervals, wants variety;
+   own day only, ≤ 45 min, early morning; resting HR 32, highest seen 170;
+   likes bikes, rower and treadmill, OK with sled, dislikes stepper and
+   cross-trainer. Logs minutes, average HR and RPE.
+
+   The evidence it is built on:
+   [C1] Wilson JM et al. 2012, J Strength Cond Res 26:2293 — meta-analysis
+        of concurrent training: interference with hypertrophy and strength
+        grows with endurance frequency and duration, and running interferes
+        more than cycling (impact and eccentric damage).
+   [C2] Schumann M et al. 2022, Sports Med 52:601 — meta-analysis: adding
+        aerobic training did not blunt hypertrophy or maximal strength;
+        explosive strength was the casualty.
+   [C3] Sabag A et al. 2018, J Sports Sci 36:2472 — HIIT with resistance
+        training: no effect on hypertrophy, a small cost to lower-body
+        strength. → short sessions, far from leg day.
+   [C4] Little JP et al. 2010, J Physiol 588:1011 — ~10 × 60 s on a bike
+        improves aerobic markers in little time. → Block A.
+   [C5] Helgerud J et al. 2007, Med Sci Sports Exerc 39:665 — 4 × 4 min at
+        90–95% HRmax raised VO2max more than steady work. → Block B.
+   [C6] Hickson RC et al. 1985 — aerobic fitness holds on reduced frequency
+        while intensity is kept. → one hard session a week is enough.
+
+   What that means here:
+   • Wednesday is strictly easy (zone 2) and leg-light, because it is the
+     day before the only leg day and the legs already arrive at 2/5.
+   • Sunday is the hard day: four days before legs, so any leg cost of the
+     intervals is gone by Thursday [C3]. Hard work stays at 3–16 min.
+   • Leg-only, concentric machines lead (bikes, rower, uphill treadmill,
+     sled) [C1]. No SkiErg — it trains the lats and triceps the four upper
+     days already load.
+   • Two four-week interval blocks alternate with the mesocycles: short
+     reps (A) then 4-minute reps (B). Each time a block comes round again it
+     gains a rep, but never past the 45 minutes the athlete will do.
+   • HR targets are heart-rate reserve (Karvonen) off RHR 32 / max 170:
+     easy 60–70% HRR, hard 85–95% HRR. 170 is the highest seen, not a tested
+     max — if it is exceeded the targets move up. Short reps are judged on
+     RPE because a watch cannot catch up in 30–60 s.
+   ===================================================================== */
+const CARDIO_HR = { rest: 32, max: 170, easy: [115, 128], hard: [150, 163] };
+const CARDIO_MAX_MINS = 45;
+const CARDIO_WARMUP_MINS = 12;   // early-morning training: a longer warm-up than usual
+const CARDIO_COOLDOWN_MINS = 5;
+const HR_EASY = `HR ${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]}`;
+const HR_HARD = `HR ${CARDIO_HR.hard[0]}–${CARDIO_HR.hard[1]}`;
+/* Wednesday, by week of the mesocycle (index 3 = deload week). */
+const CARDIO_EASY = [
+  { machine: 'Spin bike', how: 'Easy spin' },
+  { machine: 'Treadmill', how: 'Incline walk — 10–12% incline, 5–5.5 km/h' },
+  { machine: 'Rower', how: 'Easy row' },
+  { machine: 'Spin bike or outdoor walk', how: 'Easy spin or a walk outside' },
+];
+/* Sunday, by block and week of the mesocycle (index 3 = deload week).
+   on/off are seconds, used for the session-length estimate; label is what
+   the athlete reads. `grow` is how many reps the block may add over the
+   rounds (0 on deloads — a deload that grows is not a deload). */
+const CARDIO_HIIT = {
+  A: [
+    { machine: 'Air bike', reps: 8, on: 30, off: 90, label: '30 s hard / 90 s easy', target: 'RPE 9', grow: 2 },
+    { machine: 'Rower', reps: 8, on: 60, off: 60, label: '1 min hard / 1 min easy', target: 'RPE 8–9', grow: 2 },
+    { machine: 'Spin bike', reps: 10, on: 60, off: 75, label: '1 min hard / 75 s easy', target: 'RPE 8–9', grow: 2 },
+    { machine: 'Sled', reps: 6, on: 20, off: 60, label: '20 m push / walk back', target: 'fast, not grinding', grow: 0 },
+  ],
+  B: [
+    { machine: 'Spin bike', reps: 3, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
+    { machine: 'Treadmill, 6–10% incline', reps: 4, on: 180, off: 120, label: '3 min hard / 2 min walk', target: HR_HARD, grow: 1 },
+    { machine: 'Spin bike + rower, alternating', reps: 4, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
+    { machine: 'Air bike', reps: 2, on: 240, off: 180, label: '4 min / 3 min easy', target: 'HR ~150', grow: 0 },
+  ],
+};
+function hiitMins(s, reps) { return CARDIO_WARMUP_MINS + CARDIO_COOLDOWN_MINS + Math.round(reps * (s.on + s.off) / 60); }
+/* Where block week `n` (1-based) sits: which interval block, which week of
+   the mesocycle, and how many times that block has come round before. */
+function cardioSlot(n) {
+  const meso = Math.floor((n - 1) / HYPER_MESO_WEEKS);
+  return { block: meso % 2 ? 'B' : 'A', wk: (n - 1) % HYPER_MESO_WEEKS, round: Math.floor(meso / 2) };
+}
+/* The day plan for one cardio slot ('easy' | 'hiit') in block week `n`. */
+function cardioPlan(type, n) {
+  const { block, wk, round } = cardioSlot(n);
+  const deload = wk === HYPER_MESO_WEEKS - 1;
+  if (type === 'easy') {
+    const e = CARDIO_EASY[wk];
+    const mins = deload ? '30' : '35–40';
+    return {
+      kind: 'cardio', mobility: true,
+      title: `Easy Cardio + Mobility`,
+      sub: `${e.how} · ${mins} min at ${HR_EASY} (RPE 3–4), nose-breathing easy · then the week's mobility session. Legs heavy? Cut it to 25 min — Thursday comes first.`,
+      cardio: { type: 'easy', machine: e.machine, mins: deload ? 30 : 40, main: `${e.how}, ${mins} min`, target: `${HR_EASY} · RPE 3–4` },
+    };
+  }
+  const s = CARDIO_HIIT[block][wk];
+  let reps = s.reps;
+  for (let i = 0; i < Math.min(round, s.grow); i++) if (hiitMins(s, reps + 1) <= CARDIO_MAX_MINS) reps++;
+  const main = `${reps} × ${s.label}`;
+  return {
+    kind: 'cardio',
+    title: `Intervals · ${s.machine}`,
+    sub: `${CARDIO_WARMUP_MINS} min warm-up → ${main} (${s.target}) → ${CARDIO_COOLDOWN_MINS} min easy.${block === 'A' ? ' Judge the reps on feel — a watch lags on short efforts.' : ''}`,
+    cardio: { type: 'hiit', block, machine: s.machine, reps, mins: hiitMins(s, reps), main, target: s.target },
+  };
+}
 const HYPER_WEEK = {
   /* Upper before Lower on Mon/Tue, swapped v57 on request. It also happens to
      be the better order coming off a race: the block starts the morning after
@@ -1822,7 +1932,10 @@ const HYPER_WEEK = {
      and the Sunday run is easy, not long), but it is the trade being made. */
   0: { kind: 'lift', tpl: 'hypPush' },
   1: { kind: 'lift', tpl: 'hypPull' },
-  2: { kind: 'run', title: 'Easy Run + Mobility', sub: EASY_RUN_SUB + ' · then the week\'s mobility session', mobility: true },
+  /* Wednesday and Sunday were easy runs until v75; now conditioning. These
+     are block week 1's sessions — buildOffseason() asks cardioPlan() for the
+     right one each week. See the CONDITIONING header. */
+  2: cardioPlan('easy', 1),
   3: { kind: 'lift', tpl: 'hypLowerS' },
   4: { kind: 'lift', tpl: 'hypUpper' },
   /* Arms & Core moved to Saturday and Sunday became a run of its own (v65, on
@@ -1834,7 +1947,7 @@ const HYPER_WEEK = {
      of them and the one that moves — if the week needs a day back, that is the
      one to take, and the plan will not mind. */
   5: { kind: 'lift', tpl: 'hypArms' },
-  6: { kind: 'run', title: 'Easy Run', sub: '45–60 min conversational. The week has no rest day now — take this one off if the legs want it.' },
+  6: cardioPlan('hiit', 1),
 };
 /* =====================================================================
    ONE CONTINUOUS BLOCK (v68)
@@ -1915,7 +2028,11 @@ function buildOffseason(raceISO, raceKey) {
     const monday = dadd(HYPER_START, (n - 1) * 7);
     const isRaceWeek = !!raceISO && raceISO >= monday && raceISO <= dadd(monday, 6);
     const isDeload = n % HYPER_MESO_WEEKS === 0;
-    const layout = isRaceWeek ? raceWeekLayout(raceKey) : (isDeload ? deloadWeekLayout() : HYPER_WEEK);
+    const base = isRaceWeek ? raceWeekLayout(raceKey) : (isDeload ? deloadWeekLayout() : HYPER_WEEK);
+    /* The cardio days change every week (machine, reps, deload), so they
+       come from cardioPlan() rather than the fixed layout. Race week keeps
+       its own days. */
+    const layout = isRaceWeek ? base : Object.assign({}, base, { 2: cardioPlan('easy', n), 6: cardioPlan('hiit', n) });
     weeks.push({
       phase: isRaceWeek ? 'Race week — 10 km, and a lighter week' : blockPhaseLabel(n),
       monday,
@@ -1964,6 +2081,7 @@ function swapLockReason(day, todayISO, logged) {
 function samePlan(a, b) {
   if (!a || !b) return a === b;
   for (const k of ['kind', 'tpl', 'title', 'sub', 'optional', 'mobility', 'moved']) if ((a[k] || null) !== (b[k] || null)) return false;
+  if (JSON.stringify(a.cardio || null) !== JSON.stringify(b.cardio || null)) return false;
   return true;
 }
 /* Warnings — never blocks — for a week as it would look after a swap, from
@@ -1982,6 +2100,10 @@ function swapWarnings(days) {
       out.push(`${d.title} sits within 48 h of the long run.`);
     }
     if (lower(d) && lower(next)) out.push(`Two lower-body days back to back (${d.title}, ${next.title}) — the second one will be compromised.`);
+    /* v75: the interval day is placed four days before legs on purpose [C3]. */
+    const hiit = x => !!x && x.kind === 'cardio' && !!x.cardio && x.cardio.type === 'hiit';
+    if (hiit(d) && lower(next)) out.push(`${d.title} lands the day before ${next.title} — hard intervals cost the leg session that follows them.`);
+    if (lower(d) && hiit(next)) out.push(`${next.title} comes the day after ${d.title} — tired legs make for poor intervals.`);
     if (isRun(d) && rt(d) === 'hard' && isRun(next) && rt(next) === 'long') out.push('Hard run straight into the long run — no easy day between them.');
   }
   if (days.some(d => d && d.kind === 'race')) out.push('This is race week — the taper is deliberate. Move things only if life forces it.');
@@ -2805,5 +2927,6 @@ if (typeof module !== 'undefined' && module.exports) {
     missedLifts, rescueTarget, rescueWeek, RESCUE_LOOKBACK_DAYS, STREAK_GRACE_DAYS, daysApart,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
+    CARDIO_HR, CARDIO_MAX_MINS, CARDIO_EASY, CARDIO_HIIT, cardioSlot, cardioPlan, hiitMins,
   };
 }

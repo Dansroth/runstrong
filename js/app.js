@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 33;
+const SCHEMA_VERSION = 34;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -22,6 +22,7 @@ function defaultState() {
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
+    cardio: {},            // v75: date → {min, hr, rpe, note} | {skipped:true}
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
     races: { geelong: { checklist: {} } },   // checklist only since v64; the February race was removed in v69
@@ -318,6 +319,16 @@ const MIGRATIONS = {
     }
     s.schemaVersion = 33; return s;
   },
+  /* 33 → 34: no running goal any more, so the Wednesday and Sunday runs
+     become conditioning days (see CONDITIONING in program.js). The calendar
+     is rebuilt; every logged run stays in ST.runs and in the running stats —
+     it happened, so it stays history. Cardio gets its own log, because a
+     bike session has no kilometres and a run sheet would ask for them. */
+  33: (s) => {
+    s.program = buildProgram();
+    s.cardio = s.cardio || {};
+    s.schemaVersion = 34; return s;
+  },
 };
 
 function migrate(s) {
@@ -371,7 +382,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v74';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v75';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -894,6 +905,7 @@ function activityDates() {
   const set = new Set();
   for (const id in ST.sessions) if (ST.sessions[id].status === 'done') set.add(ST.sessions[id].date);
   for (const d in mergedRunsAll()) set.add(d);
+  for (const d in (ST.cardio || {})) if (cardioFor(d)) set.add(d);
   // a scheduled mobility session is a training day too (off-season weeks
   // plan one); an ad-hoc cool-down on a rest day is not
   for (const d in (ST.routines || {})) {
@@ -1024,6 +1036,8 @@ function vHome() {
     // the mobility session is its own thing — reachable whether or not the run is logged yet
     const mobBtn = day.mobility && !mr ? coolBtn : '';
     card = `<div class="card card--lead run"><div class="card-kicker">${day.kind === 'race' ? 'RACE DAY' : day.mobility ? "Today's run + mobility" : "Today's run"}</div><div class="card-title">${esc(day.title)}</div><div class="card-sub">${esc(day.sub || '')}</div><div class="card-sub dim">${day.mobility ? 'No lifting today — an easy run, then the week\'s mobility session.' : 'No lifting today — running is the priority.'}</div>${logged}${mobBtn}${raceBtn}</div>`;
+  } else if (day.kind === 'cardio') {
+    card = cardioCard(day, t);
   } else if (day.kind === 'mobility') {
     const done = routineDone(t, 'stretch');
     card = `<div class="card ${done ? '' : 'card--lead action'}"><div class="card-kicker">${done ? 'Done today ✓' : `Mobility · ~${MOBILITY_MINS} min`}</div>
@@ -1042,7 +1056,7 @@ function vHome() {
      logged when you log them; the pace trend and the deload radar work with
      whatever is there. */
   const backlogCard = '';
-  const hasData = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0;
+  const hasData = Object.values(ST.sessions).some(s => s.status === 'done') || Object.keys(ST.runs).length > 0 || Object.keys(ST.cardio || {}).length > 0;
   const backupDue = hasData && (!ST.lastBackup || Date.now() - ST.lastBackup > 7 * 86400000);
   const backupCard = backupDue ? `<div class="card backup"><div class="card-sub">💾 ${ST.lastBackup ? "It's been over a week since your last backup." : 'No backup yet.'} Data lives only on this device.</div><button class="btn" onclick="exportJSON();render()">Export backup now</button></div>` : '';
   const whyBtn = `<button class="linkbtn" onclick="showWhy()">Why this plan?</button>`;
@@ -1219,6 +1233,83 @@ window.saveRun = function (date) {
 };
 window.skipRun = function (date) {
   ST.runs[date] = { skipped: true };
+  save(); closeModal(); render();
+};
+
+/* ================= conditioning (v75) =================
+   The two cardio days (see CONDITIONING in program.js). Logged as what the
+   athlete asked to track — minutes, average heart rate, RPE — plus a note.
+   Its own store rather than ST.runs: a bike session has no kilometres, and
+   folding it into the runs would put watt-less, distance-less entries into
+   every pace and efficiency chart the Progress tab draws. */
+function cardioFor(date) {
+  const c = ST.cardio && ST.cardio[date];
+  return c && !c.skipped ? c : null;
+}
+function cardioSkipped(date) { return !!(ST.cardio && ST.cardio[date] && ST.cardio[date].skipped); }
+function cardioLine(c) {
+  return `${c.min} min${c.hr ? ` · ${c.hr} bpm` : ''}${c.rpe ? ` · RPE ${c.rpe}` : ''}${c.note ? ` · 📝 ${esc(c.note)}` : ''}`;
+}
+function cardioCard(day, t) {
+  const c = cardioFor(t), cd = day.cardio || {};
+  const hiit = cd.type === 'hiit';
+  const mobBtn = day.mobility
+    ? `<button class="btn big" onclick="startMobility('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Mobility done ✓ — again?' : `Mobility session — ${MOBILITY_MINS} min`}</button>` : '';
+  const detail = `<div class="card-sub"><b>${esc(cd.machine || '')}</b> · ${esc(cd.main || '')}</div>
+    <div class="card-sub dim">Target: ${esc(cd.target || '')} · ~${cd.mins || ''} min${hiit ? ` incl. warm-up` : ''}</div>`;
+  const action = c
+    ? `<div class="run-logged">✓ ${cardioLine(c)}</div>${mobBtn}<button class="mini" onclick="openCardioLog('${t}')">edit</button>`
+    : cardioSkipped(t)
+      ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openCardioLog('${t}')">log anyway</button>`
+      : `<button class="btn primary big" onclick="openCardioLog('${t}')">Log ${hiit ? 'intervals' : 'cardio'}</button>${mobBtn}`;
+  const why = hiit
+    ? 'The week\'s one hard session — four days before legs, so it is gone by Thursday.'
+    : 'Strictly easy — tomorrow is leg day. If you can\'t breathe through your nose, back off.';
+  return `<div class="card ${c ? '' : 'card--lead action'} cardio"><div class="card-kicker">${c ? 'Done today ✓' : day.mobility ? "Today's cardio + mobility" : "Today's cardio"}</div>
+    <div class="card-title">${esc(day.title)}</div>${detail}<div class="card-sub dim">${esc(why)}</div>${action}</div>`;
+}
+window.openCardioLog = function (date) {
+  const day = dayFor(date);
+  const cd = (day && day.cardio) || {};
+  const prev = cardioFor(date);
+  const r = prev ? { ...prev } : { min: cd.mins || 40, hr: '', rpe: null, note: '' };
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h2>${esc(day ? day.title : 'Cardio')} — ${fmtDate(date)}</h2>
+    ${cd.main ? `<div class="card-sub dim">Planned: ${esc(cd.machine)} · ${esc(cd.main)} · ${esc(cd.target)}</div>` : ''}
+    <div class="stepper"><div class="stepper-lbl">Time (minutes, including warm-up)</div><div class="stepper-row">
+      <button class="stepbtn" aria-label="5 minutes less" onclick="cardioStep(-5)">−</button><div class="stepval" id="cv-min">${r.min}</div><button class="stepbtn" aria-label="5 minutes more" onclick="cardioStep(5)">+</button></div></div>
+    <div class="stepper"><div class="stepper-lbl">Average heart rate (bpm, optional)</div>
+      <input id="cardiohr" class="notefield" type="number" inputmode="numeric" placeholder="${cd.type === 'hiit' ? 'e.g. 145' : 'e.g. 122'}" value="${r.hr || ''}"></div>
+    <div class="stepper"><div class="stepper-lbl">How hard was it overall? (RPE 1–10)</div><div class="rpes" id="cardiorpes">
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<button class="rpe ${r.rpe === v ? 'sel' : ''}" data-v="${v}" onclick="pickCardioRpe(${v})">${v}</button>`).join('')}</div></div>
+    <input id="cardionote" class="notefield" placeholder="Notes (optional) — e.g. watts or calories per rep" value="${esc(r.note || '')}">
+    <button class="btn primary big" onclick="saveCardio('${date}')">Save</button>
+    <button class="linkbtn" onclick="skipCardio('${date}')">I didn't do this session</button>
+    <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
+  m.classList.add('open');
+  m.dataset.min = r.min; m.dataset.rpe = r.rpe || '';
+};
+window.cardioStep = function (d) {
+  const m = $('#modal');
+  const v = Math.max(5, Math.min(120, (parseInt(m.dataset.min, 10) || 0) + d));
+  m.dataset.min = v; $('#cv-min').textContent = v;
+};
+window.pickCardioRpe = function (v) {
+  $('#modal').dataset.rpe = v;
+  document.querySelectorAll('#cardiorpes .rpe').forEach(b => b.classList.toggle('sel', +b.dataset.v === v));
+};
+window.saveCardio = function (date) {
+  const m = $('#modal');
+  const rpe = parseInt(m.dataset.rpe, 10);
+  if (!rpe) { const row = $('#cardiorpes'); if (row) { row.classList.remove('nudge'); void row.offsetWidth; row.classList.add('nudge'); } toast('Tap an RPE — it is how the sessions are compared week to week.'); return; }
+  const hr = parseInt($('#cardiohr').value, 10);
+  ST.cardio = ST.cardio || {};
+  ST.cardio[date] = { min: parseInt(m.dataset.min, 10), hr: isNaN(hr) ? null : hr, rpe, note: $('#cardionote').value.trim() };
+  save(); closeModal(); render();
+};
+window.skipCardio = function (date) {
+  ST.cardio = ST.cardio || {};
+  ST.cardio[date] = { skipped: true };
   save(); closeModal(); render();
 };
 
@@ -1438,7 +1529,7 @@ function upNext(t) {
   }
   if (!items.length) return '';
   return `<div class="upnext"><div class="section-label">Up next</div>` + items.map(d =>
-    `<div class="upnext-row"><span class="upnext-date">${fmtDate(d.date)}</span><span class="upnext-title ${d.kind}">${d.kind === 'run' ? '🏃 ' : d.kind === 'race' ? '' : d.kind === 'lift' ? '🏋️ ' : ''}${esc(d.title)}</span></div>`).join('') + `</div>`;
+    `<div class="upnext-row"><span class="upnext-date">${fmtDate(d.date)}</span><span class="upnext-title ${d.kind}">${d.kind === 'run' ? '🏃 ' : d.kind === 'cardio' ? '🚴 ' : d.kind === 'race' ? '' : d.kind === 'lift' ? '🏋️ ' : ''}${esc(d.title)}</span></div>`).join('') + `</div>`;
 }
 
 /* ================= race kit + maintenance mode ================= */
@@ -1477,7 +1568,8 @@ function offerRecoveryMode() {
   const blockEnd = dadd(HYPER_START, BLOCK_WEEKS * 7 - 1);
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
-    <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Push, Pull, Lower, Upper, and a 30 min Arms & Core), two easy runs and a mobility session, in four-week mesocycles of three loading weeks and a deload.</div>
+    <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Push, Pull, Lower, Upper, and a 30 min Arms & Core), two cardio days and a mobility session, in four-week mesocycles of three loading weeks and a deload.</div>
+    <div class="wksum-li">• <b>Cardio, not running</b> — Wednesday is easy zone-2 cardio (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) the day before legs, so it has to leave them fresher. Sunday is the week's one interval session, four days before legs, alternating short reps and 4-minute reps each mesocycle. Mostly bikes, rower and uphill treadmill: cycling interferes with muscle growth less than running does, and short, hard sessions build fitness without eating into recovery.</div>
     <div class="wksum-li dim">The February 10 km sits inside it as one lighter week rather than a running block.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
@@ -2556,18 +2648,22 @@ function vSchedule() {
         const runSkipped = isRun && !merged && ST.runs[d.date] && ST.runs[d.date].skipped;
         const extraRun = false;   // was: a synced run on a non-plan day. Nothing syncs now, so a run only exists where it was logged.
         const mobDone = (d.kind === 'mobility' || d.mobility) && routineDone(d.date, 'stretch');
-        const icon = d.kind === 'run' ? (d.mobility ? '🏃🧘' : '🏃') : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? (d.run ? '🏋️🏃' : '🏋️') : d.kind === 'mobility' ? '🧘' : '·';
+        const isCardio = d.kind === 'cardio';
+        const cardioRec = isCardio ? cardioFor(d.date) : null;
+        const cardioSkip = isCardio && !cardioRec && cardioSkipped(d.date);
+        const icon = d.kind === 'run' ? (d.mobility ? '🏃🧘' : '🏃') : isCardio ? (d.mobility ? '🚴🧘' : '🚴') : d.kind === 'race' ? '🏁' : d.kind === 'lift' ? (d.run ? '🏋️🏃' : '🏋️') : d.kind === 'mobility' ? '🧘' : '·';
         let action = '';
         const moved = !!(ST.planOverrides && ST.planOverrides[d.date]);
         if (done) action = `<button class="mini" onclick="event.stopPropagation();go('summary',{sid:'${d.date}'})">view</button>`;
         else if (isRun && d.date <= t) action = `<button class="mini" onclick="event.stopPropagation();openRunLog('${d.date}')">${runRec ? 'edit' : 'log'}</button>`;
+        else if (isCardio && d.date <= t) action = `<button class="mini" onclick="event.stopPropagation();openCardioLog('${d.date}')">${cardioRec || cardioSkip ? 'edit' : 'log'}</button>`;
         else if (!swapLockReason(d, t, isLoggedDate)) action = `<button class="mini" aria-label="Move ${esc(d.title || 'Rest')} to another day" onclick="event.stopPropagation();openMove('${d.date}')">move</button>`;
         const isLift = d.kind === 'lift' && !done;
         const rowClick = isLift ? ` onclick="go('daypreview',{tpl:'${d.tpl}',date:'${d.date}'})"` : '';
         return `<div class="wk-day ${d.date === t ? 'today' : ''} ${d.kind}"${rowClick}>
           <span class="wk-date">${fmtDate(d.date)}</span>
           <span class="wk-icon">${extraRun ? '🏃' : icon}</span>
-          <span class="wk-title">${esc(d.title || 'Rest')}${done || runLogged || (mobDone && !isRun) ? ' <b class="done-tick">✓</b>' : ''}${moved ? ' <span class="tag-moved">moved</span>' : ''}${runSkipped ? ' <span class="dim">✗</span>' : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}</span>` : ''}</span>
+          <span class="wk-title">${esc(d.title || 'Rest')}${done || runLogged || cardioRec || (mobDone && !isRun && !isCardio) ? ' <b class="done-tick">✓</b>' : ''}${moved ? ' <span class="tag-moved">moved</span>' : ''}${runSkipped || cardioSkip ? ' <span class="dim">✗</span>' : ''}${cardioRec ? ` <span class="dim">${cardioRec.min} min${cardioRec.rpe ? ` · RPE ${cardioRec.rpe}` : ''}</span>` : ''}${isCardio && d.cardio && !cardioRec ? ` <span class="dim">${esc(d.cardio.main)}</span>` : ''}${(runLogged || extraRun) && merged ? ` <span class="dim">${merged.km}km · ${paceStr(merged.km, merged.min) || ''}</span>` : ''}</span>
           ${action}
         </div>`;
       }).join('')}
@@ -2592,6 +2688,7 @@ function isLoggedDate(d) {
   const s = ST.sessions[d];
   if (s && (s.status === 'done' || s.status === 'active')) return true;
   if (mergedRunFor(d)) return true;
+  if (cardioFor(d)) return true;
   const r = ST.routines && ST.routines[d];
   return !!(r && ((r.stretch && r.stretch.completed) || (r.prep && r.prep.completed)));
 }
@@ -2897,7 +2994,7 @@ function reminderCard() {
    is what 'Let it go' is for. */
 function loggedOn(date) {
   return !!(ST.sessions[date] && ST.sessions[date].status === 'done')
-    || !!mergedRunFor(date) || routineDone(date, 'stretch');
+    || !!mergedRunFor(date) || !!cardioFor(date) || routineDone(date, 'stretch');
 }
 function rescueOffer() {
   if (ST.maintenance.active) return null;
@@ -3422,7 +3519,7 @@ function buildWeeklySummary(monday) {
     'Recovery week': 'walk, eat, sleep — the race is still in your legs',
     'Hypertrophy — block 1 deload': 'sets halved, loads kept — fatigue out, then block 2',
     'Hypertrophy — block 2 deload': 'sets halved, loads kept — last deload before running comes back',
-    'Hypertrophy': '5 lifts, 2 easy runs, 1 mobility session — sets creep up each week',
+    'Hypertrophy': '5 lifts, easy cardio on Wednesday, intervals on Sunday, 1 mobility session — loads creep up each week',
     'Transition': 'three lifts, three easy runs — the body relearns running before the build asks anything of it',
     'Base': 'three runs a week again, strides and hills — the aerobic base before the hard work; lifting just holds',
     'Build — strength maintenance': 'tempo and intervals arrive; three short lifts a week hold what the block built',
@@ -3890,6 +3987,10 @@ window.showHyperRetro = function () {
      count toward what was planned — otherwise the summer block's Tuesday run
      and the hypertrophy block's Sunday run go missing from adherence. */
   const runsPlanned = planWeeks().filter(w => w.monday >= since && w.monday <= t).reduce((a, w) => a + w.days.filter(d => (d.kind === 'run' || d.run) && d.date <= t).length, 0);
+  const cardioDays = planWeeks().filter(w => w.monday >= since && w.monday <= t).flatMap(w => w.days).filter(d => d.kind === 'cardio' && d.date <= t);
+  const cardioLine = cardioDays.length
+    ? `${cardioDays.filter(d => cardioFor(d.date)).length} of ${cardioDays.length} cardio session${cardioDays.length === 1 ? '' : 's'} logged (easy ${cardioDays.filter(d => d.cardio && d.cardio.type === 'easy' && cardioFor(d.date)).length} · intervals ${cardioDays.filter(d => d.cardio && d.cardio.type === 'hiit' && cardioFor(d.date)).length})`
+    : 'No cardio days due yet.';
   const mobilityDone = Object.keys(ST.routines || {}).filter(d => d >= since && routineDone(d, 'stretch') && (dayFor(d) || {}).mobility).length;
   const rotation = Object.keys(HYPER_POOLS).map(pool => `${HYPER_POOL_LABEL[pool]}: ${EXERCISES[hyperExId(HYPER_POOLS[pool], mesoStart, t)].name}`);
   /* The block's arc: first four weeks against the last four, per muscle and
@@ -3920,7 +4021,7 @@ window.showHyperRetro = function () {
       ${lifters.length ? lifters.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('') : '<div class="wksum-li dim">Not enough repeat sessions yet to compare.</div>'}</div>
     ${arc}
     <div class="wksum-sec"><div class="wksum-h">🔄 Currently rotating in</div>${rotation.map(l => `<div class="wksum-li">${esc(l)}</div>`).join('')}</div>
-    <div class="wksum-sec"><div class="wksum-h">🏃 Easy running · 🧘 mobility</div><div class="wksum-li">${runsInPhase} of ${runsPlanned} planned run${runsPlanned === 1 ? '' : 's'} logged · ${mobilityDone} mobility session${mobilityDone === 1 ? '' : 's'} done</div></div>
+    <div class="wksum-sec"><div class="wksum-h">🚴 Cardio · 🧘 mobility</div><div class="wksum-li">${esc(cardioLine)} · ${mobilityDone} mobility session${mobilityDone === 1 ? '' : 's'} done</div>${runsPlanned || runsInPhase ? `<div class="wksum-li dim">🏃 ${runsInPhase} of ${runsPlanned} planned run${runsPlanned === 1 ? '' : 's'} logged, from before the switch to cardio</div>` : ''}</div>
     <div class="wksum-sec"><div class="wksum-h">📦 Totals</div><div class="wksum-li">${doneSessions.length} gym sessions · ${totTon} t lifted</div></div>
     <button class="btn primary big" onclick="closeModal()">Close</button></div>`;
   m.classList.add('open');
@@ -3936,13 +4037,14 @@ window.showHyperRetro = function () {
 function programmeBlocks() {
   return [
     { name: 'Geelong block', until: dadd(HYPER_START, -1), note: 'the six-week build that ended on race day' },
-    { name: 'Hypertrophy block', until: '9999-12-31', note: 'Push · Pull · Lower · Upper · Arms + 2 easy runs' },
+    { name: 'Hypertrophy block', until: '9999-12-31', note: 'Push · Pull · Lower · Upper · Arms + easy cardio and intervals' },
   ];
 }
 function dayMark(d) {
   if (d.kind === 'race') return { c: 'race', t: '🏁' };
   if (d.kind === 'lift') return { c: d.run ? 'lift run' : 'lift', t: d.run ? '🏋️🏃' : '🏋️' };
   if (d.kind === 'run') return { c: d.mobility ? 'run mob' : 'run', t: d.mobility ? '🏃🧘' : '🏃' };
+  if (d.kind === 'cardio') return { c: d.mobility ? 'cardio mob' : 'cardio', t: '🚴' };
   if (d.kind === 'mobility') return { c: 'mob', t: '🧘' };
   return { c: 'rest', t: '·' };
 }
@@ -3984,7 +4086,7 @@ function vProgramme() {
         return slots.map(d => {
           if (!d) return '<i class="pgm-d empty"></i>';
           const m = dayMark(d);
-          const done = ST.sessions[d.date] && ST.sessions[d.date].status === 'done';
+          const done = (ST.sessions[d.date] && ST.sessions[d.date].status === 'done') || !!cardioFor(d.date);
           /* v72: the glyph is the ONLY encoding of what each day is, and an
              emoji inside an <i> has no accessible name — a screen reader
              reads it as whatever Unicode happens to call the character, or
@@ -4190,6 +4292,13 @@ window.exportCSV = function () {
     if (r.splits && r.splits.length) bits.push('splits ' + r.splits.map(fmtSplit).join(' '));
     if (r.note) bits.push(r.note);
     rows.push([d, 'Run', `Run (${r.min} min, ${paceStr(r.km, r.min) || '?'}${r.hr ? ', ' + r.hr + ' bpm' : ''})`, 1, '', r.km, '', '', bits.join(' — ').replace(/"/g, '""')]);
+  }
+  // cardio (v75): exercise carries the machine and minutes/HR, rpe column = RPE
+  for (const d of Object.keys(ST.cardio || {}).sort()) {
+    const c = ST.cardio[d], day = dayFor(d), cd = (day && day.cardio) || {};
+    const what = cd.machine ? `${cd.machine} — ${cd.main}` : 'Cardio';
+    if (c.skipped) { rows.push([d, 'Cardio', `${what} (skipped)`, 1, '', '', '', '', '']); continue; }
+    rows.push([d, 'Cardio', `${what} (${c.min} min${c.hr ? ', ' + c.hr + ' bpm' : ''})`.replace(/"/g, '""'), 1, '', '', c.rpe ?? '', '', (c.note || '').replace(/"/g, '""')]);
   }
   download(`runstrong-log-${today()}.csv`, rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n'), 'text/csv');
 };

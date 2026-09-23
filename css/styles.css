@@ -182,7 +182,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .upnext-row { display: flex; gap: var(--s-3); padding: var(--s-3) var(--s-1); border-bottom: 1px solid var(--border); font-size: var(--t-label); line-height: var(--lh-label); }
 .upnext-row:last-child { border-bottom: none; }
 .upnext-date { color: var(--text-2); min-width: 108px; }
-.upnext-title.run { color: var(--text-2); }
+.upnext-title.run, .upnext-title.cardio { color: var(--text-2); }
 
 /* segmented control (Progress tab: Log | Insights) */
 .seg { display: flex; gap: var(--s-1); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-1); margin-bottom: var(--s-1); }
@@ -408,7 +408,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
    screen of mostly lifts. The row already carries a distinct icon, so the
    colour was redundant encoding doing damage: titles are plain text now and
    the icon does the work. */
-.wk-day.run .wk-title { color: var(--text); }
+.wk-day.run .wk-title, .wk-day.cardio .wk-title { color: var(--text); }
 .wk-day.race .wk-title { color: var(--text); font-weight: var(--fw-head); }
 .wk-date { color: var(--text-2); min-width: 96px; font-size: var(--t-micro); line-height: var(--lh-micro); }
 .wk-day .mini { margin-left: auto; }
@@ -638,7 +638,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 .pgm-d.empty { background: none; }
 /* A day carrying two activities (lift + run, run + mobility) only has room for
    the first emoji, so the second is marked with an underline rather than lost. */
-.pgm-d.lift.run, .pgm-d.run.mob { box-shadow: inset 0 -2.5px 0 var(--accent); }
+.pgm-d.lift.run, .pgm-d.run.mob, .pgm-d.cardio.mob { box-shadow: inset 0 -2.5px 0 var(--accent); }
 .pgm-d.done { background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent-fill); }
 .pgm-d.today { outline: 1.5px solid var(--accent); }
 .pgm-ph { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

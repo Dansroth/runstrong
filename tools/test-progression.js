@@ -329,11 +329,14 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
     /* Since v39 the Sunday lift carries the day's easy run (day.run), so a
        run is either its own day or a flag on a lift day — the same shape
        the `mobility` flag has always had on a run day. */
+    /* v75: no running goal, so both run days became conditioning — easy
+       cardio on Wednesday, intervals on Sunday. No run is left in the block. */
     const runs = w.days.filter(d => d.kind === 'run' || d.run).length;
     const mob = w.days.filter(d => d.kind === 'mobility' || d.mobility).length;
     eq(`week ${w.num} (${w.phase}): 5 lifts`, lifts, 5);
-    eq(`week ${w.num}: 2 easy runs`, runs, 2);
-    ok(`week ${w.num}: every run is easy`, w.days.filter(d => d.kind === 'run').every(d => /easy/i.test(d.title)));
+    eq(`week ${w.num}: no runs left`, runs, 0);
+    eq(`week ${w.num}: Wednesday is easy cardio + mobility`, `${w.days[2].kind}/${w.days[2].cardio && w.days[2].cardio.type}/${!!w.days[2].mobility}`, 'cardio/easy/true');
+    eq(`week ${w.num}: Sunday is the interval session`, `${w.days[6].kind}/${w.days[6].cardio && w.days[6].cardio.type}`, 'cardio/hiit');
     eq(`week ${w.num}: exactly one mobility session`, mob, 1);
     /* v65: Arms & Core moved to Saturday and Sunday became a run of its own,
        which leaves the week with no rest day. Asserted rather than assumed,
@@ -349,9 +352,9 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
     const dl = /deload/i.test(w.phase);
     eq(`week ${w.num}: Saturday is ${dl ? 'the benchmark' : 'the short Arms & Core session'}`,
       w.days[5].tpl, dl ? 'hypBench' : 'hypArms');
-    eq(`week ${w.num}: Sunday is a run on its own, not stacked on a lift`, w.days[6].kind + '/' + !!w.days[6].run, 'run/false');
+    eq(`week ${w.num}: Sunday is cardio on its own, not stacked on a lift`, w.days[6].kind + '/' + !!w.days[6].run, 'cardio/false');
     eq(`week ${w.num}: seven training days, no rest day`, w.days.filter(d => d.kind === 'rest').length, 0);
-    ok(`week ${w.num}: has no rest-less 8-slot day problem (every day is one plan)`, w.days.every(d => ['lift', 'run', 'mobility', 'rest'].includes(d.kind)));
+    ok(`week ${w.num}: has no rest-less 8-slot day problem (every day is one plan)`, w.days.every(d => ['lift', 'run', 'cardio', 'mobility', 'rest'].includes(d.kind)));
     ok(`week ${w.num}: label resolves to a hypertrophy policy`, ['hypertrophy', 'hyperDeload'].includes(phaseKeyFromLabel(w.phase)), phaseKeyFromLabel(w.phase));
   }
   /* The rhythm repeats for as long as the block runs — no transition week to
@@ -542,7 +545,7 @@ group('one continuous block: the same split for thirty weeks, race week aside');
   ok('every ordinary week is the same five lifts', normal.every(w =>
     w.days.filter(d => d.kind === 'lift').map(d => d.tpl).join(',')
       === (/deload/i.test(w.phase) ? 'hypPush,hypPull,hypLowerS,hypUpper,hypBench' : 'hypPush,hypPull,hypLowerS,hypUpper,hypArms')));
-  ok('…and two runs', normal.every(w => w.days.filter(d => d.kind === 'run').length === 2));
+  ok('…and two cardio days, no runs', normal.every(w => w.days.filter(d => d.kind === 'cardio').length === 2 && !w.days.some(d => d.kind === 'run')));
   ok('…and one mobility session', normal.every(w => w.days.filter(d => d.kind === 'mobility' || d.mobility).length === 1));
   ok('…and exactly one leg day', normal.every(w => w.days.filter(d => d.kind === 'lift' && isLowerTpl(d.tpl)).length === 1));
 
@@ -631,7 +634,10 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   eq('Tue upperA ↔ Sat upperB: nothing to warn about', warnsFor(wk3, 1, 5).length, 0, JSON.stringify(warnsFor(wk3, 1, 5)));
   eq('Wed hard ↔ Fri easy: nothing to warn about (upper sits before the hard run, lowerB is 2 days from Sunday)', warnsFor(wk3, 2, 4).filter(x => !/hard run/.test(x)).length, 0, JSON.stringify(warnsFor(wk3, 2, 4)));
   const hw = off[1];   // hypertrophy week 1
-  eq('hypertrophy: Lower B ↔ Arms (Thu↔Sat) is fine — Sunday is an easy run', warnsFor(hw, 3, 5).length, 0, JSON.stringify(warnsFor(hw, 3, 5)));
+  /* v75: Sunday is now intervals, so moving legs to Saturday puts them the
+     day before — that is exactly the collision the conditioning rules exist
+     to flag. */
+  ok('hypertrophy: Lower B ↔ Arms (Thu↔Sat) now warns — legs land the day before intervals', warnsFor(hw, 3, 5).some(x => /tired legs/.test(x)), JSON.stringify(warnsFor(hw, 3, 5)));
   /* Since v57 the week is Upper A, Lower A, run, Lower B — so the two lower
      days already sit either side of the Wednesday run, and moving that run out
      from between them is what puts them back to back. The old fixture swapped
@@ -1089,9 +1095,9 @@ group('dated exceptions: this week only, and they expire by themselves');
     .filter(([id]) => (MUSCLE_MAP[id] || []).some(m => ['quads', 'hams', 'glutes', 'calves'].includes(m)))
     .reduce((a, [, s]) => a + s, 0);
   eq('…and therefore no leg sets at all', legSets, 0);
-  eq('four lifts, none of them legs, runs and arms as generated',
+  eq('four lifts, none of them legs, cardio and arms as generated',
     wk.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
-    'rest,hypPush,run,hypPull,hypUpper,hypArms,run');
+    'rest,hypPush,cardio,hypPull,hypUpper,hypArms,cardio');
 
   /* The property that makes this safe: it is the WEEK that changed, not the
      template. Editing HYPER_WEEK for a one-off would silently become the
@@ -1099,7 +1105,7 @@ group('dated exceptions: this week only, and they expire by themselves');
   const next = prog.weeks.find(w => w.monday === '2026-09-28');
   eq('the following week is the generated shape again',
     next.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
-    'hypPush,hypPull,run,hypLowerS,hypUpper,hypArms,run');
+    'hypPush,hypPull,cardio,hypLowerS,hypUpper,hypArms,cardio');
   ok('…and every later hypertrophy week too', prog.weeks
     .filter(w => /hypertrophy/i.test(w.phase) && w.monday > '2026-09-28' && !w.days.some(d => DAY_OVERRIDES[d.date]))
     .every(w => w.days.filter(d => d.kind === 'lift').length === 5));
@@ -1543,6 +1549,80 @@ group('exercise insights: about growing the muscle, not about running');
   for (const id of ['squat', 'bench', 'pullup', 'calfstand', 'bss', 'copen']) {
     ok(`${id}: the reported running entry is rewritten`, !RUN_CLAIM.test(INSIGHTS[id].why), INSIGHTS[id].why);
   }
+}
+
+/* ===================================================================
+   CONDITIONING (v75) — see the header of the same name in program.js
+   =================================================================== */
+group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the lifting');
+{
+  const { buildOffseason, cardioPlan, cardioSlot, CARDIO_HR, CARDIO_MAX_MINS, CARDIO_HIIT, HYPER_MESO_WEEKS, swapWarnings, swapDays, isLowerTpl, samePlan } = P;
+  const block = buildOffseason(null, null);
+  const DL = HYPER_MESO_WEEKS - 1;
+
+  // the two interval blocks alternate with the mesocycles: A, B, A, B…
+  eq('block week 1 is interval block A', cardioSlot(1).block, 'A');
+  eq('block week 5 is interval block B', cardioSlot(5).block, 'B');
+  eq('block week 9 is block A again', cardioSlot(9).block, 'A');
+  eq('…on its second time round', cardioSlot(9).round, 1);
+  eq('week 4 is the deload slot', cardioSlot(4).wk, DL);
+
+  block.forEach((w, i) => {
+    const n = i + 1, wed = w.days[2], sun = w.days[6];
+    const deload = /deload/i.test(w.phase);
+    eq(`block week ${n}: deload label and cardio slot agree`, cardioSlot(n).wk === DL, deload);
+    // Wednesday: always easy, always zone 2, always carries mobility, always shorter than a lift
+    eq(`block week ${n}: Wednesday is easy`, wed.cardio.type, 'easy');
+    ok(`block week ${n}: Wednesday names the zone-2 heart rate`, wed.sub.includes(`${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]}`), wed.sub);
+    ok(`block week ${n}: Wednesday keeps the mobility session`, wed.mobility === true);
+    ok(`block week ${n}: Wednesday never mentions intervals`, !/interval|hard|×/i.test(wed.sub), wed.sub);
+    eq(`block week ${n}: deload Wednesday is shorter`, wed.cardio.mins, deload ? 30 : 40);
+    // Sunday: intervals within the time the athlete will give it
+    eq(`block week ${n}: Sunday is intervals`, sun.cardio.type, 'hiit');
+    ok(`block week ${n}: Sunday fits in ${CARDIO_MAX_MINS} min`, sun.cardio.mins <= CARDIO_MAX_MINS, String(sun.cardio.mins));
+    ok(`block week ${n}: Sunday says what to do and how hard`, /warm-up/.test(sun.sub) && sun.sub.includes(sun.cardio.main) && sun.sub.includes(sun.cardio.target), sun.sub);
+    // no SkiErg: it trains what the four upper days already train
+    ok(`block week ${n}: no SkiErg anywhere`, !/ski/i.test(wed.cardio.machine + sun.cardio.machine));
+    // the generated week never warns
+    eq(`block week ${n}: generated week has no swap warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
+    // Sunday sits four days before the only leg day
+    const legIdx = w.days.findIndex(d => d.kind === 'lift' && isLowerTpl(d.tpl));
+    if (legIdx >= 0) eq(`block week ${n}: legs are Thursday, four days after Sunday's intervals`, legIdx, 3);
+  });
+
+  // the deload is lighter than the loading weeks around it
+  for (const b of ['A', 'B']) {
+    const hard = s => s.reps * s.on;
+    const loading = CARDIO_HIIT[b].slice(0, DL).map(hard);
+    ok(`block ${b}: the deload has the least hard time`, hard(CARDIO_HIIT[b][DL]) < Math.min(...loading), `${hard(CARDIO_HIIT[b][DL])} vs ${loading}`);
+    eq(`block ${b}: the deload never grows`, CARDIO_HIIT[b][DL].grow, 0);
+  }
+  // loading weeks keep hard work in the 3–16 min band [C3][C4][C5]; a deload
+  // may go lighter (the sled week is ~2 min), never heavier
+  for (const w of block) {
+    const slot = cardioSlot(block.indexOf(w) + 1);
+    const c = w.days[6].cardio, s = CARDIO_HIIT[c.block][slot.wk];
+    const hardMin = c.reps * s.on / 60;
+    if (slot.wk === DL) ok(`${w.phase}: deload hard work (${hardMin} min) stays under 16`, hardMin <= 16, String(hardMin));
+    else ok(`${w.phase}: ${hardMin} min of hard work sits in 3–16`, hardMin >= 3 && hardMin <= 16, String(hardMin));
+  }
+  // progression: a block gains a rep when it comes round again, loading weeks only
+  eq('A week 1: 8 reps first time', cardioPlan('hiit', 1).cardio.reps, 8);
+  eq('A week 1: 9 reps the second time round', cardioPlan('hiit', 9).cardio.reps, 9);
+  eq('A week 1: 10 reps the third time', cardioPlan('hiit', 17).cardio.reps, 10);
+  eq('A week 1: capped at +2 after that', cardioPlan('hiit', 25).cardio.reps, 10);
+  eq('B week 3 cannot grow — it is already at the 45 min limit', cardioPlan('hiit', 15).cardio.reps, cardioPlan('hiit', 7).cardio.reps);
+  eq('A deload does not grow', cardioPlan('hiit', 12).cardio.reps, cardioPlan('hiit', 4).cardio.reps);
+
+  // swap warnings: intervals and legs on neighbouring days are flagged, both ways round
+  const w1 = block[1];
+  const after = (a, b) => { const o = swapDays(w1.days[a], w1.days[b]); return w1.days.map(d => o[d.date] || d); };
+  ok('intervals moved to Wednesday warn — the day before legs', swapWarnings(after(2, 6)).some(x => /day before Lower/.test(x)), JSON.stringify(swapWarnings(after(2, 6))));
+  ok('legs moved to Saturday warn — the day before intervals', swapWarnings(after(3, 5)).some(x => /tired legs/.test(x)));
+  eq('easy cardio moved around the week never warns', swapWarnings(after(2, 4)).length, 0, JSON.stringify(swapWarnings(after(2, 4))));
+  // samePlan sees a different session as a different plan
+  ok('samePlan tells two cardio sessions apart', !samePlan(block[0].days[6], block[1].days[6]));
+  ok('…and a day equals itself', samePlan(block[0].days[6], { ...block[0].days[6] }));
 }
 
 /* =================================================================== */
