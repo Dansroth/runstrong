@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 34;
+const SCHEMA_VERSION = 35;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -329,6 +329,10 @@ const MIGRATIONS = {
     s.cardio = s.cardio || {};
     s.schemaVersion = 34; return s;
   },
+  /* 34 → 35: longer interval Sundays and a mixed circuit as a third format
+     (see CONDITIONING in program.js). Calendar rebuilt; the cardio log is
+     keyed by date and untouched. */
+  34: (s) => { s.program = buildProgram(); s.schemaVersion = 35; return s; },
 };
 
 function migrate(s) {
@@ -382,7 +386,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v75';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v76';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1255,7 +1259,11 @@ function cardioCard(day, t) {
   const hiit = cd.type === 'hiit';
   const mobBtn = day.mobility
     ? `<button class="btn big" onclick="startMobility('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Mobility done ✓ — again?' : `Mobility session — ${MOBILITY_MINS} min`}</button>` : '';
-  const detail = `<div class="card-sub"><b>${esc(cd.machine || '')}</b> · ${esc(cd.main || '')}</div>
+  /* v76: a circuit names its stations in order — "bike · swings · row"
+     is not enough to run it from with a timer going. */
+  const stations = cd.stations && cd.stations.length
+    ? `<ol class="card-sub circuit-list">${cd.stations.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '';
+  const detail = `<div class="card-sub">${cd.stations ? '' : `<b>${esc(cd.machine || '')}</b> · `}${esc(cd.main || '')}</div>${stations}
     <div class="card-sub dim">Target: ${esc(cd.target || '')} · ~${cd.mins || ''} min${hiit ? ` incl. warm-up` : ''}</div>`;
   const action = c
     ? `<div class="run-logged">✓ ${cardioLine(c)}</div>${mobBtn}<button class="mini" onclick="openCardioLog('${t}')">edit</button>`
@@ -1569,7 +1577,7 @@ function offerRecoveryMode() {
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
     <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Push, Pull, Lower, Upper, and a 30 min Arms & Core), two cardio days and a mobility session, in four-week mesocycles of three loading weeks and a deload.</div>
-    <div class="wksum-li">• <b>Cardio, not running</b> — Wednesday is easy zone-2 cardio (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) the day before legs, so it has to leave them fresher. Sunday is the week's one interval session, four days before legs, alternating short reps and 4-minute reps each mesocycle. Mostly bikes, rower and uphill treadmill: cycling interferes with muscle growth less than running does, and short, hard sessions build fitness without eating into recovery.</div>
+    <div class="wksum-li">• <b>Cardio, not running</b> — Wednesday is easy zone-2 cardio (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) the day before legs, so it has to leave them fresher. Sunday is the week's one interval session, four days before legs, rotating each mesocycle through short machine reps, a mixed circuit (bike, kettlebell swings, row, med-ball slams, sled) and 4-minute reps. Mostly bikes, rower and uphill treadmill: cycling interferes with muscle growth less than running does, and short, hard sessions build fitness without eating into recovery.</div>
     <div class="wksum-li dim">The February 10 km sits inside it as one lighter week rather than a running block.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>

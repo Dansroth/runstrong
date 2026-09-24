@@ -684,3 +684,7 @@ body.has-tabbar .modal .sheet { margin-bottom: calc(60px + env(safe-area-inset-b
 
 /* ---- v71: the missed-session offer ---- */
 .card.rescue { box-shadow: inset 3px 0 0 var(--warning); padding-left: calc(var(--s-4) + var(--s-1)); border-color: var(--border); }
+/* v76: the circuit's stations on the Sunday card, numbered so the order
+   can be read at a glance between rounds. */
+.circuit-list { margin: var(--s-2) 0 0; padding-left: 1.3em; }
+.circuit-list li { margin: 2px 0; }

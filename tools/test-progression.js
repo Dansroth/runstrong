@@ -1556,15 +1556,16 @@ group('exercise insights: about growing the muscle, not about running');
    =================================================================== */
 group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the lifting');
 {
-  const { buildOffseason, cardioPlan, cardioSlot, CARDIO_HR, CARDIO_MAX_MINS, CARDIO_HIIT, HYPER_MESO_WEEKS, swapWarnings, swapDays, isLowerTpl, samePlan } = P;
+  const { buildOffseason, cardioPlan, cardioSlot, CARDIO_HR, CARDIO_MAX_MINS, CARDIO_HIIT, HYPER_MESO_WEEKS, swapWarnings, swapDays, isLowerTpl, samePlan, hiitHardMins, CIRCUIT_STATIONS } = P;
   const block = buildOffseason(null, null);
   const DL = HYPER_MESO_WEEKS - 1;
 
-  // the two interval blocks alternate with the mesocycles: A, B, A, B…
-  eq('block week 1 is interval block A', cardioSlot(1).block, 'A');
-  eq('block week 5 is interval block B', cardioSlot(5).block, 'B');
-  eq('block week 9 is block A again', cardioSlot(9).block, 'A');
-  eq('…on its second time round', cardioSlot(9).round, 1);
+  // v76: three Sunday formats rotate with the mesocycles — A, then the circuit, then B
+  eq('block week 1 is format A (short machine reps)', cardioSlot(1).block, 'A');
+  eq('block week 5 is the mixed circuit', cardioSlot(5).block, 'C');
+  eq('block week 9 is format B (4-minute reps)', cardioSlot(9).block, 'B');
+  eq('block week 13 is format A again', cardioSlot(13).block, 'A');
+  eq('…on its second time round', cardioSlot(13).round, 1);
   eq('week 4 is the deload slot', cardioSlot(4).wk, DL);
 
   block.forEach((w, i) => {
@@ -1591,28 +1592,47 @@ group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the
   });
 
   // the deload is lighter than the loading weeks around it
-  for (const b of ['A', 'B']) {
-    const hard = s => s.reps * s.on;
+  for (const b of ['A', 'B', 'C']) {
+    const hard = s => hiitHardMins(s, s.reps);
     const loading = CARDIO_HIIT[b].slice(0, DL).map(hard);
-    ok(`block ${b}: the deload has the least hard time`, hard(CARDIO_HIIT[b][DL]) < Math.min(...loading), `${hard(CARDIO_HIIT[b][DL])} vs ${loading}`);
-    eq(`block ${b}: the deload never grows`, CARDIO_HIIT[b][DL].grow, 0);
+    ok(`format ${b}: the deload has the least hard time`, hard(CARDIO_HIIT[b][DL]) < Math.min(...loading), `${hard(CARDIO_HIIT[b][DL])} vs ${loading}`);
+    eq(`format ${b}: the deload never grows`, CARDIO_HIIT[b][DL].grow, 0);
   }
   // loading weeks keep hard work in the 3–16 min band [C3][C4][C5]; a deload
-  // may go lighter (the sled week is ~2 min), never heavier
+  // may go lighter (the sled week is ~2 min), never heavier. Worked out from
+  // the generated session, so a circuit's lengthened work intervals count.
   for (const w of block) {
     const slot = cardioSlot(block.indexOf(w) + 1);
     const c = w.days[6].cardio, s = CARDIO_HIIT[c.block][slot.wk];
-    const hardMin = c.reps * s.on / 60;
+    const on = c.stations ? +/(\d+) s on/.exec(c.main)[1] : s.on;
+    const hardMin = hiitHardMins({ ...s, on }, c.reps);
     if (slot.wk === DL) ok(`${w.phase}: deload hard work (${hardMin} min) stays under 16`, hardMin <= 16, String(hardMin));
     else ok(`${w.phase}: ${hardMin} min of hard work sits in 3–16`, hardMin >= 3 && hardMin <= 16, String(hardMin));
+    // v76: the loading weeks were lengthened to use the time the athlete gives
+    if (slot.wk !== DL) ok(`${w.phase}: a loading Sunday runs at least 34 min`, c.mins >= 34, String(c.mins));
   }
-  // progression: a block gains a rep when it comes round again, loading weeks only
-  eq('A week 1: 8 reps first time', cardioPlan('hiit', 1).cardio.reps, 8);
-  eq('A week 1: 9 reps the second time round', cardioPlan('hiit', 9).cardio.reps, 9);
-  eq('A week 1: 10 reps the third time', cardioPlan('hiit', 17).cardio.reps, 10);
-  eq('A week 1: capped at +2 after that', cardioPlan('hiit', 25).cardio.reps, 10);
-  eq('B week 3 cannot grow — it is already at the 45 min limit', cardioPlan('hiit', 15).cardio.reps, cardioPlan('hiit', 7).cardio.reps);
-  eq('A deload does not grow', cardioPlan('hiit', 12).cardio.reps, cardioPlan('hiit', 4).cardio.reps);
+  // progression: machine formats gain a rep when they come round again
+  eq('A week 1: 12 reps first time (was 8 before v76)', cardioPlan('hiit', 1).cardio.reps, 12);
+  eq('A week 1: 13 reps the second time round', cardioPlan('hiit', 13).cardio.reps, 13);
+  eq('A week 1: 14 reps the third time', cardioPlan('hiit', 25).cardio.reps, 14);
+  eq('B week 1: 4 × 4 min first time (was 3)', cardioPlan('hiit', 9).cardio.reps, 4);
+  eq('B week 1 cannot grow — it is already at the 45 min limit', cardioPlan('hiit', 21).cardio.reps, 4);
+  eq('A deload does not grow', cardioPlan('hiit', 16).cardio.reps, cardioPlan('hiit', 4).cardio.reps);
+  // the circuit grows by work seconds, not by rounds
+  const c1 = cardioPlan('hiit', 5).cardio, c1b = cardioPlan('hiit', 17).cardio, c2b = cardioPlan('hiit', 18).cardio;
+  eq('circuit week 1: 3 rounds', c1.reps, 3);
+  ok('circuit week 1: 30 s on first time', /30 s on \/ 30 s off/.test(c1.main), c1.main);
+  eq('circuit week 1: still 3 rounds second time round', c1b.reps, 3);
+  ok('…with 35 s of work instead', /35 s on \/ 25 s off/.test(c1b.main), c1b.main);
+  ok('…so week 1 never becomes a copy of week 2', c1b.main !== c2b.main);
+  eq('…and the session is no longer', c1b.mins, c1.mins);
+  ok('circuit deload stays at 30 s every time', /30 s on/.test(cardioPlan('hiit', 20).cardio.main));
+  // the circuit names its stations, and none of them are the excluded ones
+  const cd = cardioPlan('hiit', 5);
+  eq('circuit: five stations, in order', cd.cardio.stations.join(' | '), CIRCUIT_STATIONS.join(' | '));
+  ok('circuit: no burpees, push-ups, jumps, lunges or SkiErg', !/burpee|push-up|jump|lunge|box|ski|thruster/i.test(CIRCUIT_STATIONS.join(' ')));
+  ok('circuit: the card text offers swaps', /Battle ropes/.test(cd.sub));
+  ok('circuit: stations are a copy, not the shared constant', cd.cardio.stations !== CIRCUIT_STATIONS);
 
   // swap warnings: intervals and legs on neighbouring days are flagged, both ways round
   const w1 = block[1];

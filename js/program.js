@@ -1715,7 +1715,7 @@ function dayFromPlan(date, plan) {
   }
   if (plan.optional) day.optional = true;
   if (plan.mobility) day.mobility = true;
-  if (plan.cardio) day.cardio = { ...plan.cardio };
+  if (plan.cardio) { day.cardio = { ...plan.cardio }; if (plan.cardio.stations) day.cardio.stations = plan.cardio.stations.slice(); }
   /* A lift day the user also runs on (the summer block's Tuesday, the
      hypertrophy block's Sunday). The lift is the primary kind because it is
      the part the app drives — templates, progression, the session flow —
@@ -1851,9 +1851,21 @@ const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow do
    • Leg-only, concentric machines lead (bikes, rower, uphill treadmill,
      sled) [C1]. No SkiErg — it trains the lats and triceps the four upper
      days already load.
-   • Two four-week interval blocks alternate with the mesocycles: short
-     reps (A) then 4-minute reps (B). Each time a block comes round again it
-     gains a rep, but never past the 45 minutes the athlete will do.
+   • Three four-week Sunday formats rotate with the mesocycles: short
+     machine reps (A), a mixed circuit (C), then 4-minute reps (B). Each
+     time a format comes round again it gains a rep (a round, for the
+     circuit), but never past the 45 minutes the athlete will do.
+   • v76, on request ("the HIIT days aren't long enough"): the loading
+     weeks were lengthened to fill the 45 minutes — A from 4–10 to 6–12 min
+     of hard work, B from 12–16 to 15–16 — and the circuit was added for
+     variety beyond machines. Deloads are unchanged.
+   • The circuit (C) keeps the same rules: every station is concentric or
+     ballistic with little lowering under load (air bike, kettlebell swing,
+     rower, med-ball slam, sled push), so it is gone by Thursday [C1][C3].
+     Left out on purpose: burpees and push-ups (chest and triceps the day
+     before Monday's push), jump squats, box jumps and lunges (landing and
+     eccentric soreness that can reach the leg day), heavy loaded lifts
+     (that is strength work, and the lifting days own it), and the SkiErg.
    • HR targets are heart-rate reserve (Karvonen) off RHR 32 / max 170:
      easy 60–70% HRR, hard 85–95% HRR. 170 is the highest seen, not a tested
      max — if it is exceeded the targets move up. Short reps are judged on
@@ -1872,30 +1884,56 @@ const CARDIO_EASY = [
   { machine: 'Rower', how: 'Easy row' },
   { machine: 'Spin bike or outdoor walk', how: 'Easy spin or a walk outside' },
 ];
-/* Sunday, by block and week of the mesocycle (index 3 = deload week).
+/* Sunday, by format and week of the mesocycle (index 3 = deload week).
    on/off are seconds, used for the session-length estimate; label is what
-   the athlete reads. `grow` is how many reps the block may add over the
-   rounds (0 on deloads — a deload that grows is not a deload). */
+   the athlete reads. `grow` is how many reps the format may add over the
+   rounds (0 on deloads — a deload that grows is not a deload). A circuit
+   entry counts `reps` as rounds of `stations` stations, with `roundRest`
+   seconds of walking between rounds, and warms up for `warm` minutes. A
+   circuit grows by `growOn` seconds of work per station (taken from the
+   rest) rather than by a round: an extra round would run past 45 min, and
+   it would turn week 1 into a copy of week 2. */
+const CIRCUIT_STATIONS = [
+  'Air bike — hard',
+  'Kettlebell swings — 16–24 kg, crisp, not to failure',
+  'Rower — hard',
+  'Med-ball slams',
+  'Sled push — 20 m',
+];
+const CIRCUIT_SWAPS = 'Busy? Battle ropes for slams, a farmer\'s carry for the sled, an incline treadmill run for the rower.';
 const CARDIO_HIIT = {
   A: [
-    { machine: 'Air bike', reps: 8, on: 30, off: 90, label: '30 s hard / 90 s easy', target: 'RPE 9', grow: 2 },
-    { machine: 'Rower', reps: 8, on: 60, off: 60, label: '1 min hard / 1 min easy', target: 'RPE 8–9', grow: 2 },
-    { machine: 'Spin bike', reps: 10, on: 60, off: 75, label: '1 min hard / 75 s easy', target: 'RPE 8–9', grow: 2 },
+    { machine: 'Air bike', reps: 12, on: 30, off: 90, label: '30 s hard / 90 s easy', target: 'RPE 9', grow: 2 },
+    { machine: 'Rower', reps: 10, on: 60, off: 60, label: '1 min hard / 1 min easy', target: 'RPE 8–9', grow: 2 },
+    { machine: 'Spin bike', reps: 12, on: 60, off: 75, label: '1 min hard / 75 s easy', target: 'RPE 8–9', grow: 2 },
     { machine: 'Sled', reps: 6, on: 20, off: 60, label: '20 m push / walk back', target: 'fast, not grinding', grow: 0 },
   ],
+  C: [
+    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 3, on: 30, off: 30, roundRest: 120, warm: 10, target: 'RPE 8', grow: 1, growOn: 5 },
+    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 4, on: 30, off: 30, roundRest: 120, warm: 10, target: 'RPE 8', grow: 1, growOn: 5 },
+    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 4, on: 40, off: 20, roundRest: 120, warm: 10, target: 'RPE 8', grow: 1, growOn: 5 },
+    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 2, on: 30, off: 30, roundRest: 120, warm: 10, target: 'RPE 7–8', grow: 0 },
+  ],
   B: [
-    { machine: 'Spin bike', reps: 3, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
-    { machine: 'Treadmill, 6–10% incline', reps: 4, on: 180, off: 120, label: '3 min hard / 2 min walk', target: HR_HARD, grow: 1 },
+    { machine: 'Spin bike', reps: 4, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
+    { machine: 'Treadmill, 6–10% incline', reps: 5, on: 180, off: 120, label: '3 min hard / 2 min walk', target: HR_HARD, grow: 1 },
     { machine: 'Spin bike + rower, alternating', reps: 4, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
     { machine: 'Air bike', reps: 2, on: 240, off: 180, label: '4 min / 3 min easy', target: 'HR ~150', grow: 0 },
   ],
 };
-function hiitMins(s, reps) { return CARDIO_WARMUP_MINS + CARDIO_COOLDOWN_MINS + Math.round(reps * (s.on + s.off) / 60); }
-/* Where block week `n` (1-based) sits: which interval block, which week of
-   the mesocycle, and how many times that block has come round before. */
+const CARDIO_FORMAT_ORDER = ['A', 'C', 'B'];
+function hiitMins(s, reps) {
+  const work = reps * (s.stations || 1) * (s.on + s.off) + (s.roundRest ? (reps - 1) * s.roundRest : 0);
+  return (s.warm || CARDIO_WARMUP_MINS) + CARDIO_COOLDOWN_MINS + Math.round(work / 60);
+}
+/* Minutes of hard work in a session — what the 3–16 min band is about. */
+function hiitHardMins(s, reps) { return reps * (s.stations || 1) * s.on / 60; }
+/* Where block week `n` (1-based) sits: which Sunday format, which week of
+   the mesocycle, and how many times that format has come round before. */
 function cardioSlot(n) {
   const meso = Math.floor((n - 1) / HYPER_MESO_WEEKS);
-  return { block: meso % 2 ? 'B' : 'A', wk: (n - 1) % HYPER_MESO_WEEKS, round: Math.floor(meso / 2) };
+  const k = CARDIO_FORMAT_ORDER.length;
+  return { block: CARDIO_FORMAT_ORDER[meso % k], wk: (n - 1) % HYPER_MESO_WEEKS, round: Math.floor(meso / k) };
 }
 /* The day plan for one cardio slot ('easy' | 'hiit') in block week `n`. */
 function cardioPlan(type, n) {
@@ -1911,15 +1949,31 @@ function cardioPlan(type, n) {
       cardio: { type: 'easy', machine: e.machine, mins: deload ? 30 : 40, main: `${e.how}, ${mins} min`, target: `${HR_EASY} · RPE 3–4` },
     };
   }
-  const s = CARDIO_HIIT[block][wk];
+  let s = CARDIO_HIIT[block][wk];
   let reps = s.reps;
-  for (let i = 0; i < Math.min(round, s.grow); i++) if (hiitMins(s, reps + 1) <= CARDIO_MAX_MINS) reps++;
+  if (s.circuit) {
+    const shift = s.growOn ? s.growOn * Math.min(round, s.grow) : 0;
+    s = { ...s, on: s.on + shift, off: s.off - shift };
+    s.label = `${s.on} s on / ${s.off} s off`;
+  } else {
+    for (let i = 0; i < Math.min(round, s.grow); i++) if (hiitMins(s, reps + 1) <= CARDIO_MAX_MINS) reps++;
+  }
+  const mins = hiitMins(s, reps);
+  if (s.circuit) {
+    const main = `${reps} round${reps === 1 ? '' : 's'} × ${s.stations} stations, ${s.label} · 2 min walk between rounds`;
+    return {
+      kind: 'cardio',
+      title: 'Mixed Circuit',
+      sub: `${s.warm} min warm-up (easy bike, leg swings, arm circles, light kettlebell deadlifts) → ${main} (${s.target}, the same effort every round) → ${CARDIO_COOLDOWN_MINS} min easy. ${CIRCUIT_SWAPS}`,
+      cardio: { type: 'hiit', block, machine: 'Bike · swings · row · slams · sled', stations: CIRCUIT_STATIONS.slice(), reps, mins, main, target: s.target },
+    };
+  }
   const main = `${reps} × ${s.label}`;
   return {
     kind: 'cardio',
     title: `Intervals · ${s.machine}`,
     sub: `${CARDIO_WARMUP_MINS} min warm-up → ${main} (${s.target}) → ${CARDIO_COOLDOWN_MINS} min easy.${block === 'A' ? ' Judge the reps on feel — a watch lags on short efforts.' : ''}`,
-    cardio: { type: 'hiit', block, machine: s.machine, reps, mins: hiitMins(s, reps), main, target: s.target },
+    cardio: { type: 'hiit', block, machine: s.machine, reps, mins, main, target: s.target },
   };
 }
 const HYPER_WEEK = {
@@ -2927,6 +2981,6 @@ if (typeof module !== 'undefined' && module.exports) {
     missedLifts, rescueTarget, rescueWeek, RESCUE_LOOKBACK_DAYS, STREAK_GRACE_DAYS, daysApart,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
-    CARDIO_HR, CARDIO_MAX_MINS, CARDIO_EASY, CARDIO_HIIT, cardioSlot, cardioPlan, hiitMins,
+    CARDIO_HR, CARDIO_MAX_MINS, CARDIO_EASY, CARDIO_HIIT, cardioSlot, cardioPlan, hiitMins, hiitHardMins, CIRCUIT_STATIONS, CARDIO_FORMAT_ORDER,
   };
 }
