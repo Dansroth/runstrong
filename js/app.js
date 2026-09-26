@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 35;
+const SCHEMA_VERSION = 36;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -333,6 +333,18 @@ const MIGRATIONS = {
      (see CONDITIONING in program.js). Calendar rebuilt; the cardio log is
      keyed by date and untouched. */
   34: (s) => { s.program = buildProgram(); s.schemaVersion = 35; return s; },
+  /* 35 → 36: two leg days, upper-body priority, a Wednesday rest day (see
+     TWO LEG DAYS in program.js). Calendar rebuilt from Mon 28 Sep; this week
+     keeps its sessions. Logged sessions keep their old template ids, which
+     stay defined, so history and PRs read exactly as before. */
+  35: (s) => {
+    s.program = buildProgram();
+    /* A day swapped in the Plan tab for a date the new layout owns would
+       otherwise pin the OLD session there — moves made against a week that
+       no longer exists. Past and current-week swaps are left alone. */
+    for (const d of Object.keys(s.planOverrides || {})) if (d >= '2026-09-28') delete s.planOverrides[d];
+    s.schemaVersion = 36; return s;
+  },
 };
 
 function migrate(s) {
@@ -386,7 +398,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v76';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v77';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1271,8 +1283,8 @@ function cardioCard(day, t) {
       ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openCardioLog('${t}')">log anyway</button>`
       : `<button class="btn primary big" onclick="openCardioLog('${t}')">Log ${hiit ? 'intervals' : 'cardio'}</button>${mobBtn}`;
   const why = hiit
-    ? 'The week\'s one hard session — four days before legs, so it is gone by Thursday.'
-    : 'Strictly easy — tomorrow is leg day. If you can\'t breathe through your nose, back off.';
+    ? 'The week\'s one hard session — two days from each leg day, so your legs are fresh for it and it is gone by Tuesday.'
+    : 'Your rest day. The spin is optional and strictly easy — if you can\'t breathe through your nose, back off. The mobility session is the part worth doing.';
   return `<div class="card ${c ? '' : 'card--lead action'} cardio"><div class="card-kicker">${c ? 'Done today ✓' : day.mobility ? "Today's cardio + mobility" : "Today's cardio"}</div>
     <div class="card-title">${esc(day.title)}</div>${detail}<div class="card-sub dim">${esc(why)}</div>${action}</div>`;
 }
@@ -1576,8 +1588,8 @@ function offerRecoveryMode() {
   const blockEnd = dadd(HYPER_START, BLOCK_WEEKS * 7 - 1);
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
-    <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Push, Pull, Lower, Upper, and a 30 min Arms & Core), two cardio days and a mobility session, in four-week mesocycles of three loading weeks and a deload.</div>
-    <div class="wksum-li">• <b>Cardio, not running</b> — Wednesday is easy zone-2 cardio (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) the day before legs, so it has to leave them fresher. Sunday is the week's one interval session, four days before legs, rotating each mesocycle through short machine reps, a mixed circuit (bike, kettlebell swings, row, med-ball slams, sled) and 4-minute reps. Mostly bikes, rower and uphill treadmill: cycling interferes with muscle growth less than running does, and short, hard sessions build fitness without eating into recovery.</div>
+    <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Upper · Push, Lower A, Upper · Pull, Lower B, Upper + Arms), a rest day with optional easy cardio and mobility, and one interval session, in four-week mesocycles of three loading weeks and a deload.</div>
+    <div class="wksum-li">• <b>Cardio, not running</b> — Wednesday is the rest day, with an optional easy spin or walk (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) between the two leg days. Sunday is the week's one interval session, two days from each leg day, rotating each mesocycle through short machine reps, a mixed circuit (bike, battle ropes, row, med-ball slams, sled) and 4-minute reps. Mostly bikes, rower and uphill treadmill: cycling interferes with muscle growth less than running does, and short, hard sessions build fitness without eating into recovery.</div>
     <div class="wksum-li dim">The February 10 km sits inside it as one lighter week rather than a running block.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
@@ -3527,7 +3539,7 @@ function buildWeeklySummary(monday) {
     'Recovery week': 'walk, eat, sleep — the race is still in your legs',
     'Hypertrophy — block 1 deload': 'sets halved, loads kept — fatigue out, then block 2',
     'Hypertrophy — block 2 deload': 'sets halved, loads kept — last deload before running comes back',
-    'Hypertrophy': '5 lifts, easy cardio on Wednesday, intervals on Sunday, 1 mobility session — loads creep up each week',
+    'Hypertrophy': '3 upper days, 2 leg days, a Wednesday rest day and Sunday intervals — loads creep up each week',
     'Transition': 'three lifts, three easy runs — the body relearns running before the build asks anything of it',
     'Base': 'three runs a week again, strides and hills — the aerobic base before the hard work; lifting just holds',
     'Build — strength maintenance': 'tempo and intervals arrive; three short lifts a week hold what the block built',
@@ -3952,7 +3964,7 @@ window.showRetro = function () {
 const HYPER_POOL_LABEL = {
   chestAcc: 'Chest accessory', backAcc: 'Back accessory', bicepsAcc: 'Biceps accessory', tricepsAcc: 'Triceps accessory',
   quadAcc: 'Second quad lift', gluteAcc: 'Glute lift', unilateral: 'Single-leg lift',
-  calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', coreAcc: 'Core lift',
+  calfStand: 'Straight-knee calf', calfSeat: 'Bent-knee calf', coreAcc: 'Core lift', coreTrunk: 'Core rotation',
   // ---- v70: the slots that used to be frozen ----
   pressAcc: 'Second chest press', tricepsLong: 'Overhead triceps', sideDelt: 'Side delts',
   bicepsLong: 'Stretched curl', rowAcc: 'Heavy row', rearDelt: 'Rear delts',
@@ -4045,7 +4057,7 @@ window.showHyperRetro = function () {
 function programmeBlocks() {
   return [
     { name: 'Geelong block', until: dadd(HYPER_START, -1), note: 'the six-week build that ended on race day' },
-    { name: 'Hypertrophy block', until: '9999-12-31', note: 'Push · Pull · Lower · Upper · Arms + easy cardio and intervals' },
+    { name: 'Hypertrophy block', until: '9999-12-31', note: 'Upper ×3 · Lower ×2 · rest day · intervals' },
   ];
 }
 function dayMark(d) {

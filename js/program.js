@@ -46,7 +46,7 @@ const EXERCISES = {
   squat:     { name: 'Back Squat', group: 'lower', mode: 'reps', rest: 150, rpe: [7, 8], wu: 'bar', swaps: ['frontsquat', 'hacksquat', 'legpress'], equip: ['barbell'], cue: 'Heavy but crisp — no grinding reps.' },
   rdl:       { name: 'Romanian Deadlift', group: 'lower', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['trapbar', 'goodmorning'], equip: ['barbell'], cue: 'Hinge back, bar close, stretch the hamstrings.' },
   hipthrust: { name: 'Hip Thrust', group: 'lower', mode: 'reps', rest: 90, rpe: [8, 8], wu: 'bar', swaps: ['slhipthrust', 'glutebridge'], equip: ['barbell', 'bench'], cue: 'Full lockout, ribs down, 1s squeeze.' },
-  calfseat:  { name: 'Seated Calf Raise', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: ['bkcalfpress'], equip: ['machine'], cue: 'Bent knee (soleus) — the engine of running. Slow tempo.' },
+  calfseat:  { name: 'Seated Calf Raise', group: 'lower', mode: 'reps', rest: 60, rpe: [8, 8], swaps: ['bkcalfpress'], equip: ['machine'], cue: 'Bent knee, so the soleus does the work. Pause at the bottom, slow tempo.' },
   // ---- Upper A ----
   bench:     { name: 'Bench Press', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bar', swaps: ['dbbench', 'machpress'], equip: ['barbell', 'bench'], cue: 'Feet planted, controlled descent.' },
   pullup:    { name: 'Weighted Pull-Up', group: 'upper', mode: 'reps', rest: 120, rpe: [8, 8], wu: 'bw', swaps: ['latpull', 'assistpull'], equip: [], cue: 'Full hang to chin over. Weight = added load (0 = bodyweight).' },
@@ -208,14 +208,14 @@ const INSIGHTS = {
   calfstand: { why: 'Straight-knee raises hit the gastrocnemius — the calf muscle that gives the lower leg its shape, and the one a seated raise misses entirely.', deep: 'The gastrocnemius crosses the knee, so it only works properly with the leg straight; bend the knee and the soleus underneath takes over. Full stretch at the bottom, pause at the top. Calves take a long range and a lot of reps before they complain, so the usual mistake is too little range rather than too little weight.' },
   slcalf:    { why: 'One calf at a time, so the stronger side stops covering for the weaker one — and each takes the full load instead of half.', deep: 'Two-legged raises let one side quietly take more, and calves are among the most commonly asymmetric muscles in the body. Working one at a time also doubles the load each calf sees for the same dumbbell. Let the weaker side set the reps and match it with the other.' },
   lpcalf:    { why: 'Heavy calf loading with balance out of the equation — the press holds far more weight than you can stand under.', deep: 'A standing raise is limited by what you can balance and grip; a leg press lets the calf take a genuinely heavy load with the rest of you supported. Straight knee, deep stretch, and control the way down rather than dropping into it — the lowering is where the calf is longest.' },
-  calfseat:  { why: 'The soleus takes the highest forces of any muscle when you run — bent-knee raises target exactly it.', deep: 'With the knee bent, the gastrocnemius goes slack and the soleus — the deep, flat endurance workhorse of the calf — does the lifting. Modelling studies put peak soleus forces during running above any other muscle. It responds to high reps and hates being ignored; sore shins and Achilles problems often trace back here.' },
+  calfseat:  { why: 'Bent-knee raises grow the soleus — the deeper half of the calf that straight-knee raises leave behind.', deep: 'With the knee bent, the gastrocnemius goes slack and the soleus does the lifting. It sits under the gastrocnemius and makes up a large share of calf size, so a calf trained only with straight knees is half-trained. Paired with the standing raise on Lower A, the two cover the whole calf twice a week. Pause in the stretch at the bottom and take sets close to failure [H4][H8].' },
   bkcalfpress:{ why: 'Soleus loading on the leg press — the deep calf endurance muscle, trained heavy and safe.', deep: 'Same logic as the seated raise: bent knee isolates the soleus. The press machine version suits heavier loading with a controlled range — drive through the ball of the foot and pause the stretch.' },
   pullover:    { why: 'Loads the chest in a stretched overhead position nothing else in the rotation reaches.', deep: 'The pullover takes the chest and lats through shoulder extension rather than horizontal adduction, so the tension peaks with the ribcage open and the pecs long. Stretched-position loading is one of the more consistent findings in the hypertrophy literature [H8], and this is the only lift in the chest rotation that gets there from overhead.' },
   dragcurl:    { why: 'Elbows travel backward instead of staying pinned, which biases the long head of the biceps — the part that makes the peak.', deep: 'Dragging the bar up the torso puts the shoulder into slight extension, and the biceps long head crosses the shoulder, so it is the head that lengthens and works hardest there. It is a strict lift by construction: there is nowhere for a hip swing to go, so the weight on the bar is an honest reading of what the biceps moved.' },
   concurl:     { why: 'Biceps with every cheat removed — one arm, elbow braced on your thigh, so the size you build is on the weaker side too.', deep: 'Bracing the elbow removes every bit of body english, so the biceps gets exactly the load you gave it and no more. Working one arm at a time also makes a side-to-side difference impossible to miss, which a barbell curl will hide for months.' },
   closegrip:   { why: 'The one triceps lift in the rotation you can actually go heavy on — a press, not an extension.', deep: 'Narrowing the grip shifts the work from chest to triceps while keeping the press pattern, so it carries load in a way an isolation extension never will. Heavy triceps work alongside the lighter extension work is the same compound-plus-isolation logic the rest of the block runs on [H3].' },
   diamondpu:   { why: 'Triceps to failure with nothing but the floor — and the reason the Upper day still happens when you are away from a gym.', deep: 'Hands close together under the sternum shifts the press from chest to triceps while keeping a pattern you can load with bodyweight alone. Elbows brushing the ribs rather than flaring, and add reps or elevate the feet once it gets easy.' },
-  gobletsquat: { why: 'The front-loaded squat pattern without a barbell — the weight in front keeps you upright and honest.', deep: 'Holding load at the chest forces an upright torso and a deeper, more quad-biased squat than a back squat allows, with far less setup and far less to go wrong when tired. A useful second quad lift on a leg day that already has the barbell out of the way.' },
+  gobletsquat: { why: 'A second quad lift after the squat — the weight in front keeps you upright and puts the work in the quads.', deep: 'Holding load at the chest forces an upright torso and a deeper, more quad-biased squat than a back squat allows, with far less setup and far less to go wrong when tired. A useful second quad lift on a leg day that already has the barbell out of the way.' },
   sissysquat:  { why: 'Pure knee extension under bodyweight — the quads through a range the squat never visits.', deep: 'Letting the knees travel forward while the hips stay extended puts the quads under load in deep knee flexion, the position a squat deliberately avoids. Start with a short range and a hand on something; this is easy to overdo, and the knees will tell you before the quads do.' },
   pullthrough: { why: 'A hinge that loads the glutes hardest at lockout, where a deadlift is easiest.', deep: 'The cable pulls horizontally, so resistance peaks as the hips finish extending, which is exactly where a barbell hinge runs out of tension. It also teaches the hinge honestly — the bar path cannot be fudged — and it is kind to a lower back that has had a heavy RDL earlier in the week.' },
   backext:     { why: 'Glutes and hamstrings through a long range, with the spine supported rather than loaded.', deep: 'The 45° bench lets the hips flex and extend fully against gravity while the torso is braced, so the posterior chain gets a long-range dose without the spinal compression of another loaded hinge. Rounding the upper back slightly biases the glutes over the lower back, which is what this slot is for.' },
@@ -234,8 +234,8 @@ const INSIGHTS = {
   adductor:  { why: 'Machine-loaded groin strength — same injury insurance as the Copenhagen, dialled by pin.', deep: 'The adductor machine trains the same groin musculature as the Copenhagen plank with easier load selection. Slow negatives matter more than the number on the stack — the eccentric portion is where tendon-protective adaptation happens.' },
   squat:     { why: 'The most load you can put through your legs in one movement — quads and glutes grow from it, and it is the best single measure of whether you are getting stronger.', deep: 'Nothing else loads the legs this heavily in a single pattern, which is why it still anchors the leg day in a block built around the upper body. Depth matters more than the number on the bar: stopping above parallel cuts out the range where the glutes do most of their work. Heavy but crisp — a grinding rep costs more in fatigue than it pays in stimulus.' },
   frontsquat:{ why: 'Squatting with the bar in front forces an upright torso, which pushes the work onto the quads and makes your upper back hold position under load.', deep: 'The front rack keeps the chest up, so the knees travel further and the quads take more of the load than in a back squat. It is also self-limiting in a useful way: the set ends when your elbows drop, which is usually before your back is in trouble. Lighter than a back squat by a clear margin — that is the position, not a loss of strength.' },
-  hacksquat: { why: 'Heavy quad strength with the balance removed — force production for economy, dosed safely.', deep: 'The machine constrains the path so you can chase pure quad and glute force output without technique or balance limiting the set. A pragmatic economy-builder in high-mileage weeks when free-bar squatting feels risky.' },
-  legpress:  { why: 'Big bilateral leg force, minimal skill or spine demand — the economy stimulus on tired-back days.', deep: 'The leg press isolates leg drive from trunk stability, useful when running fatigue makes barbell work sloppy. Depth and control keep it honest: full range, knees tracking over toes, no bouncing out of the bottom.' },
+  hacksquat: { why: 'Heavy, deep quad work with the balance taken away — so the quads, not your stability, end the set.', deep: 'The machine fixes the path, so you can take the quads close to failure through a full, deep range without technique or balance limiting the set. Deep knee flexion is where quad growth is strongest [H8]. On Lower A it follows the squat: the barbell builds the strength, the hack squat adds the growth volume with less fatigue to the back.' },
+  legpress:  { why: 'Lots of quad and glute volume with almost no demand on the lower back — growth work after the squat.', deep: 'The leg press takes the trunk out of the lift, so the quads and glutes can be pushed close to failure without the back or balance giving out first. Depth is what makes it count [H8]: a full range, knees tracking over toes, no bouncing out of the bottom.' },
   rdl:       { why: 'Hamstrings loaded where they are longest, which is both where they grow most and where they tear — so strength here is protective as well as productive.', deep: 'A leg curl trains the hamstring at the knee; the RDL trains it at the hip, through a long stretch under heavy load. Stop where your hamstrings stop rather than where the floor is: a rounding back is the hips running out of range, and pushing past it moves the load onto your spine.' },
   trapbar:   { why: 'Hinge strength with a neutral grip and centred load — posterior-chain power, friendlier setup.', deep: 'The trap bar centres the load through your midfoot and spares grip and lower-back positioning demands. Same hip-hinge engine as the RDL — hamstrings and glutes — with a shape that stays clean under fatigue.' },
   goodmorning:{ why: 'A long-lever hamstring stretch under load — big posterior-chain payoff from a light bar.', deep: 'The good morning loads the hinge with the bar high on your back, creating a long lever that makes light weight feel meaningful through the hamstrings. Treat it as a stretch with load: slow, deep, never heavy enough to round.' },
@@ -280,7 +280,7 @@ const INSIGHTS = {
   cableflye:   { why: 'Chest through a long stretch under constant tension — the range a press never loads at the bottom.', deep: 'Training a muscle at long lengths grows it more [H6][H7][H8]; the cable keeps tension where a dumbbell flye loses it at the top. It rotates with the DB flye and the incline press so the pattern changes every block [H9].' },
   preachercurl:{ why: 'Biceps with the swing removed: the pad makes every rep strict, and the bottom of the rep is the hard part.', deep: 'On the pad the arm sits in front of the body, so the stretched bottom position is where tension peaks — the rep the incline curl gets from behind, this gets from in front. Lower all the way; the shortened rep is the one that doesn\'t count [H8].' },
   legcurl:     { why: 'Seated, not lying: the hamstrings are stretched at the hip while they work at the knee, and that is where they grow most.', deep: 'The seated leg curl produced roughly half again as much hamstring growth as the prone version over twelve weeks — same muscle, longer length [H7]. In this block it is the hamstrings\' main growth lift; the RDL keeps the hinge strong.' },
-  legext:      { why: 'Quads in isolation — the rectus femoris is barely trained by squats, and this is the block for it.', deep: 'The rectus femoris crosses the hip, so squats and presses leave it under-worked; the extension is the only lift here that loads it hard. Long, controlled reps close to failure [H3][H4]. A growth lift, not a running-economy lift — it leaves the plan again when the run build starts.' },
+  legext:      { why: 'Quads in isolation — the rectus femoris is barely trained by squats, and this is the block for it.', deep: 'The rectus femoris crosses the hip, so squats and presses leave it under-worked; the extension is the only lift here that loads it hard. Long, controlled reps close to failure [H3][H4]. A growth lift, on both leg days since v77.' },
   dbflye:      { why: 'Chest volume the pressing lifts don\'t fully cover — a stretch-focused exercise adds range a press can\'t reach.', deep: 'Pressing and flye work overlap but aren\'t redundant: a flye loads the chest through a longer stretch under tension than a press does, and that stretched-position loading is part of what current hypertrophy research points to for growth. Pick a weight you can control at the bottom: a flye is one of the few lifts where the stretched position is also the vulnerable one, and the chest grows from tension there rather than from how far the dumbbells travel.' },
   dip:         { why: 'Bodyweight-loadable chest and triceps volume, deep stretch at the bottom that a press alone won\'t give you.', deep: 'The forward-leaning dip biases chest over triceps and takes the shoulder through a deep stretched position under load. It scales by adding weight once bodyweight gets easy, same principle as the pull-up already in this app.' },
   bbcurl:      { why: 'The heaviest curl you have — both arms on one bar is how you actually add weight to biceps across a block.', deep: 'Every pulling exercise in the programme trains biceps incidentally, never as the target; direct curls close that gap. This is the anchor lift for tracking biceps progress — the accessory curl slot rotates, this one does not, so there is always one arm number running the length of the block.' },
@@ -334,6 +334,7 @@ const HOWTO = {
   bench:      { steps: ['Lie back, eyes roughly under the bar, feet planted flat.', 'Grip just outside shoulder width, shoulder blades pulled together and down.', 'Lower the bar to your chest under control, elbows at a moderate angle (not flared to 90°).', 'Drive it back up in a straight line — don\'t let it drift toward your face.'] },
   pullup:     { steps: ['Hang from the bar, hands just outside shoulder width.', 'Pull your shoulder blades down first, then bend the elbows to bring your chin over the bar.', 'Lower all the way to a full hang each rep — that\'s the range that counts.', 'Add weight via a belt or held dumbbell once bodyweight reps stop being hard.'] },
   dbrow:      { steps: ['One knee and hand on a bench, back flat, opposite foot on the floor.', 'Let the dumbbell hang straight down from a relaxed shoulder.', 'Pull it to your hip, leading with the elbow, not the hand.', 'No torso twist — if you need to rotate to finish the rep, the weight is too heavy.'] },
+  cablechop:  { steps: ['Set the cable high, stand side-on, and hold the handle with both hands, arms straight.', 'Pull down and across your body to the opposite hip, turning from the hips — your arms just transmit the force.', 'Let your back foot pivot so the hips can rotate fully.', 'Return slowly against the cable. Do all reps on one side, then switch.'] },
   pallof:     { steps: ['Stand side-on to the cable, handle at chest height.', 'Press the handle straight out from your chest until your arms are fully extended.', 'Hold — the cable is trying to rotate you toward it, and your only job is to resist.', 'Bring it back to your chest under control and repeat.'] },
   carry:      { steps: ['Pick up one heavy dumbbell in one hand, the other hand free.', 'Stand tall — resist leaning away from the weight.', 'Walk with even, level steps, hips staying square.', 'Set it down under control at the target distance, then switch hands next set.'] },
   ohp:        { steps: ['Bar at collarbone height, grip just outside shoulder width.', 'Brace your glutes and core hard — this is a full-body lift, not just shoulders.', 'Press straight up, tucking your head through once the bar clears your face.', 'Lock out fully overhead, bar stacked over mid-foot.'] },
@@ -1096,6 +1097,37 @@ const TEMPLATES = {
      quad lift), knee flexion, calves and adductors. Calves at 6 because 5 sat
      under even a maintenance dose once this became their only exposure. */
   hypLowerS: { title: 'Lower · Full', hyper: true, est: 62, items: [['squat', 4, 6], ['rdl', 4, 8], ['ROTATE:unilateral', 3, 10], ['legcurl', 3, 12], ['ROTATE:calfStand', 6, 12], ['ROTATE:coreAcc', 3, 12], ['copen', 2, 30]] },
+  /* ---- v77: TWO LEG DAYS, UPPER-BODY PRIORITY ----
+     The goal is now maximum muscle with no running, and the audit of v76's
+     week found legs at 8–9 weekly sets on one day against 25–26 for chest —
+     under the ~10+ where [H1]'s dose-response is clearly positive, for the
+     muscles that are about half the body's trainable mass. v67's reasoning
+     ("maintaining costs a third", "three runs a week supply the legs") no
+     longer applies: this is a growth block and there are no runs.
+     The athlete chose the upper-priority version of the fix: legs go to two
+     sessions (~16 quad, ~10 ham, 8 calf sets), and the upper body keeps
+     three days with chest at ~18, biceps and triceps at ~10 direct each.
+     hypUpper, hypArms and hypLowerS stay defined — logged sessions carry
+     their tpl id and must keep resolving — but the block no longer
+     schedules them.
+     Lower A leads with the squat and the quad work; Lower B with the hinge.
+     The seated leg curl appears on both: it is the lengthened-position curl
+     [H7] and the library has no second knee-flexion machine worth rotating
+     to. The two calf slots are straight-knee (gastrocnemius) on A and
+     bent-knee (soleus) on B. */
+  hypLowerQ: { title: 'Lower A · Quads', hyper: true, est: 55, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12]] },
+  hypLowerH: { title: 'Lower B · Hinge', hyper: true, est: 57, items: [['rdl', 4, 8], ['ROTATE:unilateral', 3, 10], ['legcurl', 3, 12], ['legext', 3, 12], ['ROTATE:calfSeat', 4, 15], ['copen', 2, 30]] },
+  /* The third upper day, and where the arms priority lives: the second
+     chest exposure (incline + dips), a curl and a triceps press in the
+     ramped first four, then the second back and side-delt exposures and
+     the week's second core slot. Longer than the others (~65 min) — the
+     price of keeping arms at ~10 direct sets once hypArms left the week.
+     A second ab slot closes the day (on request: Saturday was short on ab
+     work), ~75 min. It draws from coreTrunk, not coreAcc, so the two ab
+     exercises can never be the same one: coreAcc curls the spine, coreTrunk
+     rotates it or refuses to be rotated. 27 base sets deload to 16 — 59%,
+     still under the 60% the Math.ceil note above asks for. */
+  hypUpperArms: { title: 'Upper + Arms', hyper: true, est: 75, items: [['incline', 4, 8], ['dip', 3, 10], ['bbcurl', 3, 10], ['ROTATE:tricepsAcc', 4, 12], ['latpull', 3, 10], ['ROTATE:sideDelt', 4, 15], ['ROTATE:coreAcc', 3, 12], ['ROTATE:coreTrunk', 3, 12]] },
   /* ---- v70: BENCHMARK DAY ----
      Takes the deload week's Saturday slot from hypArms — see deloadWeekLayout().
      Deliberately NOT `hyper: true`: three single all-out sets are not block
@@ -1246,6 +1278,10 @@ const HYPER_POOLS = {
       calf slot. Their exercises stay in the library as swap targets — a pool
       with no template to surface it is dead weight, the exercises are not. */
   unilateral:  ['bss', 'revlunge', 'stepup', 'walkinglunge', 'slpress'],
+  /* v77: the second leg day brings back a quad compound and a bent-knee
+     calf slot — the two pools v67 retired for lack of a day to put them on. */
+  quadAcc:     ['hacksquat', 'legpress', 'gobletsquat'],    // Lower A #2, after the squat
+  calfSeat:    ['calfseat', 'slcalfseat', 'seatedcalfdb'],  // Lower B, bent-knee (soleus) slot
   calfStand:   ['calfstand', 'slcalf', 'lpcalf', 'donkeycalf', 'smithcalf'], // straight-knee (gastroc) slot on Lower A
   /* Added v40. Core had 2 sets a week of one exercise (hangraise on the arms
      day) against 20 for glutes — the widest gap in the block, and abs are one
@@ -1262,6 +1298,11 @@ const HYPER_POOLS = {
      block is for, so the oblique work stays the unloaded anti-rotation kind
      that already lives in the running templates. */
   coreAcc:     ['cablecrunch', 'hangraise', 'declinesitup', 'abwheel', 'reversecrunch'],
+  /* v77: Saturday's second ab slot. Disjoint from coreAcc on purpose — a
+     second coreAcc slot would resolve to the same exercise twice. Rotation
+     and anti-rotation: the obliques trained to turn and to brace, not to
+     bend sideways under load, per the note above. */
+  coreTrunk:   ['cablechop', 'pallof'],
   /* shoulderAcc (dbshoulder / landmine) retired v40. The arms day it lived on
      became a 30 min session and lost the slot; ohp already presses overhead
      twice a week and latraise moved onto Upper A, so the vertical-press
@@ -1271,7 +1312,7 @@ const HYPER_POOLS = {
    the dated layout; this is the list the block retro reports against, and a
    test asserts the two agree — so this moves whenever HYPER_WEEK does. Upper
    A leads since v57. */
-const HYPER_ORDER = ['hypPush', 'hypPull', 'hypLowerS', 'hypUpper', 'hypArms'];
+const HYPER_ORDER = ['hypPush', 'hypLowerQ', 'hypPull', 'hypLowerH', 'hypUpperArms'];
 /* =====================================================================
    REP-STYLE PERIODISATION (v70)
    =====================================================================
@@ -1596,23 +1637,28 @@ const RECOVERY_WEEK = [
 
 const WHY_SCHEDULE = `**Why this plan?**
 
-Your runs are fixed: Wed hard, Fri easy, Sun long. Lifting fills Mon/Tue/Thu/Sat around them:
+The goal is as much muscle as possible, with cardio for health. Running is retired — your runs stay in your history.
 
-• **Thursday is the heavy lower day** — it's the only slot with no run in the 24h before or after that matters (Wed is done, Friday is easy). The real strength stimulus lives here, clear of your key runs.
+**The week**
+• **Mon — Upper · Push.** Chest, shoulders and the overhead triceps work, plus abs.
+• **Tue — Lower A · Quads.** Squat, a machine quad lift, leg extension, seated leg curl, standing calves.
+• **Wed — Rest.** An optional easy spin or walk and the week's mobility session. Skipping the cardio is fine.
+• **Thu — Upper · Pull.** Back, rear delts and two curls.
+• **Fri — Lower B · Hinge.** Romanian deadlift, single-leg work, leg curl, leg extension, seated calves.
+• **Sat — Upper + Arms.** The second chest session, plus curls, triceps, side delts and two ab exercises. The longest day (~75 min).
+• **Sun — Intervals.** The week's one hard cardio session, two days from each leg day.
 
-• **Monday is the light lower day** — it follows the Sunday long run, so it's single-leg, calf and stability work at modest loads. Heavy lower here would compromise recovery.
+**Why it's shaped like this**
+• **Upper body first.** Chest gets ~18 direct sets a week, biceps ~10 and triceps ~8 plus dips, across three upper days — you chose upper-body priority.
+• **Legs twice a week.** Quads ~16 and hamstrings ~11 sets, split over two sessions three days apart. One leg day at 8–9 sets was well short of what grows the body's biggest muscles, and splitting the work means each set counts more.
+• **A real rest day.** Seven training days on 6–7 hours of sleep was the recovery problem behind tired Thursday legs.
+• **Cardio that doesn't cost muscle.** Mostly bikes, rower and sled: cycling interferes with muscle growth less than running does. Sunday rotates short machine intervals, a mixed circuit and 4-minute intervals, one per block.
 
-• **Tue & Sat are upper days** — they sit directly before the Wed hard run and Sun long run, so no fresh leg fatigue is carried into either key run.
+**How it progresses**
+Blocks of four weeks: three building weeks, then a deload with halved sets and a benchmark test on Saturday. Loads go up when your logged effort (RPE) says the last session was comfortable. The accessory exercises and rep ranges change each block for variety; the main lifts stay, so their progress stays comparable.
 
-Week 1 is a short intro (Thu–Sun) so the program starts right away without waiting for Monday — two conservative sessions to groove the movements. Plyometrics (box jumps) run through the build weeks only (1–5), first in the session while fresh. Week 6 tapers into Geelong — the A race and the last race of the block, now that Melbourne is off the calendar.
-
-**After Geelong:** straight into a ten-week hypertrophy block, starting the very next morning — no recovery week, by your call. Five lifts, two easy runs and a mobility session a week, with Saturday off. Four of the lifts are 60 minutes (Mon, Tue, Thu, Fri); the fifth is a 30-minute arms-and-core session on Sunday, stacked onto that day's easy run. The accessory lifts change every four weeks so the stimulus keeps changing — see the Progress page's block report for what is rotating in right now.
-
-**From 30 November, the summer block:** twelve weeks to the Carman's Classic 10 km on 21 February, and **the gym stays the point**. Three runs a week come from your Runna plan, so this app holds the slot and does not write the session: an easy and a tempo run alternating between Tuesday and Friday, and a long run on Sunday. Lifting is four touches around them — 60 minutes on Monday, Wednesday and Saturday, plus the short arms-and-core session on Tuesday alongside that day's run. Thursday is the rest day and carries the week's mobility.
-
-Volume goes where the goal is: chest, biceps and core hold their sets through the block, and the leg work takes the reduction, because three runs a week already load the legs. Saturday is upper-body so the Sunday long run starts on fresh legs. Twelve weeks is three four-week mesocycles exactly, so race week is also the third deload — lighter anyway, with nothing heavy after the Wednesday.
-
-**The taper rule:** cut the volume, keep the intensity. The tapering research (Bosquet 2007 meta-analysis) backs a 41–60% volume cut with paces and loads untouched over 8–14 days — we have 8, so it starts with the Sunday long run before race week (12–14 km, not 20) and lands at a 30–40% running cut for the final week. Lifting goes deeper than that on purpose: two short sessions Mon/Tue with the heavy work still heavy, then nothing — strength holds for 2–3 weeks without training, so the gym has nothing to gain and freshness to lose. Missed sessions from peak week stay missed; making them up now is the classic taper mistake. The app stops suggesting load increases in taper weeks instead of making the sessions feel easy.`;
+**Moving days**
+Swap days in the Plan tab when life needs it. The app warns you if a move puts two leg days back to back, or legs next to Sunday's intervals.`;
 
 /* ---- date helpers (local time) ---- */
 function dstr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -1860,7 +1906,7 @@ const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow do
      of hard work, B from 12–16 to 15–16 — and the circuit was added for
      variety beyond machines. Deloads are unchanged.
    • The circuit (C) keeps the same rules: every station is concentric or
-     ballistic with little lowering under load (air bike, kettlebell swing,
+     ballistic with little lowering under load (air bike, battle ropes — kettlebell swings until v77 —
      rower, med-ball slam, sled push), so it is gone by Thursday [C1][C3].
      Left out on purpose: burpees and push-ups (chest and triceps the day
      before Monday's push), jump squats, box jumps and lunges (landing and
@@ -1877,11 +1923,15 @@ const CARDIO_WARMUP_MINS = 12;   // early-morning training: a longer warm-up tha
 const CARDIO_COOLDOWN_MINS = 5;
 const HR_EASY = `HR ${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]}`;
 const HR_HARD = `HR ${CARDIO_HR.hard[0]}–${CARDIO_HR.hard[1]}`;
-/* Wednesday, by week of the mesocycle (index 3 = deload week). */
+/* Wednesday, by week of the mesocycle (index 3 = deload week).
+   v77: Wednesday is the week's rest day, sat between the two leg days, so
+   the option is leg-light and unloaded only — bike or a walk. The incline
+   walk (loaded calves and glutes) and the rower (back, before Thursday's
+   pull) went. */
 const CARDIO_EASY = [
   { machine: 'Spin bike', how: 'Easy spin' },
-  { machine: 'Treadmill', how: 'Incline walk — 10–12% incline, 5–5.5 km/h' },
-  { machine: 'Rower', how: 'Easy row' },
+  { machine: 'Outdoor walk', how: 'Brisk walk outside' },
+  { machine: 'Spin bike', how: 'Easy spin' },
   { machine: 'Spin bike or outdoor walk', how: 'Easy spin or a walk outside' },
 ];
 /* Sunday, by format and week of the mesocycle (index 3 = deload week).
@@ -1893,14 +1943,17 @@ const CARDIO_EASY = [
    circuit grows by `growOn` seconds of work per station (taken from the
    rest) rather than by a round: an extra round would run past 45 min, and
    it would turn week 1 into a copy of week 2. */
+/* v77: kettlebell swings out, battle ropes in. With two leg days the
+   hamstrings now train twice a week, and Friday's hinge session is two days
+   before Sunday — a hinge in the circuit is load they no longer need. */
 const CIRCUIT_STATIONS = [
   'Air bike — hard',
-  'Kettlebell swings — 16–24 kg, crisp, not to failure',
+  'Battle ropes — alternating waves',
   'Rower — hard',
   'Med-ball slams',
   'Sled push — 20 m',
 ];
-const CIRCUIT_SWAPS = 'Busy? Battle ropes for slams, a farmer\'s carry for the sled, an incline treadmill run for the rower.';
+const CIRCUIT_SWAPS = 'Busy? A farmer\'s carry for the sled, an incline treadmill run for the rower, more rope work for the slams.';
 const CARDIO_HIIT = {
   A: [
     { machine: 'Air bike', reps: 12, on: 30, off: 90, label: '30 s hard / 90 s easy', target: 'RPE 9', grow: 2 },
@@ -1942,10 +1995,12 @@ function cardioPlan(type, n) {
   if (type === 'easy') {
     const e = CARDIO_EASY[wk];
     const mins = deload ? '30' : '35–40';
+    /* `optional` (v77): it is the rest day, so skipping the spin is the plan
+       working, not a miss — adherence excludes it and the streak bridges it. */
     return {
-      kind: 'cardio', mobility: true,
-      title: `Easy Cardio + Mobility`,
-      sub: `${e.how} · ${mins} min at ${HR_EASY} (RPE 3–4), nose-breathing easy · then the week's mobility session. Legs heavy? Cut it to 25 min — Thursday comes first.`,
+      kind: 'cardio', mobility: true, optional: true,
+      title: `Rest · optional easy cardio + mobility`,
+      sub: `Rest day. If you want to move: ${e.how.toLowerCase()} · ${mins} min at ${HR_EASY} (RPE 3–4), nose-breathing easy · then the week's mobility session. Skipping the cardio is fine.`,
       cardio: { type: 'easy', machine: e.machine, mins: deload ? 30 : 40, main: `${e.how}, ${mins} min`, target: `${HR_EASY} · RPE 3–4` },
     };
   }
@@ -1965,7 +2020,7 @@ function cardioPlan(type, n) {
       kind: 'cardio',
       title: 'Mixed Circuit',
       sub: `${s.warm} min warm-up (easy bike, leg swings, arm circles, light kettlebell deadlifts) → ${main} (${s.target}, the same effort every round) → ${CARDIO_COOLDOWN_MINS} min easy. ${CIRCUIT_SWAPS}`,
-      cardio: { type: 'hiit', block, machine: 'Bike · swings · row · slams · sled', stations: CIRCUIT_STATIONS.slice(), reps, mins, main, target: s.target },
+      cardio: { type: 'hiit', block, machine: 'Bike · ropes · row · slams · sled', stations: CIRCUIT_STATIONS.slice(), reps, mins, main, target: s.target },
     };
   }
   const main = `${reps} × ${s.label}`;
@@ -1977,30 +2032,19 @@ function cardioPlan(type, n) {
   };
 }
 const HYPER_WEEK = {
-  /* Upper before Lower on Mon/Tue, swapped v57 on request. It also happens to
-     be the better order coming off a race: the block starts the morning after
-     the Geelong Half, and pushing the first squat session to Tuesday gives the
-     legs an extra day. The cost is that Lower A (Tue) and Lower B (Thu) now
-     sit two days apart rather than three, with only the Wednesday easy run
-     between them — swapWarnings() does not flag it (they are not back to back
-     and the Sunday run is easy, not long), but it is the trade being made. */
+  /* v77: upper / lower / rest / upper / lower / upper + arms / intervals.
+     The two leg days are three days apart and never back to back; Sunday's
+     intervals sit two days from each (48 h — separation of 24 h or more
+     leaves little interference [H11]); Wednesday is the week's rest day,
+     with an optional easy spin. See the TWO LEG DAYS note in TEMPLATES. */
   0: { kind: 'lift', tpl: 'hypPush' },
-  1: { kind: 'lift', tpl: 'hypPull' },
-  /* Wednesday and Sunday were easy runs until v75; now conditioning. These
-     are block week 1's sessions — buildOffseason() asks cardioPlan() for the
-     right one each week. See the CONDITIONING header. */
+  1: { kind: 'lift', tpl: 'hypLowerQ' },
+  /* Wednesday: rest, with an optional easy spin and the week's mobility.
+     Built by cardioPlan() each week — see the CONDITIONING header. */
   2: cardioPlan('easy', 1),
-  3: { kind: 'lift', tpl: 'hypLowerS' },
-  4: { kind: 'lift', tpl: 'hypUpper' },
-  /* Arms & Core moved to Saturday and Sunday became a run of its own (v65, on
-     request). It was the other way round: the short session stacked onto
-     Sunday's run and Saturday was the block's one full rest day.
-     The trade, since it is the second time this week has been reshuffled and
-     the first reshuffle existed to create the rest day: there is no longer a
-     day off. Five lifts and two runs across seven days. Sunday is the lightest
-     of them and the one that moves — if the week needs a day back, that is the
-     one to take, and the plan will not mind. */
-  5: { kind: 'lift', tpl: 'hypArms' },
+  3: { kind: 'lift', tpl: 'hypPull' },
+  4: { kind: 'lift', tpl: 'hypLowerH' },
+  5: { kind: 'lift', tpl: 'hypUpperArms' },
   6: cardioPlan('hiit', 1),
 };
 /* =====================================================================
@@ -2194,6 +2238,12 @@ const DAY_OVERRIDES = {
      than emptying it: it takes the Pull session that Monday's shift displaced.
      Four lifts this week, none of them legs. */
   '2026-09-24': { kind: 'lift', tpl: 'hypPull' },
+  /* v77 moved the week to two leg days, starting Mon 28 Sep. This week was
+     already half lived when it did, so its last two lifts stay the sessions
+     the athlete was expecting — Upper on Friday, Arms & Core on Saturday —
+     and the "no legs this week" request above still holds. */
+  '2026-09-25': { kind: 'lift', tpl: 'hypUpper' },
+  '2026-09-26': { kind: 'lift', tpl: 'hypArms' },
 };
 function applyDayOverrides(weeks) {
   const dates = Object.keys(DAY_OVERRIDES);
@@ -2542,7 +2592,9 @@ function parseRunScreenshot(text) {
 
 /* The muscles this block is for, in the order the summer brief names them.
    Shown first so "is chest holding?" is answerable without scanning. */
-const PRIORITY_MUSCLES = ['chest', 'biceps', 'core'];
+/* v77: the athlete chose upper-body priority. Core left the list with the
+   move from four ab days to two — it is trained, not prioritised. */
+const PRIORITY_MUSCLES = ['chest', 'biceps', 'triceps'];
 
 /* Which mesocycle-start date the accessory rotation counts from. The
    calendar's block start once the off-season is live; the legacy

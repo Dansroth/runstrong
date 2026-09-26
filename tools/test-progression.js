@@ -350,8 +350,8 @@ group('off-season calendar: the hypertrophy block starts the day after the race,
     /* Off the phase label, not off w.num: w.num counts program weeks from the
        race block, so it is not the block week and 'every fourth' is not four. */
     const dl = /deload/i.test(w.phase);
-    eq(`week ${w.num}: Saturday is ${dl ? 'the benchmark' : 'the short Arms & Core session'}`,
-      w.days[5].tpl, dl ? 'hypBench' : 'hypArms');
+    eq(`week ${w.num}: Saturday is ${dl ? 'the benchmark' : 'Upper + Arms'}`,
+      w.days[5].tpl, dl ? 'hypBench' : 'hypUpperArms');
     eq(`week ${w.num}: Sunday is cardio on its own, not stacked on a lift`, w.days[6].kind + '/' + !!w.days[6].run, 'cardio/false');
     eq(`week ${w.num}: seven training days, no rest day`, w.days.filter(d => d.kind === 'rest').length, 0);
     ok(`week ${w.num}: has no rest-less 8-slot day problem (every day is one plan)`, w.days.every(d => ['lift', 'run', 'cardio', 'mobility', 'rest'].includes(d.kind)));
@@ -407,8 +407,12 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
      Splitting the thresholds is not a relaxation — each tier is asserted at
      the level its job requires, and a growth muscle slipping into the
      maintenance band still fails. */
-  const GROW = ['chest', 'back', 'shoulders', 'biceps', 'triceps'];
-  const MAINTAIN = ['quads', 'hams', 'glutes', 'calves'];
+  /* v77: legs are a growth job again — two leg days, and the athlete's
+     "upper-body priority" choice is asserted separately below. Calves stay
+     on the lower tier: 8 sets over two days is a deliberate dose, not a
+     growth target. */
+  const GROW = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hams', 'glutes'];
+  const MAINTAIN = ['calves'];
   for (const m of GROW) {
     ok(`${m}: ≥10 hard sets in block week 1 [H1]`, (w1.sets[m] || 0) >= 10, `${w1.sets[m]}`);
     // 13 not 14: direct sets only — pull-ups/rows/presses train arms hard
@@ -425,9 +429,14 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
   /* The priority muscles are the point of the block, so they are asserted
      against each other rather than only against a floor: if legs ever creep
      back above chest, the split has drifted from what it was built for. */
-  const legTotal = MAINTAIN.reduce((a, m) => a + (w1.sets[m] || 0), 0);
-  const priorityTotal = ['chest', 'biceps', 'core'].reduce((a, m) => a + (w1.sets[m] || 0), 0);
-  ok('chest + biceps + core outweigh all leg work combined', priorityTotal > legTotal, `${priorityTotal} vs ${legTotal}`);
+  /* v77, upper-body priority: the upper body keeps the larger share even
+     with two leg days — chest, biceps and triceps outweigh quads and hams. */
+  const legTotal = ['quads', 'hams'].reduce((a, m) => a + (w1.sets[m] || 0), 0);
+  const priorityTotal = ['chest', 'biceps', 'triceps'].reduce((a, m) => a + (w1.sets[m] || 0), 0);
+  ok('chest + biceps + triceps outweigh quads + hams', priorityTotal > legTotal, `${priorityTotal} vs ${legTotal}`);
+  ok('quads: ≥14 sets a week on two days — the fix for one leg day at 8–9', (w1.sets.quads || 0) >= 14 && w1.perDay.quads.size >= 2, `${w1.sets.quads} on ${[...(w1.perDay.quads || [])]}`);
+  ok('hams: ≥10 sets a week on two days', (w1.sets.hams || 0) >= 10 && w1.perDay.hams.size >= 2, `${w1.sets.hams}`);
+  ok('calves: trained on both leg days', (w1.perDay.calves || new Set()).size >= 2);
   /* Measured on DIRECT work — the muscle each lift is actually for. On the
      every-tag count back and shoulders always read high, because three upper
      days of pressing and pulling credit them on the way past; that is an
@@ -447,8 +456,15 @@ group('hypertrophy block: per-muscle weekly sets, frequency, rest, contracts');
   };
   const d1 = direct(0), d3 = direct(2);
   ok('chest gets more direct work than any other muscle', Object.entries(d1).every(([m, n]) => m === 'chest' || n <= d1.chest), JSON.stringify(d1));
-  ok('biceps and core both sit in the top four', ['biceps', 'core'].every(m => Object.values(d1).filter(n => n > d1[m]).length <= 3), JSON.stringify(d1));
-  ok('core is trained on ≥3 days [H2]', (w1.perDay.core || new Set()).size >= 3, `${[...(w1.perDay.core || [])]}`);
+  /* Triceps' direct count excludes dips, whose first tag is chest; the
+     every-tag count includes them. */
+  ok('biceps get ≥10 direct sets a week', d1.biceps >= 10, JSON.stringify(d1));
+  ok('triceps get ≥8 direct sets, ≥10 counting dips', d1.triceps >= 8 && (w1.sets.triceps || 0) >= 10, `${d1.triceps} direct, ${w1.sets.triceps} all`);
+  ok('chest gets 16–22 direct sets — the upper-priority dose', d1.chest >= 16 && d1.chest <= 22, JSON.stringify(d1));
+  /* Two ab slots (Push, Upper + Arms); the Copenhagen plank on Lower B also
+     credits core, so core shows up on three days. */
+  ok('core: 6–10 direct sets — trained, not prioritised', d1.core >= 6 && d1.core <= 10, `${d1.core}`);
+  ok('…from exactly two ab-exercise slots', Object.values(HYPER_WEEK).filter(p => p.kind === 'lift' && TEMPLATES[p.tpl].items.some(([id]) => id === 'ROTATE:coreAcc')).length === 2);
   for (const m of [...GROW, ...MAINTAIN]) {
     ok(`${m}: deload week is ≤60% of week 3 [H10]`, (w4.sets[m] || 0) <= (w3.sets[m] || 0) * 0.6, `${w4.sets[m]} vs ${w3.sets[m]}`);
   }
@@ -544,10 +560,11 @@ group('one continuous block: the same split for thirty weeks, race week aside');
   const normal = block.filter(w => !w.days.some(d => d.kind === 'race' || DAY_OVERRIDES[d.date]));
   ok('every ordinary week is the same five lifts', normal.every(w =>
     w.days.filter(d => d.kind === 'lift').map(d => d.tpl).join(',')
-      === (/deload/i.test(w.phase) ? 'hypPush,hypPull,hypLowerS,hypUpper,hypBench' : 'hypPush,hypPull,hypLowerS,hypUpper,hypArms')));
+      === (/deload/i.test(w.phase) ? 'hypPush,hypLowerQ,hypPull,hypLowerH,hypBench' : 'hypPush,hypLowerQ,hypPull,hypLowerH,hypUpperArms')));
   ok('…and two cardio days, no runs', normal.every(w => w.days.filter(d => d.kind === 'cardio').length === 2 && !w.days.some(d => d.kind === 'run')));
   ok('…and one mobility session', normal.every(w => w.days.filter(d => d.kind === 'mobility' || d.mobility).length === 1));
-  ok('…and exactly one leg day', normal.every(w => w.days.filter(d => d.kind === 'lift' && isLowerTpl(d.tpl)).length === 1));
+  ok('…and exactly two leg days, Tuesday and Friday (v77)', normal.every(w => w.days.map((d, i) => d.kind === 'lift' && isLowerTpl(d.tpl) ? i : null).filter(i => i !== null).join(',') === '1,4'));
+  ok('…and one rest day, Wednesday, whose cardio is optional', normal.every(w => w.days[2].optional === true && w.days.filter(d => d.kind === 'rest' || d.optional).length === 1));
 
   // mesocycle rhythm holds the whole way: three loading weeks, then a deload
   const keys = Array.from({ length: BLOCK_WEEKS }, (_, i) => phaseKeyFromLabel(blockPhaseLabel(i + 1)));
@@ -637,19 +654,21 @@ group('plan overrides: swaps are symmetric, locks hold, warnings fire on the rig
   /* v75: Sunday is now intervals, so moving legs to Saturday puts them the
      day before — that is exactly the collision the conditioning rules exist
      to flag. */
-  ok('hypertrophy: Lower B ↔ Arms (Thu↔Sat) now warns — legs land the day before intervals', warnsFor(hw, 3, 5).some(x => /tired legs/.test(x)), JSON.stringify(warnsFor(hw, 3, 5)));
+  /* v77: legs are Tue and Fri. Moving Friday's legs to Saturday puts them
+     the day before Sunday's intervals. */
+  ok('hypertrophy: Lower B ↔ Upper + Arms (Fri↔Sat) warns — legs land the day before intervals', warnsFor(hw, 4, 5).some(x => /tired legs/.test(x)), JSON.stringify(warnsFor(hw, 4, 5)));
   /* Since v57 the week is Upper A, Lower A, run, Lower B — so the two lower
      days already sit either side of the Wednesday run, and moving that run out
      from between them is what puts them back to back. The old fixture swapped
      Tue↔Thu, which under the previous Lower-first layout produced the
      collision and under this one produces nothing at all. */
-  eq('hypertrophy: Tue ↔ Thu no longer collides — the run stays between the lower days', warnsFor(hw, 1, 3).length, 0, JSON.stringify(warnsFor(hw, 1, 3)));
+  ok('hypertrophy: Lower B moved to Wednesday collides with Lower A — back to back', warnsFor(hw, 2, 4).some(x => /back to back/.test(x)), JSON.stringify(warnsFor(hw, 2, 4)));
+  eq('hypertrophy: Wed ↔ Thu is clean — the rest day and Pull can trade places', warnsFor(hw, 2, 3).length, 0, JSON.stringify(warnsFor(hw, 2, 3)));
   /* There is only one lower day since v67, so no arrangement of the week can
       produce two in a row. That is the property worth pinning now — the old
       fixture asserted a collision that is no longer reachable. */
   const lowerDays = hw.days.filter(d => d.kind === 'lift' && P.isLowerTpl(d.tpl)).length;
-  eq('hypertrophy: exactly one lower-body day', lowerDays, 1);
-  eq('hypertrophy: Wed ↔ Thu is clean — one leg day cannot collide with itself', warnsFor(hw, 2, 3).length, 0, JSON.stringify(warnsFor(hw, 2, 3)));
+  eq('hypertrophy: exactly two lower-body days (v77)', lowerDays, 2);
 }
 /* ===================================================================
    6g. per-muscle weekly volume (PER-MUSCLE WEEKLY VOLUME header)
@@ -1105,7 +1124,7 @@ group('dated exceptions: this week only, and they expire by themselves');
   const next = prog.weeks.find(w => w.monday === '2026-09-28');
   eq('the following week is the generated shape again',
     next.days.map(d => d.kind === 'lift' ? d.tpl : d.kind).join(','),
-    'hypPush,hypPull,cardio,hypLowerS,hypUpper,hypArms,cardio');
+    'hypPush,hypLowerQ,cardio,hypPull,hypLowerH,hypUpperArms,cardio');
   ok('…and every later hypertrophy week too', prog.weeks
     .filter(w => /hypertrophy/i.test(w.phase) && w.monday > '2026-09-28' && !w.days.some(d => DAY_OVERRIDES[d.date]))
     .every(w => w.days.filter(d => d.kind === 'lift').length === 5));
@@ -1264,7 +1283,7 @@ group('rotation pools: disjoint where it matters, and pickable');
      alternative in the library. Freezing anything else — or thawing one of
      these — should be a deliberate edit here, not a silent drift. */
   eq('exactly these slots stay fixed, and they are all anchors',
-    frozen.join(','), 'bench,pullup,squat,rdl,legcurl,copen,incline,dip,latpull,bbcurl,pushdown');
+    frozen.join(','), 'bench,squat,legext,legcurl,pullup,rdl,legcurl,legext,copen,incline,dip,bbcurl,latpull');
   ok('…and they are a minority of the block (' + frozen.length + ' of ' + slots.length + ')', frozen.length * 2 < slots.length);
   /* ---- picks: the athlete's own choice wins, a stale one cannot ---- */
   const pool = HYPER_POOLS.chestAcc;
@@ -1587,8 +1606,10 @@ group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the
     // the generated week never warns
     eq(`block week ${n}: generated week has no swap warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
     // Sunday sits four days before the only leg day
-    const legIdx = w.days.findIndex(d => d.kind === 'lift' && isLowerTpl(d.tpl));
-    if (legIdx >= 0) eq(`block week ${n}: legs are Thursday, four days after Sunday's intervals`, legIdx, 3);
+        /* v77: legs Tue and Fri — each two days from Sunday's intervals, never the day either side */
+    const legDays = w.days.map((d, i) => d.kind === 'lift' && isLowerTpl(d.tpl) ? i : null).filter(i => i !== null);
+    eq(`block week ${n}: legs are Tuesday and Friday`, legDays.join(','), '1,4');
+    ok(`block week ${n}: no leg day next to Sunday's intervals`, !legDays.includes(5) && !legDays.includes(0));
   });
 
   // the deload is lighter than the loading weeks around it
@@ -1631,15 +1652,17 @@ group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the
   const cd = cardioPlan('hiit', 5);
   eq('circuit: five stations, in order', cd.cardio.stations.join(' | '), CIRCUIT_STATIONS.join(' | '));
   ok('circuit: no burpees, push-ups, jumps, lunges or SkiErg', !/burpee|push-up|jump|lunge|box|ski|thruster/i.test(CIRCUIT_STATIONS.join(' ')));
-  ok('circuit: the card text offers swaps', /Battle ropes/.test(cd.sub));
+  ok('circuit: the card text offers swaps', /farmer/.test(cd.sub));
+  ok('circuit: no kettlebell swings since v77 — hamstrings train twice a week now', !/swing/i.test(CIRCUIT_STATIONS.join(' ')));
   ok('circuit: stations are a copy, not the shared constant', cd.cardio.stations !== CIRCUIT_STATIONS);
 
   // swap warnings: intervals and legs on neighbouring days are flagged, both ways round
   const w1 = block[1];
   const after = (a, b) => { const o = swapDays(w1.days[a], w1.days[b]); return w1.days.map(d => o[d.date] || d); };
-  ok('intervals moved to Wednesday warn — the day before legs', swapWarnings(after(2, 6)).some(x => /day before Lower/.test(x)), JSON.stringify(swapWarnings(after(2, 6))));
-  ok('legs moved to Saturday warn — the day before intervals', swapWarnings(after(3, 5)).some(x => /tired legs/.test(x)));
-  eq('easy cardio moved around the week never warns', swapWarnings(after(2, 4)).length, 0, JSON.stringify(swapWarnings(after(2, 4))));
+  ok('intervals moved to Wednesday warn — the day after Lower A', swapWarnings(after(2, 6)).some(x => /tired legs/.test(x)), JSON.stringify(swapWarnings(after(2, 6))));
+  ok('intervals moved to Monday warn — the day before Lower A', swapWarnings(after(0, 6)).some(x => /day before Lower/.test(x)), JSON.stringify(swapWarnings(after(0, 6))));
+  ok('legs moved to Saturday warn — the day before intervals', swapWarnings(after(4, 5)).some(x => /tired legs/.test(x)));
+  eq('the rest day swapped with Pull never warns', swapWarnings(after(2, 3)).length, 0, JSON.stringify(swapWarnings(after(2, 3))));
   // samePlan sees a different session as a different plan
   ok('samePlan tells two cardio sessions apart', !samePlan(block[0].days[6], block[1].days[6]));
   ok('…and a day equals itself', samePlan(block[0].days[6], { ...block[0].days[6] }));
