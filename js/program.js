@@ -1637,22 +1637,23 @@ const RECOVERY_WEEK = [
 
 const WHY_SCHEDULE = `**Why this plan?**
 
-The goal is as much muscle as possible, with cardio for health. Running is retired — your runs stay in your history.
+The goal is as much muscle as possible, with cardio for fitness and staying lean. Running is retired as a goal — your runs stay in your history, and the treadmill turns up now and then on a Sunday.
 
 **The week**
 • **Mon — Upper · Push.** Chest, shoulders and the overhead triceps work, plus abs.
 • **Tue — Lower A · Quads.** Squat, a machine quad lift, leg extension, seated leg curl, standing calves.
-• **Wed — Rest.** An optional easy spin or walk and the week's mobility session. Skipping the cardio is fine.
+• **Wed — Rest.** An optional easy spin bike or walk (no running) and the week's mobility session. Skipping the cardio is fine.
 • **Thu — Upper · Pull.** Back, rear delts and two curls.
 • **Fri — Lower B · Hinge.** Romanian deadlift, single-leg work, leg curl, leg extension, seated calves.
 • **Sat — Upper + Arms.** The second chest session, plus curls, triceps, side delts and two ab exercises. The longest day (~75 min).
-• **Sun — Intervals.** The week's one hard cardio session, two days from each leg day.
+• **Sun — Intervals.** The week's one hard session, two days from each leg day — a different machine or format every week.
 
 **Why it's shaped like this**
 • **Upper body first.** Chest gets ~18 direct sets a week, biceps ~10 and triceps ~8 plus dips, across three upper days — you chose upper-body priority.
 • **Legs twice a week.** Quads ~16 and hamstrings ~11 sets, split over two sessions three days apart. One leg day at 8–9 sets was well short of what grows the body's biggest muscles, and splitting the work means each set counts more.
 • **A real rest day.** Seven training days on 6–7 hours of sleep was the recovery problem behind tired Thursday legs.
-• **Cardio that doesn't cost muscle.** Mostly bikes, rower and sled: cycling interferes with muscle growth less than running does. Sunday rotates short machine intervals, a mixed circuit and 4-minute intervals, one per block.
+• **Cardio that costs the lifting as little as possible.** Mostly air bike, rower and spin bike, which interfere with muscle growth less than running; a treadmill run about once a block, and a dead-ball circuit now and then. No SkiErg or kettlebell swings — the upper days and Friday's hinge already cover that work.
+• **A new Sunday every week, a little harder each time.** About 10% more hard work each loading week and never more than 20%. Reps lengthen each block — 1 min, then 2 min, then 4 min — and once the 45 minutes are full, the rests get shorter and then you aim for about 2% more output than last time on that machine.
 
 **How it progresses**
 Blocks of four weeks: three building weeks, then a deload with halved sets and a benchmark test on Saturday. Loads go up when your logged effort (RPE) says the last session was comfortable. The accessory exercises and rep ranges change each block for variety; the main lifts stay, so their progress stays comparable.
@@ -1860,16 +1861,13 @@ function hyperPhaseLabel(weekN) {
 }
 const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow down';
 /* =====================================================================
-   CONDITIONING (v75) — the two run days become cardio days
+   CONDITIONING (v75, Sunday rebuilt v78) — Wednesday easy, Sunday hard
    =====================================================================
-   On request, with no running goal left: the Wednesday and Sunday runs are
-   replaced by machine cardio built to cost the lifting as little as
-   possible. Set from the athlete's questionnaire (23 Sep 2026): muscle is
-   the priority and cardio is for health; legs rate 2/5 walking into
-   Thursday; 6–7 h sleep; 8–12k steps a day; loves intervals, wants variety;
-   own day only, ≤ 45 min, early morning; resting HR 32, highest seen 170;
-   likes bikes, rower and treadmill, OK with sled, dislikes stepper and
-   cross-trainer. Logs minutes, average HR and RPE.
+   Set from the athlete's questionnaire (23 Sep 2026): muscle is the
+   priority, cardio is for fitness and staying lean; 6–7 h sleep; 8–12k
+   steps a day; loves intervals, wants variety; own day only, ≤ 45 min,
+   early morning; resting HR 32, highest seen 170. Logs minutes, average
+   HR and RPE.
 
    The evidence it is built on:
    [C1] Wilson JM et al. 2012, J Strength Cond Res 26:2293 — meta-analysis
@@ -1881,41 +1879,67 @@ const EASY_RUN_SUB = '40–50 min conversational — if you can\'t chat, slow do
         explosive strength was the casualty.
    [C3] Sabag A et al. 2018, J Sports Sci 36:2472 — HIIT with resistance
         training: no effect on hypertrophy, a small cost to lower-body
-        strength. → short sessions, far from leg day.
-   [C4] Little JP et al. 2010, J Physiol 588:1011 — ~10 × 60 s on a bike
-        improves aerobic markers in little time. → Block A.
+        strength. → short sessions, away from the leg days.
+   [C4] Little JP et al. 2010, J Physiol 588:1011 — ~10 × 60 s hard improves
+        aerobic markers in little time. → the 1-minute reps.
    [C5] Helgerud J et al. 2007, Med Sci Sports Exerc 39:665 — 4 × 4 min at
-        90–95% HRmax raised VO2max more than steady work. → Block B.
+        90–95% HRmax improved VO2max more than steady work. → the 4-minute
+        reps.
    [C6] Hickson RC et al. 1985 — aerobic fitness holds on reduced frequency
         while intensity is kept. → one hard session a week is enough.
+   [C7] Nielsen RO et al. 2014, J Orthop Sports Phys Ther 44:739 — novice
+        runners: weekly increases above 30% had more distance-related
+        injuries than increases under 10%; 10–30% was not clearly worse.
+   [C8] Damsted C et al. 2019, J Orthop Sports Phys Ther 49:230 —
+        half-marathon preparation: weekly increases of 20–60% had more
+        injuries at 21 days than increases under 20%.
+   [C9] Damsted C et al. 2018, Int J Sports Phys Ther 13:931 — systematic
+        review: the evidence linking load change to injury is limited, so
+        these thresholds are guides, not guarantees.
+   [C10] Milanović Z et al. 2015, Sports Med 45:1469 — meta-analysis: high-
+        intensity interval training improved VO2max more than continuous
+        training, across the running and cycling studies pooled. → the
+        stimulus is the intensity and the minutes, not the machine, which is
+        what lets the machine change every week.
 
-   What that means here:
-   • Wednesday is strictly easy (zone 2) and leg-light, because it is the
-     day before the only leg day and the legs already arrive at 2/5.
-   • Sunday is the hard day: four days before legs, so any leg cost of the
-     intervals is gone by Thursday [C3]. Hard work stays at 3–16 min.
-   • Leg-only, concentric machines lead (bikes, rower, uphill treadmill,
-     sled) [C1]. No SkiErg — it trains the lats and triceps the four upper
-     days already load.
-   • Three four-week Sunday formats rotate with the mesocycles: short
-     machine reps (A), a mixed circuit (C), then 4-minute reps (B). Each
-     time a format comes round again it gains a rep (a round, for the
-     circuit), but never past the 45 minutes the athlete will do.
-   • v76, on request ("the HIIT days aren't long enough"): the loading
-     weeks were lengthened to fill the 45 minutes — A from 4–10 to 6–12 min
-     of hard work, B from 12–16 to 15–16 — and the circuit was added for
-     variety beyond machines. Deloads are unchanged.
-   • The circuit (C) keeps the same rules: every station is concentric or
-     ballistic with little lowering under load (air bike, battle ropes — kettlebell swings until v77 —
-     rower, med-ball slam, sled push), so it is gone by Thursday [C1][C3].
-     Left out on purpose: burpees and push-ups (chest and triceps the day
-     before Monday's push), jump squats, box jumps and lunges (landing and
-     eccentric soreness that can reach the leg day), heavy loaded lifts
-     (that is strength work, and the lifting days own it), and the SkiErg.
+   The week (v77): Mon push · Tue Lower A (quads) · Wed rest · Thu pull ·
+   Fri Lower B (hinge) · Sat upper + arms · Sun intervals.
+   • Wednesday is the rest day between the two leg days: optional, zone 2,
+     non-impact (spin bike, or a walk outside), then the mobility session.
+     It does not progress — its job is recovery and aerobic base. No
+     running: Wednesday sits between Tuesday's quads and Friday's hinge.
+   • Sunday is the one hard session, 48 h from each leg day (Friday hinge,
+     Tuesday quads), so its leg cost has cleared either way [C3].
+
+   v78, on request: a new Sunday every week — the machine or format changes
+   each Sunday and never repeats a program — on one progression ladder so
+   it still gets harder every loading week. SUNDAY_PLAN below.
+   • Hard minutes rise ~10% per loading week and never more than 20% on
+     the previous loading week [C7][C8][C9] (the injury evidence is from
+     running; it is used as the conservative rate for every machine). One
+     variable changes a week: reps, rep length, recovery or output.
+   • Rep length lengthens by mesocycle — 1 min [C4] → 2 min → 4 min [C5],
+     then round again — and the ladder carries on across the change.
+   • Deload weeks (every 4th, with the lifting deload) are ~60% of the
+     previous week's hard minutes, on the spin bike or rower, and the next
+     mesocycle resumes from the last loading week, not the deload.
+   • The 45 min cap (12 warm-up + 5 cool-down) stops hard minutes at 16.
+     From there each loading week either shortens the recoveries by 15 s a
+     rep down to a 1:0.75 work:rest floor, or asks for ~2% more output than
+     the last time on that machine at that rep length (logged in watts or
+     km/h, so the card can show the number to beat).
+   • The machines, and what keeps them from costing the lifting:
+     spin bike, air bike and rower carry most of it — concentric, little
+     impact [C1]. Treadmill running at most about once a mesocycle: the
+     athlete is run-adapted, but running interferes more than cycling [C1].
+     Dead-ball slams only as a circuit station. Left out on purpose, and
+     confirmed by the athlete: the SkiErg (it trains the lats and triceps
+     the three upper days already load) and kettlebell swings (a hinge, two
+     days after Friday's hinge session).
    • HR targets are heart-rate reserve (Karvonen) off RHR 32 / max 170:
      easy 60–70% HRR, hard 85–95% HRR. 170 is the highest seen, not a tested
-     max — if it is exceeded the targets move up. Short reps are judged on
-     RPE because a watch cannot catch up in 30–60 s.
+     max — if it is exceeded the targets move up. Reps under 4 min are
+     judged on RPE because a watch lags on short efforts.
    ===================================================================== */
 const CARDIO_HR = { rest: 32, max: 170, easy: [115, 128], hard: [150, 163] };
 const CARDIO_MAX_MINS = 45;
@@ -1923,112 +1947,154 @@ const CARDIO_WARMUP_MINS = 12;   // early-morning training: a longer warm-up tha
 const CARDIO_COOLDOWN_MINS = 5;
 const HR_EASY = `HR ${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]}`;
 const HR_HARD = `HR ${CARDIO_HR.hard[0]}–${CARDIO_HR.hard[1]}`;
-/* Wednesday, by week of the mesocycle (index 3 = deload week).
-   v77: Wednesday is the week's rest day, sat between the two leg days, so
-   the option is leg-light and unloaded only — bike or a walk. The incline
-   walk (loaded calves and glutes) and the rower (back, before Thursday's
-   pull) went. */
-const CARDIO_EASY = [
-  { machine: 'Spin bike', how: 'Easy spin' },
-  { machine: 'Outdoor walk', how: 'Brisk walk outside' },
-  { machine: 'Spin bike', how: 'Easy spin' },
-  { machine: 'Spin bike or outdoor walk', how: 'Easy spin or a walk outside' },
-];
-/* Sunday, by format and week of the mesocycle (index 3 = deload week).
-   on/off are seconds, used for the session-length estimate; label is what
-   the athlete reads. `grow` is how many reps the format may add over the
-   rounds (0 on deloads — a deload that grows is not a deload). A circuit
-   entry counts `reps` as rounds of `stations` stations, with `roundRest`
-   seconds of walking between rounds, and warms up for `warm` minutes. A
-   circuit grows by `growOn` seconds of work per station (taken from the
-   rest) rather than by a round: an extra round would run past 45 min, and
-   it would turn week 1 into a copy of week 2. */
-/* v77: kettlebell swings out, battle ropes in. With two leg days the
-   hamstrings now train twice a week, and Friday's hinge session is two days
-   before Sunday — a hinge in the circuit is load they no longer need. */
-const CIRCUIT_STATIONS = [
-  'Air bike — hard',
-  'Battle ropes — alternating waves',
-  'Rower — hard',
-  'Med-ball slams',
-  'Sled push — 20 m',
-];
-const CIRCUIT_SWAPS = 'Busy? A farmer\'s carry for the sled, an incline treadmill run for the rower, more rope work for the slams.';
-const CARDIO_HIIT = {
-  A: [
-    { machine: 'Air bike', reps: 12, on: 30, off: 90, label: '30 s hard / 90 s easy', target: 'RPE 9', grow: 2 },
-    { machine: 'Rower', reps: 10, on: 60, off: 60, label: '1 min hard / 1 min easy', target: 'RPE 8–9', grow: 2 },
-    { machine: 'Spin bike', reps: 12, on: 60, off: 75, label: '1 min hard / 75 s easy', target: 'RPE 8–9', grow: 2 },
-    { machine: 'Sled', reps: 6, on: 20, off: 60, label: '20 m push / walk back', target: 'fast, not grinding', grow: 0 },
-  ],
-  C: [
-    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 3, on: 30, off: 30, roundRest: 120, warm: 10, target: 'RPE 8', grow: 1, growOn: 5 },
-    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 4, on: 30, off: 30, roundRest: 120, warm: 10, target: 'RPE 8', grow: 1, growOn: 5 },
-    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 4, on: 40, off: 20, roundRest: 120, warm: 10, target: 'RPE 8', grow: 1, growOn: 5 },
-    { machine: 'Mixed circuit', circuit: true, stations: CIRCUIT_STATIONS.length, reps: 2, on: 30, off: 30, roundRest: 120, warm: 10, target: 'RPE 7–8', grow: 0 },
-  ],
-  B: [
-    { machine: 'Spin bike', reps: 4, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
-    { machine: 'Treadmill, 6–10% incline', reps: 5, on: 180, off: 120, label: '3 min hard / 2 min walk', target: HR_HARD, grow: 1 },
-    { machine: 'Spin bike + rower, alternating', reps: 4, on: 240, off: 180, label: '4 min hard / 3 min easy', target: HR_HARD, grow: 1 },
-    { machine: 'Air bike', reps: 2, on: 240, off: 180, label: '4 min / 3 min easy', target: 'HR ~150', grow: 0 },
-  ],
+/* Wednesday (v78): the same every week — spin bike by default, a walk
+   outside as the alternative. No running, no incline walking (loaded
+   calves and glutes between the leg days) and no rower (back, before
+   Thursday's pull). */
+const CARDIO_EASY = { machine: 'Spin bike (or a walk outside)', how: 'Easy spin bike, or a walk outside' };
+/* The Sunday machines. `unit` is what the athlete logs as output (the
+   number the next session on that machine tries to beat); `easy` is what
+   the recovery between reps is on that machine. */
+const SUNDAY_MACHINES = {
+  airbike: { name: 'Air bike', unit: 'W', easy: 'easy pedal' },
+  spin: { name: 'Spin bike', unit: 'W', easy: 'easy pedal' },
+  rower: { name: 'Rower', unit: 'W', easy: 'easy paddle' },
+  treadmill: { name: 'Treadmill run, 1% incline', unit: 'km/h', easy: 'walk' },
+  slams: { name: 'Dead-ball slams', unit: null, easy: 'walk' },
 };
-const CARDIO_FORMAT_ORDER = ['A', 'C', 'B'];
-function hiitMins(s, reps) {
-  const work = reps * (s.stations || 1) * (s.on + s.off) + (s.roundRest ? (reps - 1) * s.roundRest : 0);
-  return (s.warm || CARDIO_WARMUP_MINS) + CARDIO_COOLDOWN_MINS + Math.round(work / 60);
+/* Sunday, one entry per block week (index 0 = week 1). on/off are seconds
+   per rep and between reps. `m` is the machine list: one machine; a relay
+   (`fmt: 'relay'`, alternating machines rep by rep); or a circuit
+   (`fmt: 'circuit'`, each machine a station, round after round). `step` is
+   what changed on the loading week before:
+     start · reps (+1 rep) · length (new rep length for the mesocycle) ·
+     recovery (−15 s rest) · output (~2% more than last time) · deload.
+   Hard minutes: 8 9 10 | 6 | 12 14 14 | 8 | 16 16 16 | 10 | then 16 with
+   10-minute deloads. 16 is the 45 min cap at the 1:0.75 floor for every
+   rep length (16 × 1 min / 45 s, 8 × 2 min / 90 s, 4 × 4 min / 3 min).
+   No two Sundays are the same program, and no Sunday repeats the machine
+   of the Sunday before. */
+const SUNDAY_PLAN = [
+  // mesocycle 1 — 1 min reps [C4]
+  { m: ['airbike'], reps: 8, on: 60, off: 60, step: 'start' },
+  { m: ['rower'], reps: 9, on: 60, off: 60, step: 'reps' },
+  { m: ['airbike', 'rower'], fmt: 'relay', reps: 10, on: 60, off: 60, step: 'reps' },
+  { m: ['spin'], reps: 6, on: 60, off: 60, step: 'deload' },
+  // mesocycle 2 — 2 min reps
+  { m: ['rower'], reps: 6, on: 120, off: 120, step: 'length' },
+  { m: ['treadmill'], reps: 7, on: 120, off: 120, step: 'reps' },
+  { m: ['airbike', 'spin'], fmt: 'relay', reps: 7, on: 120, off: 105, step: 'recovery' },  // 8 × 2 min no longer fits in 45 min
+  { m: ['spin'], reps: 4, on: 120, off: 105, step: 'deload' },
+  // mesocycle 3 — 4 min reps [C5]; hard minutes reach the cap
+  { m: ['rower'], reps: 4, on: 240, off: 240, step: 'length' },
+  { m: ['treadmill'], reps: 4, on: 240, off: 225, step: 'recovery' },
+  { m: ['airbike'], reps: 4, on: 240, off: 210, step: 'recovery' },
+  { m: ['spin'], reps: 5, on: 120, off: 105, step: 'deload' },
+  // mesocycle 4 — 1 min reps, already at the 1:0.75 floor → output
+  { m: ['airbike', 'slams', 'rower', 'spin'], fmt: 'circuit', reps: 16, on: 60, off: 45, step: 'length' },
+  { m: ['rower'], reps: 16, on: 60, off: 45, step: 'output' },
+  { m: ['airbike'], reps: 16, on: 60, off: 45, step: 'output' },
+  { m: ['spin'], reps: 10, on: 60, off: 45, step: 'deload' },
+  // mesocycle 5 — 2 min reps at the floor → output
+  { m: ['treadmill'], reps: 8, on: 120, off: 90, step: 'length' },
+  { m: ['rower', 'spin'], fmt: 'relay', reps: 8, on: 120, off: 90, step: 'output' },
+  { m: ['airbike'], reps: 8, on: 120, off: 90, step: 'output' },
+  { m: ['spin'], reps: 5, on: 120, off: 90, step: 'deload' },
+  // mesocycle 6 — 4 min reps: picks up the recoveries where block 3 left them
+  { m: ['rower'], reps: 4, on: 240, off: 210, step: 'length' },
+  { m: ['spin'], reps: 4, on: 240, off: 195, step: 'recovery' },
+  { m: ['treadmill'], reps: 4, on: 240, off: 180, step: 'recovery' },
+  { m: ['rower'], reps: 5, on: 120, off: 90, step: 'deload' },
+  // mesocycle 7 — 1 min reps → output
+  { m: ['rower', 'slams', 'spin', 'airbike'], fmt: 'circuit', reps: 16, on: 60, off: 45, step: 'length' },
+  { m: ['spin'], reps: 16, on: 60, off: 45, step: 'output' },
+  { m: ['airbike', 'spin'], fmt: 'relay', reps: 16, on: 60, off: 45, step: 'output' },
+  { m: ['rower'], reps: 10, on: 60, off: 45, step: 'deload' },
+  // mesocycle 8 (block weeks 29–30) — 2 min reps → output
+  { m: ['airbike', 'rower'], fmt: 'relay', reps: 8, on: 120, off: 90, step: 'length' },
+  { m: ['spin'], reps: 8, on: 120, off: 90, step: 'output' },
+];
+const OUTPUT_STEP = 0.02;        // ~2% more than last time on an output week
+function fmtDur(sec) {
+  if (sec < 60) return `${sec} s`;
+  if (sec % 60 === 0) return `${sec / 60} min`;
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }
-/* Minutes of hard work in a session — what the 3–16 min band is about. */
-function hiitHardMins(s, reps) { return reps * (s.stations || 1) * s.on / 60; }
-/* Where block week `n` (1-based) sits: which Sunday format, which week of
-   the mesocycle, and how many times that format has come round before. */
-function cardioSlot(n) {
-  const meso = Math.floor((n - 1) / HYPER_MESO_WEEKS);
-  const k = CARDIO_FORMAT_ORDER.length;
-  return { block: CARDIO_FORMAT_ORDER[meso % k], wk: (n - 1) % HYPER_MESO_WEEKS, round: Math.floor(meso / k) };
+/* Session length: warm-up + reps + the rests between them + cool-down. The
+   rest after the last rep is the start of the cool-down, not extra time. */
+function hiitMins(r) {
+  return CARDIO_WARMUP_MINS + CARDIO_COOLDOWN_MINS + Math.round((r.reps * r.on + (r.reps - 1) * r.off) / 60);
 }
+/* Minutes of hard work in a session — what the ladder progresses. */
+function hiitHardMins(r) { return r.reps * r.on / 60; }
+function sundayEntry(n) { return SUNDAY_PLAN[Math.min(Math.max(n, 1), SUNDAY_PLAN.length) - 1]; }
+/* Minutes of work a session puts on one machine (relay reps alternate
+   machines; circuit reps go round the stations). */
+function machineMins(r, key) {
+  const k = r.m.length;
+  let reps = 0;
+  for (let i = 0; i < r.reps; i++) if (r.m[i % k] === key) reps++;
+  return reps * r.on / 60;
+}
+/* Effort cue by rep length: shorter reps run harder; 4 min reps are long
+   enough to judge on heart rate. */
+function hiitTarget(r) {
+  if (r.fmt === 'circuit') return 'RPE 8 · the same effort every round';
+  if (r.on <= 60) return 'RPE 9 · hard, but the same on every rep';
+  if (r.on <= 120) return 'RPE 8–9';
+  return `${HR_HARD} · RPE 8`;
+}
+const SUNDAY_STEP_TEXT = {
+  start: 'First session of the block: find the effort that matches the target and log your output.',
+  reps: 'One more rep than last week.',
+  length: 'New mesocycle, new rep length — the same hard minutes or a little more.',
+  recovery: 'Rests 15 s shorter than last week.',
+  output: `About ${Math.round(OUTPUT_STEP * 100)}% more output than last time on this machine. Repeat last time's number instead if that session went above RPE 9 or ${CARDIO_HR.hard[1]} bpm.`,
+  deload: 'Deload: about 60% of last week\'s hard work, at the same effort.',
+};
 /* The day plan for one cardio slot ('easy' | 'hiit') in block week `n`. */
 function cardioPlan(type, n) {
-  const { block, wk, round } = cardioSlot(n);
-  const deload = wk === HYPER_MESO_WEEKS - 1;
+  const deload = (n - 1) % HYPER_MESO_WEEKS === HYPER_MESO_WEEKS - 1;
   if (type === 'easy') {
-    const e = CARDIO_EASY[wk];
     const mins = deload ? '30' : '35–40';
     /* `optional` (v77): it is the rest day, so skipping the spin is the plan
        working, not a miss — adherence excludes it and the streak bridges it. */
     return {
       kind: 'cardio', mobility: true, optional: true,
       title: `Rest · optional easy cardio + mobility`,
-      sub: `Rest day. If you want to move: ${e.how.toLowerCase()} · ${mins} min at ${HR_EASY} (RPE 3–4), nose-breathing easy · then the week's mobility session. Skipping the cardio is fine.`,
-      cardio: { type: 'easy', machine: e.machine, mins: deload ? 30 : 40, main: `${e.how}, ${mins} min`, target: `${HR_EASY} · RPE 3–4` },
+      sub: `Rest day. If you want to move: ${CARDIO_EASY.how.toLowerCase()} · ${mins} min at ${HR_EASY} (RPE 3–4), nose-breathing easy · then the week's mobility session. It helps Sunday's session and your recovery between the leg days; skipping it is fine.`,
+      cardio: { type: 'easy', machine: CARDIO_EASY.machine, mins: deload ? 30 : 40, main: `${CARDIO_EASY.how}, ${mins} min`, target: `${HR_EASY} · RPE 3–4` },
     };
   }
-  let s = CARDIO_HIIT[block][wk];
-  let reps = s.reps;
-  if (s.circuit) {
-    const shift = s.growOn ? s.growOn * Math.min(round, s.grow) : 0;
-    s = { ...s, on: s.on + shift, off: s.off - shift };
-    s.label = `${s.on} s on / ${s.off} s off`;
+  const r = sundayEntry(n);
+  const names = r.m.map(k => SUNDAY_MACHINES[k].name);
+  const one = r.m.length === 1 ? SUNDAY_MACHINES[r.m[0]] : null;
+  let title, main;
+  if (r.fmt === 'circuit') {
+    const rounds = r.reps / r.m.length;
+    title = 'Intervals · circuit';
+    main = `${rounds} round${rounds === 1 ? '' : 's'} × ${r.m.length} stations, ${fmtDur(r.on)} each / ${fmtDur(r.off)} to change: ${names.join(' → ')}`;
+  } else if (r.fmt === 'relay') {
+    title = `Intervals · ${names.join(' / ')} relay`;
+    main = `${r.reps} × ${fmtDur(r.on)} / ${fmtDur(r.off)} easy, alternating ${names.join(' and ')}`;
   } else {
-    for (let i = 0; i < Math.min(round, s.grow); i++) if (hiitMins(s, reps + 1) <= CARDIO_MAX_MINS) reps++;
+    title = `Intervals · ${one.name.replace(/, .*/, '')}`;
+    main = `${r.reps} × ${fmtDur(r.on)} hard / ${fmtDur(r.off)} ${one.easy}`;
   }
-  const mins = hiitMins(s, reps);
-  if (s.circuit) {
-    const main = `${reps} round${reps === 1 ? '' : 's'} × ${s.stations} stations, ${s.label} · 2 min walk between rounds`;
-    return {
-      kind: 'cardio',
-      title: 'Mixed Circuit',
-      sub: `${s.warm} min warm-up (easy bike, leg swings, arm circles, light kettlebell deadlifts) → ${main} (${s.target}, the same effort every round) → ${CARDIO_COOLDOWN_MINS} min easy. ${CIRCUIT_SWAPS}`,
-      cardio: { type: 'hiit', block, machine: 'Bike · ropes · row · slams · sled', stations: CIRCUIT_STATIONS.slice(), reps, mins, main, target: s.target },
-    };
-  }
-  const main = `${reps} × ${s.label}`;
+  const target = hiitTarget(r);
+  const notes = [];
+  if (r.m.includes('slams')) notes.push('Slams: brace, full extension overhead, let the ball do the work on the way down.');
   return {
     kind: 'cardio',
-    title: `Intervals · ${s.machine}`,
-    sub: `${CARDIO_WARMUP_MINS} min warm-up → ${main} (${s.target}) → ${CARDIO_COOLDOWN_MINS} min easy.${block === 'A' ? ' Judge the reps on feel — a watch lags on short efforts.' : ''}`,
-    cardio: { type: 'hiit', block, machine: s.machine, reps, mins, main, target: s.target },
+    title,
+    sub: `${CARDIO_WARMUP_MINS} min warm-up (easy on the first machine, then 3 × 20 s pick-ups) → ${main} (${target}) → ${CARDIO_COOLDOWN_MINS} min easy. ${SUNDAY_STEP_TEXT[r.step]}${notes.length ? ' ' + notes.join(' ') : ''}`,
+    cardio: {
+      type: 'hiit', machine: names.join(' · '), machines: r.m.slice(), fmt: r.fmt || 'single',
+      reps: r.reps, repSec: r.on, restSec: r.off,
+      hardMins: hiitHardMins(r), step: r.step, outputUp: r.step === 'output' ? OUTPUT_STEP : 0,
+      unit: one ? one.unit : null,
+      mins: hiitMins(r), main, target,
+    },
   };
 }
 const HYPER_WEEK = {
@@ -2198,7 +2264,7 @@ function swapWarnings(days) {
       out.push(`${d.title} sits within 48 h of the long run.`);
     }
     if (lower(d) && lower(next)) out.push(`Two lower-body days back to back (${d.title}, ${next.title}) — the second one will be compromised.`);
-    /* v75: the interval day is placed four days before legs on purpose [C3]. */
+    /* v77: Sunday's intervals sit two days from each leg day on purpose [C3]. */
     const hiit = x => !!x && x.kind === 'cardio' && !!x.cardio && x.cardio.type === 'hiit';
     if (hiit(d) && lower(next)) out.push(`${d.title} lands the day before ${next.title} — hard intervals cost the leg session that follows them.`);
     if (lower(d) && hiit(next)) out.push(`${next.title} comes the day after ${d.title} — tired legs make for poor intervals.`);
@@ -3033,6 +3099,6 @@ if (typeof module !== 'undefined' && module.exports) {
     missedLifts, rescueTarget, rescueWeek, RESCUE_LOOKBACK_DAYS, STREAK_GRACE_DAYS, daysApart,
     PREPS, PREP_INSIGHTS, PREP_SETUP_SECS, PREP_TIER_ORDER, RUN_LOADS, RUN_PREP_MINS,
     prepRoutine, plannedLoads, runLoads, runType, runPrepMins,
-    CARDIO_HR, CARDIO_MAX_MINS, CARDIO_EASY, CARDIO_HIIT, cardioSlot, cardioPlan, hiitMins, hiitHardMins, CIRCUIT_STATIONS, CARDIO_FORMAT_ORDER,
+    CARDIO_HR, CARDIO_MAX_MINS, CARDIO_WARMUP_MINS, CARDIO_COOLDOWN_MINS, CARDIO_EASY, SUNDAY_MACHINES, SUNDAY_PLAN, OUTPUT_STEP, sundayEntry, machineMins, hiitTarget, fmtDur, cardioPlan, hiitMins, hiitHardMins,
   };
 }

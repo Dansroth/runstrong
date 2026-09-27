@@ -1571,90 +1571,99 @@ group('exercise insights: about growing the muscle, not about running');
 }
 
 /* ===================================================================
-   CONDITIONING (v75) — see the header of the same name in program.js
+   CONDITIONING (v75, running Sundays v78) — see the header of the same name in program.js
    =================================================================== */
-group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the lifting');
+group('conditioning: easy Wednesday, a new Sunday every week that gets harder every week');
 {
-  const { buildOffseason, cardioPlan, cardioSlot, CARDIO_HR, CARDIO_MAX_MINS, CARDIO_HIIT, HYPER_MESO_WEEKS, swapWarnings, swapDays, isLowerTpl, samePlan, hiitHardMins, CIRCUIT_STATIONS } = P;
+  const { buildOffseason, cardioPlan, CARDIO_HR, CARDIO_MAX_MINS, HYPER_MESO_WEEKS, swapWarnings, swapDays, isLowerTpl, samePlan, hiitHardMins, SUNDAY_PLAN, SUNDAY_MACHINES, OUTPUT_STEP, machineMins } = P;
   const block = buildOffseason(null, null);
   const DL = HYPER_MESO_WEEKS - 1;
+  const isDeload = n => (n - 1) % HYPER_MESO_WEEKS === DL;
 
-  // v76: three Sunday formats rotate with the mesocycles — A, then the circuit, then B
-  eq('block week 1 is format A (short machine reps)', cardioSlot(1).block, 'A');
-  eq('block week 5 is the mixed circuit', cardioSlot(5).block, 'C');
-  eq('block week 9 is format B (4-minute reps)', cardioSlot(9).block, 'B');
-  eq('block week 13 is format A again', cardioSlot(13).block, 'A');
-  eq('…on its second time round', cardioSlot(13).round, 1);
-  eq('week 4 is the deload slot', cardioSlot(4).wk, DL);
+  eq('the plan covers every block week', SUNDAY_PLAN.length, block.length);
 
   block.forEach((w, i) => {
     const n = i + 1, wed = w.days[2], sun = w.days[6];
     const deload = /deload/i.test(w.phase);
-    eq(`block week ${n}: deload label and cardio slot agree`, cardioSlot(n).wk === DL, deload);
-    // Wednesday: always easy, always zone 2, always carries mobility, always shorter than a lift
+    eq(`block week ${n}: deload label and the ladder's deload agree`, SUNDAY_PLAN[i].step === 'deload', deload);
+    eq(`block week ${n}: deload rhythm matches the lifting deload`, isDeload(n), deload);
+    // Wednesday: always easy, zone 2, mobility, non-impact, and it does not progress
     eq(`block week ${n}: Wednesday is easy`, wed.cardio.type, 'easy');
     ok(`block week ${n}: Wednesday names the zone-2 heart rate`, wed.sub.includes(`${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]}`), wed.sub);
     ok(`block week ${n}: Wednesday keeps the mobility session`, wed.mobility === true);
-    ok(`block week ${n}: Wednesday never mentions intervals`, !/interval|hard|×/i.test(wed.sub), wed.sub);
-    eq(`block week ${n}: deload Wednesday is shorter`, wed.cardio.mins, deload ? 30 : 40);
-    // Sunday: intervals within the time the athlete will give it
+    ok(`block week ${n}: Wednesday is not itself intervals`, !/×|hard/i.test(wed.cardio.main), wed.cardio.main);
+    ok(`block week ${n}: Wednesday never includes running`, !/run|jog|treadmill/i.test(wed.cardio.machine + ' ' + wed.cardio.main), wed.cardio.main);
+    ok(`block week ${n}: Wednesday is spin bike or a walk`, /spin bike/i.test(wed.cardio.machine) && /walk/i.test(wed.cardio.machine), wed.cardio.machine);
+    ok(`block week ${n}: Wednesday says skipping is fine`, /skipping it is fine/.test(wed.sub), wed.sub);
+    eq(`block week ${n}: Wednesday is 40 min, 30 on a deload — and never grows`, wed.cardio.mins, deload ? 30 : 40);
+    // Sunday: treadmill running within the time the athlete will give it
     eq(`block week ${n}: Sunday is intervals`, sun.cardio.type, 'hiit');
+    ok(`block week ${n}: Sunday only uses the chosen machines`, sun.cardio.machines.length > 0 && sun.cardio.machines.every(k => k in SUNDAY_MACHINES), sun.cardio.machines.join(','));
+    ok(`block week ${n}: no SkiErg or kettlebell swings, on the athlete's word`, !/ski|kettlebell|swing/i.test(sun.sub + sun.cardio.machine), sun.sub);
     ok(`block week ${n}: Sunday fits in ${CARDIO_MAX_MINS} min`, sun.cardio.mins <= CARDIO_MAX_MINS, String(sun.cardio.mins));
     ok(`block week ${n}: Sunday says what to do and how hard`, /warm-up/.test(sun.sub) && sun.sub.includes(sun.cardio.main) && sun.sub.includes(sun.cardio.target), sun.sub);
-    // no SkiErg: it trains what the four upper days already train
-    ok(`block week ${n}: no SkiErg anywhere`, !/ski/i.test(wed.cardio.machine + sun.cardio.machine));
-    // the generated week never warns
+    ok(`block week ${n}: walks never shorter than the 1:0.75 floor`, sun.cardio.restSec >= 0.75 * sun.cardio.repSec, `${sun.cardio.restSec} vs ${sun.cardio.repSec}`);
+    // the generated week never warns, and legs stay two days either side of Sunday
     eq(`block week ${n}: generated week has no swap warnings`, swapWarnings(w.days).length, 0, JSON.stringify(swapWarnings(w.days)));
-    // Sunday sits four days before the only leg day
-        /* v77: legs Tue and Fri — each two days from Sunday's intervals, never the day either side */
-    const legDays = w.days.map((d, i) => d.kind === 'lift' && isLowerTpl(d.tpl) ? i : null).filter(i => i !== null);
+    const legDays = w.days.map((d, j) => d.kind === 'lift' && isLowerTpl(d.tpl) ? j : null).filter(j => j !== null);
     eq(`block week ${n}: legs are Tuesday and Friday`, legDays.join(','), '1,4');
     ok(`block week ${n}: no leg day next to Sunday's intervals`, !legDays.includes(5) && !legDays.includes(0));
   });
 
-  // the deload is lighter than the loading weeks around it
-  for (const b of ['A', 'B', 'C']) {
-    const hard = s => hiitHardMins(s, s.reps);
-    const loading = CARDIO_HIIT[b].slice(0, DL).map(hard);
-    ok(`format ${b}: the deload has the least hard time`, hard(CARDIO_HIIT[b][DL]) < Math.min(...loading), `${hard(CARDIO_HIIT[b][DL])} vs ${loading}`);
-    eq(`format ${b}: the deload never grows`, CARDIO_HIIT[b][DL].grow, 0);
+  // the progression rules [C7][C8][C9]
+  const hard = block.map(w => w.days[6].cardio.hardMins);
+  eq('week 1 starts at about 8 min of hard running', hard[0], 8);
+  ok('hard minutes never pass the 16 min the 45 min cap allows', hard.every(h => h <= 16), hard.join(','));
+  let lastLoading = null, lastLoadingSun = null;
+  for (let i = 0; i < block.length; i++) {
+    const n = i + 1, c = block[i].days[6].cardio;
+    if (isDeload(n)) {
+      const prev = hard[i - 1], ratio = c.hardMins / prev;
+      ok(`week ${n} (deload): about 60% of the previous week (${c.hardMins} of ${prev})`, ratio >= 0.5 && ratio <= 0.7, ratio.toFixed(2));
+      continue;
+    }
+    if (lastLoading !== null) {
+      const rise = (c.hardMins - lastLoading) / lastLoading;
+      ok(`week ${n}: never more than 20% on the last loading week (${lastLoading} → ${c.hardMins})`, rise <= 0.2 + 1e-9, (rise * 100).toFixed(1) + '%');
+      ok(`week ${n}: never falls outside a deload`, c.hardMins >= lastLoading, `${lastLoading} → ${c.hardMins}`);
+      if (isDeload(n - 1)) ok(`week ${n}: resumes above the last loading week unless already at the 16 min cap`, c.hardMins > lastLoading || lastLoading === 16, `${lastLoading} → ${c.hardMins}`);
+      // one variable a week: if the minutes did not move, something else did
+      if (c.hardMins === lastLoading && !isDeload(n - 1)) {
+        const p = lastLoadingSun;
+        const changed = [c.reps !== p.reps, c.repSec !== p.repSec, c.restSec !== p.restSec, c.outputUp > 0].filter(Boolean).length;
+        eq(`week ${n}: with hard minutes flat, exactly one other thing progresses`, changed, 1, `${p.main} → ${c.main} +${c.outputUp}`);
+      }
+      if (c.step === 'recovery') eq(`week ${n}: a recovery week takes 15 s off the walks`, lastLoadingSun.restSec - c.restSec, 15);
+      if (c.step === 'output') eq(`week ${n}: an output week asks for ${OUTPUT_STEP * 100}% more and keeps the reps, rep length and rests`, [c.reps, c.repSec, c.restSec].join(), [lastLoadingSun.reps, lastLoadingSun.repSec, lastLoadingSun.restSec].join());
+    }
+    lastLoading = c.hardMins; lastLoadingSun = c;
   }
-  // loading weeks keep hard work in the 3–16 min band [C3][C4][C5]; a deload
-  // may go lighter (the sled week is ~2 min), never heavier. Worked out from
-  // the generated session, so a circuit's lengthened work intervals count.
-  for (const w of block) {
-    const slot = cardioSlot(block.indexOf(w) + 1);
-    const c = w.days[6].cardio, s = CARDIO_HIIT[c.block][slot.wk];
-    const on = c.stations ? +/(\d+) s on/.exec(c.main)[1] : s.on;
-    const hardMin = hiitHardMins({ ...s, on }, c.reps);
-    if (slot.wk === DL) ok(`${w.phase}: deload hard work (${hardMin} min) stays under 16`, hardMin <= 16, String(hardMin));
-    else ok(`${w.phase}: ${hardMin} min of hard work sits in 3–16`, hardMin >= 3 && hardMin <= 16, String(hardMin));
-    // v76: the loading weeks were lengthened to use the time the athlete gives
-    if (slot.wk !== DL) ok(`${w.phase}: a loading Sunday runs at least 34 min`, c.mins >= 34, String(c.mins));
+  // rep length lengthens by mesocycle and then cycles: 1 → 2 → 4 min
+  const repLen = n => block[n - 1].days[6].cardio.repSec;
+  eq('mesocycle 1 is 1 min reps', repLen(1), 60);
+  eq('mesocycle 2 is 2 min reps', repLen(5), 120);
+  eq('mesocycle 3 is 4 min reps (Helgerud)', repLen(9), 240);
+  eq('mesocycle 4 cycles back to 1 min reps', repLen(13), 60);
+  ok('output only progresses once the cap and the rest floor are reached', block.every((w, i) => { const c = w.days[6].cardio; return c.step !== 'output' || (hard[i] === 16 && c.restSec === 0.75 * c.repSec); }));
+  ok('the pace cue gives heart rate on the 4 min reps', block[8].days[6].cardio.target.includes(`${CARDIO_HR.hard[0]}–${CARDIO_HR.hard[1]}`));
+  ok('the card says which step changed this week', /15 s shorter/.test(block[9].days[6].sub) && /more output/.test(block[13].days[6].sub), block[9].days[6].sub);
+  ok('the plan is exported, not copied into the session', hiitHardMins(SUNDAY_PLAN[0]) === 8);
+
+  // variety: a new program every Sunday, never the same machine two Sundays running
+  const sig = c => [c.machines.join('+'), c.reps, c.repSec, c.restSec].join('|');
+  const sigs = block.map(w => sig(w.days[6].cardio));
+  eq('every Sunday is a different program', new Set(sigs).size, sigs.length, sigs.join(' ; '));
+  const primary = c => c.fmt === 'single' ? c.machines[0] : c.fmt + ':' + c.machines.join('+');
+  ok('no Sunday repeats the machine or format of the Sunday before', block.every((w, i) => i === 0 || primary(w.days[6].cardio) !== primary(block[i - 1].days[6].cardio)));
+  for (const k of ['airbike', 'rower', 'spin', 'treadmill', 'slams']) ok(`${SUNDAY_MACHINES[k].name} appears across the block`, block.some(w => w.days[6].cardio.machines.includes(k)));
+  ok('SkiErg and kettlebell swings are not machines here at all', !('ski' in SUNDAY_MACHINES) && !('kb' in SUNDAY_MACHINES));
+  for (let m = 0; m * HYPER_MESO_WEEKS < block.length; m++) {
+    const runs = block.slice(m * HYPER_MESO_WEEKS, (m + 1) * HYPER_MESO_WEEKS).filter(w => w.days[6].cardio.machines.includes('treadmill')).length;
+    ok(`mesocycle ${m + 1}: at most one treadmill run [C1]`, runs <= 1, String(runs));
   }
-  // progression: machine formats gain a rep when they come round again
-  eq('A week 1: 12 reps first time (was 8 before v76)', cardioPlan('hiit', 1).cardio.reps, 12);
-  eq('A week 1: 13 reps the second time round', cardioPlan('hiit', 13).cardio.reps, 13);
-  eq('A week 1: 14 reps the third time', cardioPlan('hiit', 25).cardio.reps, 14);
-  eq('B week 1: 4 × 4 min first time (was 3)', cardioPlan('hiit', 9).cardio.reps, 4);
-  eq('B week 1 cannot grow — it is already at the 45 min limit', cardioPlan('hiit', 21).cardio.reps, 4);
-  eq('A deload does not grow', cardioPlan('hiit', 16).cardio.reps, cardioPlan('hiit', 4).cardio.reps);
-  // the circuit grows by work seconds, not by rounds
-  const c1 = cardioPlan('hiit', 5).cardio, c1b = cardioPlan('hiit', 17).cardio, c2b = cardioPlan('hiit', 18).cardio;
-  eq('circuit week 1: 3 rounds', c1.reps, 3);
-  ok('circuit week 1: 30 s on first time', /30 s on \/ 30 s off/.test(c1.main), c1.main);
-  eq('circuit week 1: still 3 rounds second time round', c1b.reps, 3);
-  ok('…with 35 s of work instead', /35 s on \/ 25 s off/.test(c1b.main), c1b.main);
-  ok('…so week 1 never becomes a copy of week 2', c1b.main !== c2b.main);
-  eq('…and the session is no longer', c1b.mins, c1.mins);
-  ok('circuit deload stays at 30 s every time', /30 s on/.test(cardioPlan('hiit', 20).cardio.main));
-  // the circuit names its stations, and none of them are the excluded ones
-  const cd = cardioPlan('hiit', 5);
-  eq('circuit: five stations, in order', cd.cardio.stations.join(' | '), CIRCUIT_STATIONS.join(' | '));
-  ok('circuit: no burpees, push-ups, jumps, lunges or SkiErg', !/burpee|push-up|jump|lunge|box|ski|thruster/i.test(CIRCUIT_STATIONS.join(' ')));
-  ok('circuit: the card text offers swaps', /farmer/.test(cd.sub));
-  ok('circuit: no kettlebell swings since v77 — hamstrings train twice a week now', !/swing/i.test(CIRCUIT_STATIONS.join(' ')));
-  ok('circuit: stations are a copy, not the shared constant', cd.cardio.stations !== CIRCUIT_STATIONS);
+  ok('dead-ball slams only ever appear in a circuit', block.every(w => { const c = w.days[6].cardio; return !c.machines.includes('slams') || c.fmt === 'circuit'; }));
+  ok('deloads are on the spin bike or rower', block.every((w, i) => !isDeload(i + 1) || ['spin', 'rower'].includes(w.days[6].cardio.machines[0])));
+  ok('machineMins counts a relay rep by rep', machineMins({ m: ['a', 'b'], reps: 7, on: 120 }, 'a') === 8);
 
   // swap warnings: intervals and legs on neighbouring days are flagged, both ways round
   const w1 = block[1];
@@ -1666,6 +1675,9 @@ group('conditioning: easy Wednesday, one interval Sunday, nothing that costs the
   // samePlan sees a different session as a different plan
   ok('samePlan tells two cardio sessions apart', !samePlan(block[0].days[6], block[1].days[6]));
   ok('…and a day equals itself', samePlan(block[0].days[6], { ...block[0].days[6] }));
+  // no machine formats left
+  ok('no circuit or machine formats remain', !('CARDIO_HIIT' in P) && !('CIRCUIT_STATIONS' in P) && !('CARDIO_FORMAT_ORDER' in P));
+  ok('cardioPlan beyond the ladder repeats its last week rather than failing', cardioPlan('hiit', 40).cardio.main === cardioPlan('hiit', SUNDAY_PLAN.length).cardio.main);
 }
 
 /* =================================================================== */

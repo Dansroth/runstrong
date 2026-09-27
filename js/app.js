@@ -3,7 +3,7 @@
 
 /* ================= state & storage ================= */
 const DB_KEY = 'runstrong.db';
-const SCHEMA_VERSION = 36;
+const SCHEMA_VERSION = 37;
 /* Equipment tags an exercise can carry (see EXERCISES[x].equip in program.js).
    Settings toggles default every one of these ON, so a fresh install and every
    existing user see identical swap suggestions until they actually mark
@@ -22,7 +22,7 @@ function defaultState() {
     program: buildProgram(),
     sessions: {},          // sessionId (== date) → session record
     runs: {},              // date → {km, min, feel, note}
-    cardio: {},            // v75: date → {min, hr, rpe, note} | {skipped:true}
+    cardio: {},            // v75: date → {min, hr, rpe, note, output?} | {skipped:true}; output (v78) = the Sunday machine's watts or km/h
     fitness: { daily: {}, vo2: {}, skipped: null },  // daily: date→{hrv,rhr}; vo2: date→ml/kg/min; skipped: last skipped date
     weeklySummaries: [],   // archived Sunday summaries (data, not markup)
     races: { geelong: { checklist: {} } },   // checklist only since v64; the February race was removed in v69
@@ -345,6 +345,10 @@ const MIGRATIONS = {
     for (const d of Object.keys(s.planOverrides || {})) if (d >= '2026-09-28') delete s.planOverrides[d];
     s.schemaVersion = 36; return s;
   },
+  /* 36 → 37: a new Sunday session every week across the machines, on one
+     progression ladder (see CONDITIONING in program.js). Calendar rebuilt;
+     the cardio and run logs are keyed by date and untouched. */
+  36: (s) => { s.program = buildProgram(); s.schemaVersion = 37; return s; },
 };
 
 function migrate(s) {
@@ -398,7 +402,7 @@ save(); // persist immediately so migrations and first-visit program generation 
 
 /* ================= helpers ================= */
 const $ = sel => document.querySelector(sel);
-const APP_VERSION = 'v77';   // keep in step with the sw.js CACHE bump each deploy
+const APP_VERSION = 'v78';   // keep in step with the sw.js CACHE bump each deploy
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms) {
   let el = document.getElementById('toast');
@@ -1264,27 +1268,44 @@ function cardioFor(date) {
 }
 function cardioSkipped(date) { return !!(ST.cardio && ST.cardio[date] && ST.cardio[date].skipped); }
 function cardioLine(c) {
-  return `${c.min} min${c.hr ? ` · ${c.hr} bpm` : ''}${c.rpe ? ` · RPE ${c.rpe}` : ''}${c.note ? ` · 📝 ${esc(c.note)}` : ''}`;
+  return `${c.min} min${c.hr ? ` · ${c.hr} bpm` : ''}${c.rpe ? ` · RPE ${c.rpe}` : ''}${c.output ? ` · output ${c.output}` : ''}${c.note ? ` · 📝 ${esc(c.note)}` : ''}`;
+}
+/* v78: the Sunday output cue. Output is only comparable on the same machine
+   at the same rep length (1 min reps run harder than 4 min reps), so the hint
+   looks back for the last logged output on this machine at this rep length
+   and adds this week's step. Relays and circuits log RPE only. */
+function outputHint(date, cd) {
+  if (!cd.unit || !cd.machines || cd.machines.length !== 1) return '';
+  const key = cd.machines[0];
+  const prev = Object.keys(ST.cardio || {}).filter(d => d < date).sort().reverse().find(d => {
+    const c = ST.cardio[d], pd = dayFor(d);
+    return c && !c.skipped && c.output && pd && pd.cardio && pd.cardio.machines
+      && pd.cardio.machines.length === 1 && pd.cardio.machines[0] === key && pd.cardio.repSec === cd.repSec;
+  });
+  if (!prev) return `Log your average ${cd.unit} on the reps — the next time on this machine builds on it.`;
+  const last = ST.cardio[prev].output;
+  const dp = cd.unit === 'km/h' ? 10 : 1;
+  const aim = Math.round(last * (1 + (cd.outputUp || 0)) * dp) / dp;
+  return cd.outputUp
+    ? `Last time on this machine at these reps: ${last} ${cd.unit} → today about ${aim} ${cd.unit}.`
+    : `Last time on this machine at these reps: ${last} ${cd.unit}.`;
 }
 function cardioCard(day, t) {
   const c = cardioFor(t), cd = day.cardio || {};
   const hiit = cd.type === 'hiit';
   const mobBtn = day.mobility
     ? `<button class="btn big" onclick="startMobility('${t}')">🧘 ${routineDone(t, 'stretch') ? 'Mobility done ✓ — again?' : `Mobility session — ${MOBILITY_MINS} min`}</button>` : '';
-  /* v76: a circuit names its stations in order — "bike · swings · row"
-     is not enough to run it from with a timer going. */
-  const stations = cd.stations && cd.stations.length
-    ? `<ol class="card-sub circuit-list">${cd.stations.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '';
-  const detail = `<div class="card-sub">${cd.stations ? '' : `<b>${esc(cd.machine || '')}</b> · `}${esc(cd.main || '')}</div>${stations}
-    <div class="card-sub dim">Target: ${esc(cd.target || '')} · ~${cd.mins || ''} min${hiit ? ` incl. warm-up` : ''}</div>`;
+  const hint = hiit ? outputHint(t, cd) : '';
+  const detail = `<div class="card-sub"><b>${esc(cd.machine || '')}</b> · ${esc(cd.main || '')}</div>
+    <div class="card-sub dim">Target: ${esc(cd.target || '')} · ~${cd.mins || ''} min${hiit ? ` incl. warm-up` : ''}</div>${hint ? `<div class="card-sub">${esc(hint)}</div>` : ''}`;
   const action = c
     ? `<div class="run-logged">✓ ${cardioLine(c)}</div>${mobBtn}<button class="mini" onclick="openCardioLog('${t}')">edit</button>`
     : cardioSkipped(t)
       ? `<div class="run-logged dim">✗ skipped</div><button class="mini" onclick="openCardioLog('${t}')">log anyway</button>`
       : `<button class="btn primary big" onclick="openCardioLog('${t}')">Log ${hiit ? 'intervals' : 'cardio'}</button>${mobBtn}`;
   const why = hiit
-    ? 'The week\'s one hard session — two days from each leg day, so your legs are fresh for it and it is gone by Tuesday.'
-    : 'Your rest day. The spin is optional and strictly easy — if you can\'t breathe through your nose, back off. The mobility session is the part worth doing.';
+    ? 'The week\'s one hard session — two days from each leg day, so your legs are fresh for it and it has cleared by Tuesday. A different machine or format every Sunday, a little harder every loading week; log your output so the next time on this machine can build on it.'
+    : 'Your rest day. The spin or walk is optional and strictly easy — if you can\'t breathe through your nose, back off. It helps Sunday\'s session and your recovery between the leg days; skipping it is fine. The mobility session is the part worth doing.';
   return `<div class="card ${c ? '' : 'card--lead action'} cardio"><div class="card-kicker">${c ? 'Done today ✓' : day.mobility ? "Today's cardio + mobility" : "Today's cardio"}</div>
     <div class="card-title">${esc(day.title)}</div>${detail}<div class="card-sub dim">${esc(why)}</div>${action}</div>`;
 }
@@ -1302,7 +1323,9 @@ window.openCardioLog = function (date) {
       <input id="cardiohr" class="notefield" type="number" inputmode="numeric" placeholder="${cd.type === 'hiit' ? 'e.g. 145' : 'e.g. 122'}" value="${r.hr || ''}"></div>
     <div class="stepper"><div class="stepper-lbl">How hard was it overall? (RPE 1–10)</div><div class="rpes" id="cardiorpes">
       ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<button class="rpe ${r.rpe === v ? 'sel' : ''}" data-v="${v}" onclick="pickCardioRpe(${v})">${v}</button>`).join('')}</div></div>
-    <input id="cardionote" class="notefield" placeholder="Notes (optional) — e.g. watts or calories per rep" value="${esc(r.note || '')}">
+    ${cd.type === 'hiit' && cd.unit ? `<div class="stepper"><div class="stepper-lbl">Average output on the reps (${esc(cd.unit)}, optional)</div>
+      <input id="cardiooutput" class="notefield" type="number" inputmode="decimal" step="${cd.unit === 'km/h' ? '0.1' : '1'}" min="1" max="2000" placeholder="${cd.unit === 'km/h' ? 'e.g. 16.0' : 'e.g. 250'}" value="${r.output || ''}"></div>` : ''}
+    <input id="cardionote" class="notefield" placeholder="Notes (optional)" value="${esc(r.note || '')}">
     <button class="btn primary big" onclick="saveCardio('${date}')">Save</button>
     <button class="linkbtn" onclick="skipCardio('${date}')">I didn't do this session</button>
     <button class="linkbtn" onclick="closeModal()">Cancel</button></div>`;
@@ -1324,7 +1347,9 @@ window.saveCardio = function (date) {
   if (!rpe) { const row = $('#cardiorpes'); if (row) { row.classList.remove('nudge'); void row.offsetWidth; row.classList.add('nudge'); } toast('Tap an RPE — it is how the sessions are compared week to week.'); return; }
   const hr = parseInt($('#cardiohr').value, 10);
   ST.cardio = ST.cardio || {};
+  const out = $('#cardiooutput') ? parseFloat($('#cardiooutput').value) : NaN;
   ST.cardio[date] = { min: parseInt(m.dataset.min, 10), hr: isNaN(hr) ? null : hr, rpe, note: $('#cardionote').value.trim() };
+  if (out > 0 && out <= 2000) ST.cardio[date].output = Math.round(out * 10) / 10;
   save(); closeModal(); render();
 };
 window.skipCardio = function (date) {
@@ -1549,7 +1574,7 @@ function upNext(t) {
   }
   if (!items.length) return '';
   return `<div class="upnext"><div class="section-label">Up next</div>` + items.map(d =>
-    `<div class="upnext-row"><span class="upnext-date">${fmtDate(d.date)}</span><span class="upnext-title ${d.kind}">${d.kind === 'run' ? '🏃 ' : d.kind === 'cardio' ? '🚴 ' : d.kind === 'race' ? '' : d.kind === 'lift' ? '🏋️ ' : ''}${esc(d.title)}</span></div>`).join('') + `</div>`;
+    `<div class="upnext-row"><span class="upnext-date">${fmtDate(d.date)}</span><span class="upnext-title ${d.kind}">${d.kind === 'run' ? '🏃 ' : d.kind === 'cardio' ? (d.cardio && d.cardio.machines && d.cardio.machines.includes('treadmill') ? '🏃 ' : '🚴 ') : d.kind === 'race' ? '' : d.kind === 'lift' ? '🏋️ ' : ''}${esc(d.title)}</span></div>`).join('') + `</div>`;
 }
 
 /* ================= race kit + maintenance mode ================= */
@@ -1589,7 +1614,7 @@ function offerRecoveryMode() {
   m.innerHTML = `<div class="sheet"><h2>The block is done. 🏁</h2>
     <p class="dim" style="line-height:1.6;margin-bottom:10px">Six weeks, one race. What's next is already on your Plan:</p>
     <div class="wksum-li">• <b>One continuous block</b> — ${esc(fmtDate(HYPER_START))} to ${esc(fmtDate(blockEnd))}. Five lifts a week (Upper · Push, Lower A, Upper · Pull, Lower B, Upper + Arms), a rest day with optional easy cardio and mobility, and one interval session, in four-week mesocycles of three loading weeks and a deload.</div>
-    <div class="wksum-li">• <b>Cardio, not running</b> — Wednesday is the rest day, with an optional easy spin or walk (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) between the two leg days. Sunday is the week's one interval session, two days from each leg day, rotating each mesocycle through short machine reps, a mixed circuit (bike, battle ropes, row, med-ball slams, sled) and 4-minute reps. Mostly bikes, rower and uphill treadmill: cycling interferes with muscle growth less than running does, and short, hard sessions build fitness without eating into recovery.</div>
+    <div class="wksum-li">• <b>A new Sunday every week</b> — Wednesday is the rest day, with an optional easy spin or walk (${CARDIO_HR.easy[0]}–${CARDIO_HR.easy[1]} bpm) between the two leg days, and no running. Sunday is the week's one interval session, two days from each leg day, on a different machine or format each week — air bike, rower, spin bike, the odd treadmill run, relays and a dead-ball circuit — growing about 10% a loading week. Reps lengthen each block (1, 2, then 4 min); once the 45 minutes are full, the rests shorten and then you aim for a little more output than last time on that machine.</div>
     <div class="wksum-li dim">The February 10 km sits inside it as one lighter week rather than a running block.</div>
     <button class="btn primary big" onclick="closeModal();go('schedule')" style="margin-top:12px">See the plan</button>
     <button class="linkbtn" onclick="if(confirm('Switch to 3 flexible workouts a week with no calendar? You can come back to the plan from Settings.'))startMaintenance('balanced')">Prefer 3 flexible workouts and no calendar?</button>
@@ -4064,7 +4089,7 @@ function dayMark(d) {
   if (d.kind === 'race') return { c: 'race', t: '🏁' };
   if (d.kind === 'lift') return { c: d.run ? 'lift run' : 'lift', t: d.run ? '🏋️🏃' : '🏋️' };
   if (d.kind === 'run') return { c: d.mobility ? 'run mob' : 'run', t: d.mobility ? '🏃🧘' : '🏃' };
-  if (d.kind === 'cardio') return { c: d.mobility ? 'cardio mob' : 'cardio', t: '🚴' };
+  if (d.kind === 'cardio') return { c: d.mobility ? 'cardio mob' : 'cardio', t: d.cardio && d.cardio.machines && d.cardio.machines.includes('treadmill') ? '🏃' : '🚴' };
   if (d.kind === 'mobility') return { c: 'mob', t: '🧘' };
   return { c: 'rest', t: '·' };
 }
@@ -4318,7 +4343,7 @@ window.exportCSV = function () {
     const c = ST.cardio[d], day = dayFor(d), cd = (day && day.cardio) || {};
     const what = cd.machine ? `${cd.machine} — ${cd.main}` : 'Cardio';
     if (c.skipped) { rows.push([d, 'Cardio', `${what} (skipped)`, 1, '', '', '', '', '']); continue; }
-    rows.push([d, 'Cardio', `${what} (${c.min} min${c.hr ? ', ' + c.hr + ' bpm' : ''})`.replace(/"/g, '""'), 1, '', '', c.rpe ?? '', '', (c.note || '').replace(/"/g, '""')]);
+    rows.push([d, 'Cardio', `${what} (${c.min} min${c.hr ? ', ' + c.hr + ' bpm' : ''}${c.output ? ', output ' + c.output : ''})`.replace(/"/g, '""'), 1, '', '', c.rpe ?? '', '', (c.note || '').replace(/"/g, '""')]);
   }
   download(`runstrong-log-${today()}.csv`, rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n'), 'text/csv');
 };
