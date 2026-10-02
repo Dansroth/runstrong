@@ -1071,8 +1071,13 @@ const TEMPLATES = {
      second chest and back exposure, which is what [H2] asks for. Every 60 min
      session is 21 base sets, the number that keeps the Math.ceil deload under
      60% of the loading week. */
-  hypPush:   { title: 'Push · Chest', hyper: true, est: 60, items: [['bench', 4, 6], ['ROTATE:pressAcc', 4, 8], ['ROTATE:chestAcc', 3, 12], ['ROTATE:tricepsLong', 4, 12], ['ROTATE:sideDelt', 3, 15], ['ROTATE:coreAcc', 3, 12]] },
-  hypPull:   { title: 'Pull · Back & Biceps', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 4, 10], ['ROTATE:bicepsLong', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:rowAcc', 3, 10], ['ROTATE:rearDelt', 3, 15]] },
+  /* v79: delts were the thinnest upper muscles — 7 side, 3 rear a week
+     against 18 for chest. On request, chest keeps its priority dose and the
+     delts get a set each on top: Push's side-delt slot 3 → 4, Pull's
+     rear-delt slot 3 → 4 (side delts 8, rear 4). Both days go to 22 sets;
+     the deload still rounds to 12, 55%. */
+  hypPush:   { title: 'Push · Chest', hyper: true, est: 63, items: [['bench', 4, 6], ['ROTATE:pressAcc', 4, 8], ['ROTATE:chestAcc', 3, 12], ['ROTATE:tricepsLong', 4, 12], ['ROTATE:sideDelt', 4, 15], ['ROTATE:coreAcc', 3, 12]] },
+  hypPull:   { title: 'Pull · Back & Biceps', hyper: true, est: 60, items: [['pullup', 4, 6], ['ROTATE:backAcc', 4, 10], ['ROTATE:bicepsLong', 4, 12], ['ROTATE:bicepsAcc', 3, 12], ['ROTATE:rowAcc', 3, 10], ['ROTATE:rearDelt', 4, 15]] },
   /* The second chest exposure, and the one that carries the stretch-biased
      work: an incline press plus dips. Both curls live on Pull and Arms, so
      this day is chest, back and the triceps rotation. */
@@ -1114,8 +1119,12 @@ const TEMPLATES = {
      The seated leg curl appears on both: it is the lengthened-position curl
      [H7] and the library has no second knee-flexion machine worth rotating
      to. The two calf slots are straight-knee (gastrocnemius) on A and
-     bent-knee (soleus) on B. */
-  hypLowerQ: { title: 'Lower A · Quads', hyper: true, est: 55, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12]] },
+     bent-knee (soleus) on B.
+     v79: Saturday's coreTrunk slot moved here — Lower A had no core work and
+     Saturday ran ~75 min. Four sets, not three: at three the day is 20 sets
+     and the Math.ceil deload lands on exactly 60%; at four it is 21 → 12,
+     57%. Last in the session, so the ramp never touches it. */
+  hypLowerQ: { title: 'Lower A · Quads', hyper: true, est: 65, items: [['squat', 4, 6], ['ROTATE:quadAcc', 3, 10], ['legext', 3, 12], ['legcurl', 3, 12], ['ROTATE:calfStand', 4, 12], ['ROTATE:coreTrunk', 4, 12]] },
   hypLowerH: { title: 'Lower B · Hinge', hyper: true, est: 57, items: [['rdl', 4, 8], ['ROTATE:unilateral', 3, 10], ['legcurl', 3, 12], ['legext', 3, 12], ['ROTATE:calfSeat', 4, 15], ['copen', 2, 30]] },
   /* The third upper day, and where the arms priority lives: the second
      chest exposure (incline + dips), a curl and a triceps press in the
@@ -1126,8 +1135,11 @@ const TEMPLATES = {
      work), ~75 min. It draws from coreTrunk, not coreAcc, so the two ab
      exercises can never be the same one: coreAcc curls the spine, coreTrunk
      rotates it or refuses to be rotated. 27 base sets deload to 16 — 59%,
-     still under the 60% the Math.ceil note above asks for. */
-  hypUpperArms: { title: 'Upper + Arms', hyper: true, est: 75, items: [['incline', 4, 8], ['dip', 3, 10], ['bbcurl', 3, 10], ['ROTATE:tricepsAcc', 4, 12], ['latpull', 3, 10], ['ROTATE:sideDelt', 4, 15], ['ROTATE:coreAcc', 3, 12], ['ROTATE:coreTrunk', 3, 12]] },
+     still under the 60% the Math.ceil note above asks for.
+     v79: the coreTrunk slot moved to Lower A, the one session with no core
+     work, to bring Saturday down to ~71 min. 24 base sets deload to 14,
+     58%. The side-delt slot stays at 4: at 5 the deload is exactly 60%. */
+  hypUpperArms: { title: 'Upper + Arms', hyper: true, est: 71, items: [['incline', 4, 8], ['dip', 3, 10], ['bbcurl', 3, 10], ['ROTATE:tricepsAcc', 4, 12], ['latpull', 3, 10], ['ROTATE:sideDelt', 4, 15], ['ROTATE:coreAcc', 3, 12]] },
   /* ---- v70: BENCHMARK DAY ----
      Takes the deload week's Saturday slot from hypArms — see deloadWeekLayout().
      Deliberately NOT `hyper: true`: three single all-out sets are not block
